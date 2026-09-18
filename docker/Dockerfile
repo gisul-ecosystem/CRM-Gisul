@@ -8,54 +8,75 @@ COPY apps ./apps
 COPY packages ./packages
 RUN bun install --frozen-lockfile
 
-FROM deps AS build
+FROM deps AS build-common
 ARG API_URL=http://localhost:3001
 ENV API_URL=${API_URL}
 ENV NODE_ENV=production
 COPY . .
 RUN bun run --filter=@crm/db db:generate
-RUN bunx turbo run build --filter=api --filter=app --filter=agent
+
+FROM build-common AS build-api
+RUN bunx turbo run build --filter=api
+
+FROM build-common AS build-agent
+RUN bunx turbo run build --filter=agent
+
+FROM node:22-bookworm-slim AS build-app
+ARG API_URL=http://localhost:3001
+ENV API_URL=${API_URL}
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build-common /app/node_modules ./node_modules
+COPY --from=build-common /app/package.json ./package.json
+COPY --from=build-common /app/apps ./apps
+COPY --from=build-common /app/packages ./packages
+WORKDIR /app/apps/app
+RUN npx next build --webpack
 
 FROM base AS api
 ENV NODE_ENV=production
 WORKDIR /app
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/apps/api ./apps/api
-COPY --from=build /app/packages ./packages
+COPY --from=build-api /app/node_modules ./node_modules
+COPY --from=build-api /app/package.json ./package.json
+COPY --from=build-api /app/apps/api ./apps/api
+COPY --from=build-api /app/packages ./packages
 WORKDIR /app/apps/api
 EXPOSE 3001
 CMD ["bun", "run", "start:prod"]
 
-FROM base AS app
+FROM node:22-bookworm-slim AS app
 ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 WORKDIR /app
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/apps/app ./apps/app
-COPY --from=build /app/packages ./packages
+COPY --from=build-app /app/node_modules ./node_modules
+COPY --from=build-app /app/package.json ./package.json
+COPY --from=build-app /app/apps/app ./apps/app
+COPY --from=build-app /app/packages ./packages
 WORKDIR /app/apps/app
 EXPOSE 3000
-CMD ["bun", "run", "start"]
+CMD ["npx", "next", "start"]
 
 FROM base AS agent
 ENV NODE_ENV=production
 WORKDIR /app
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/apps/agent ./apps/agent
-COPY --from=build /app/packages ./packages
+COPY --from=build-agent /app/node_modules ./node_modules
+COPY --from=build-agent /app/package.json ./package.json
+COPY --from=build-agent /app/apps/agent ./apps/agent
+COPY --from=build-agent /app/packages ./packages
 WORKDIR /app/apps/agent
 ENV AGENT_PORT=2000
 EXPOSE 2000
 CMD ["bun", "run", "start"]
 
+FROM build-common AS build-migrate
+
 FROM base AS migrate
 ENV NODE_ENV=production
 WORKDIR /app
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/apps ./apps
-COPY --from=build /app/packages ./packages
-COPY --from=build /app/turbo.json ./turbo.json
+COPY --from=build-migrate /app/node_modules ./node_modules
+COPY --from=build-migrate /app/package.json ./package.json
+COPY --from=build-migrate /app/apps ./apps
+COPY --from=build-migrate /app/packages ./packages
+COPY --from=build-migrate /app/turbo.json ./turbo.json
 CMD ["bun", "run", "db:deploy"]
