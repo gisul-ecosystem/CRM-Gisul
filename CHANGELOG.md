@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.15.4](https://github.com/gisul-ecosystem/CRM-Gisul/compare/v1.15.3...v1.15.4) (2026-09-18)
+
+
+### Fixes
+
+* run next build with node instead of npx ([78dfd6b](https://github.com/gisul-ecosystem/CRM-Gisul/commit/78dfd6bbea1300c5a994400b5b21872470887503))
+* set build-time env vars for Next.js app Docker build ([b00b346](https://github.com/gisul-ecosystem/CRM-Gisul/commit/b00b346635412f3238da4cd1856417063d78f890))
+* set DATABASE_URL for Docker build prisma generate ([e35f45c](https://github.com/gisul-ecosystem/CRM-Gisul/commit/e35f45cb332644e30ac1b338863b9a9f5af7c999))
+* split Docker builds and use Node for Next.js app ([2a5d5cb](https://github.com/gisul-ecosystem/CRM-Gisul/commit/2a5d5cb8ff907a654f278b572d849077a551aaa5))
+* update Docker API URL in workflow configuration ([e56aa22](https://github.com/gisul-ecosystem/CRM-Gisul/commit/e56aa22bab113e43f9b323122126d7feb23962a9))
+
 ## [1.15.3](https://github.com/trycompai/crm/compare/v1.15.2...v1.15.3) (2026-08-21)
 
 
