@@ -2,6 +2,7 @@ FROM oven/bun:1.3.12 AS base
 WORKDIR /app
 
 FROM base AS deps
+ENV DATABASE_URL=postgresql://postgres:postgres@localhost:5432/crm?schema=public
 COPY package.json bun.lock turbo.json ./
 COPY apps ./apps
 COPY packages ./packages
