@@ -31,7 +31,7 @@ COPY --from=build-common /app/package.json ./package.json
 COPY --from=build-common /app/apps ./apps
 COPY --from=build-common /app/packages ./packages
 WORKDIR /app/apps/app
-RUN npx next build --webpack
+RUN node ./node_modules/next/dist/bin/next build --webpack
 
 FROM base AS api
 ENV NODE_ENV=production
@@ -55,7 +55,7 @@ COPY --from=build-app /app/apps/app ./apps/app
 COPY --from=build-app /app/packages ./packages
 WORKDIR /app/apps/app
 EXPOSE 3000
-CMD ["npx", "next", "start"]
+CMD ["node", "./node_modules/next/dist/bin/next", "start"]
 
 FROM base AS agent
 ENV NODE_ENV=production
