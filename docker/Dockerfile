@@ -25,6 +25,11 @@ FROM node:22-bookworm-slim AS build-app
 ARG API_URL=http://localhost:3001
 ENV API_URL=${API_URL}
 ENV NODE_ENV=production
+ENV DATABASE_URL=postgresql://postgres:postgres@localhost:5432/crm?schema=public
+ENV BETTER_AUTH_SECRET=docker-build-placeholder-secret-min-32-chars
+ENV ALLOWED_SIGN_IN=example.com
+ENV AGENT_BRIDGE_SECRET=docker-build-bridge-secret-min-16
+ENV AGENT_URL=http://agent:2000
 WORKDIR /app
 COPY --from=build-common /app/node_modules ./node_modules
 COPY --from=build-common /app/package.json ./package.json
