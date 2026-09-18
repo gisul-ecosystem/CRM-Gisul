@@ -1,0 +1,132 @@
+
+services:
+  postgres:
+    profiles: [local-db]
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-crm}
+    volumes:
+      - crm-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-crm}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: migrate
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/crm?schema=public}
+      ALLOW_REMOTE_DB: ${ALLOW_REMOTE_DB:-}
+      NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: api
+      args:
+        API_URL: ${API_URL:-http://localhost:3001}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/crm?schema=public}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
+      ALLOWED_SIGN_IN: ${ALLOWED_SIGN_IN:?set ALLOWED_SIGN_IN}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
+      MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-common}
+      API_URL: ${API_URL:-http://localhost:3001}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:-}
+      AGENT_URL: ${AGENT_URL:-http://agent:2000}
+      AGENT_BRIDGE_SECRET: ${AGENT_BRIDGE_SECRET:?set AGENT_BRIDGE_SECRET}
+      CRON_SECRET: ${CRON_SECRET:-}
+      REDIS_URL: ${REDIS_URL:-}
+      BLOB_READ_WRITE_TOKEN: ${BLOB_READ_WRITE_TOKEN:-}
+      CRM_TELEMETRY_DISABLED: ${CRM_TELEMETRY_DISABLED:-1}
+      NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-}
+    ports:
+      - "3001:3001"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+        required: false
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: app
+      args:
+        API_URL: ${API_URL:-http://localhost:3001}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/crm?schema=public}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
+      ALLOWED_SIGN_IN: ${ALLOWED_SIGN_IN:?set ALLOWED_SIGN_IN}
+      API_URL: ${API_URL:-http://localhost:3001}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:-}
+      AGENT_URL: ${AGENT_URL:-http://agent:2000}
+      AGENT_BRIDGE_SECRET: ${AGENT_BRIDGE_SECRET:?set AGENT_BRIDGE_SECRET}
+      CRM_TELEMETRY_DISABLED: ${CRM_TELEMETRY_DISABLED:-1}
+      NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: agent
+      args:
+        API_URL: ${API_URL:-http://localhost:3001}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      AGENT_PORT: 2000
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/crm?schema=public}
+      AGENT_BRIDGE_SECRET: ${AGENT_BRIDGE_SECRET:?set AGENT_BRIDGE_SECRET}
+      AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY:?set AI_GATEWAY_API_KEY}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      BLOB_READ_WRITE_TOKEN: ${BLOB_READ_WRITE_TOKEN:-}
+      CRM_TELEMETRY_DISABLED: ${CRM_TELEMETRY_DISABLED:-1}
+      NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-}
+    ports:
+      - "2000:2000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+        required: false
+
+volumes:
+  crm-postgres:
