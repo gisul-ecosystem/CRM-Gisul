@@ -139,7 +139,7 @@ export function DashboardSummary() {
 							The largest open deals, and how long each has sat in its stage
 						</CardDescription>
 						<CardAction>
-							<Button asChild variant="contrast" size="sm">
+							<Button asChild variant="default" size="sm">
 								<Link href={workspaceUrl("/deals")}>Open deals</Link>
 							</Button>
 						</CardAction>
@@ -273,7 +273,7 @@ export function DashboardSummary() {
 							: "Every note, task and stage change across the workspace"}
 					</CardDescription>
 					<CardAction>
-						<Button asChild variant="contrast" size="sm">
+						<Button asChild variant="default" size="sm">
 							<Link href={workspaceUrl("/companies")}>All companies</Link>
 						</Button>
 					</CardAction>

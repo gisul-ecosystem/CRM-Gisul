@@ -29,7 +29,11 @@ export function OverviewScopeToggleFallback() {
 			aria-label="Whose numbers to show"
 		>
 			{OVERVIEW_SCOPES.map((value) => (
-				<ToggleGroupItem key={value} value={value}>
+				<ToggleGroupItem
+					key={value}
+					value={value}
+					className="data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:ring-primary/30"
+				>
 					{LABELS[value]}
 				</ToggleGroupItem>
 			))}
@@ -56,7 +60,11 @@ export function OverviewScopeToggle() {
 			aria-label="Whose numbers to show"
 		>
 			{OVERVIEW_SCOPES.map((value) => (
-				<ToggleGroupItem key={value} value={value}>
+				<ToggleGroupItem
+					key={value}
+					value={value}
+					className="data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:ring-primary/30"
+				>
 					{LABELS[value]}
 				</ToggleGroupItem>
 			))}

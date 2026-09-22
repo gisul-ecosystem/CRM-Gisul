@@ -10,7 +10,10 @@ const Logo = ({
 	<img
 		src={PRODUCT_BRAND.logoSrc}
 		alt={alt ?? `${PRODUCT_BRAND.name} logo`}
-		className={cn("size-5 shrink-0 object-contain object-left", className)}
+		className={cn(
+			"size-5 shrink-0 object-contain object-left dark:brightness-0 dark:invert",
+			className,
+		)}
 		{...props}
 	/>
 );

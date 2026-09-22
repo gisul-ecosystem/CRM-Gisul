@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 	description: `Customer relationship management for ${PRODUCT_BRAND.name}`,
 	icons: {
 		icon: [
-			{ url: PRODUCT_BRAND.logoSrc, type: "image/png" },
+			{ url: "/favicon.ico", sizes: "any" },
 			{ url: "/favicon-96x96.png", type: "image/png", sizes: "96x96" },
 		],
 		apple: "/apple-touch-icon.png",
