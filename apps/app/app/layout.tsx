@@ -1,3 +1,4 @@
+import { PRODUCT_BRAND } from "@crm/brand";
 import "@crm/ui/globals.css";
 import { Toaster } from "@crm/ui/components/sonner";
 import { TooltipProvider } from "@crm/ui/components/tooltip";
@@ -21,13 +22,13 @@ const fontMono = Geist_Mono({
 
 export const metadata: Metadata = {
 	title: {
-		default: "Comp AI - CRM",
-		template: "%s · Comp AI CRM",
+		default: PRODUCT_BRAND.productName,
+		template: `%s · ${PRODUCT_BRAND.productName}`,
 	},
-	description: "Customer Relationship Management for Comp AI",
+	description: `Customer relationship management for ${PRODUCT_BRAND.name}`,
 	icons: {
 		icon: [
-			{ url: "/favicon.svg", type: "image/svg+xml" },
+			{ url: PRODUCT_BRAND.logoSrc, type: "image/png" },
 			{ url: "/favicon-96x96.png", type: "image/png", sizes: "96x96" },
 		],
 		apple: "/apple-touch-icon.png",

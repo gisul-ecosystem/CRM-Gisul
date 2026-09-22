@@ -1,4 +1,5 @@
 import { apiKey } from "@better-auth/api-key";
+import { PRODUCT_BRAND } from "@crm/brand";
 import { sso } from "@better-auth/sso";
 import { db } from "@crm/db";
 import { schemas } from "@crm/validation";
@@ -70,7 +71,7 @@ if (env.microsoft) {
 }
 
 export const auth = betterAuth({
-	appName: "CRM",
+	appName: PRODUCT_BRAND.productName,
 	baseURL: env.apiUrl,
 
 	database: prismaAdapter(db, {

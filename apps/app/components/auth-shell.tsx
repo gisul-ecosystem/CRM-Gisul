@@ -1,3 +1,4 @@
+import { PRODUCT_BRAND } from "@crm/brand";
 import Logo from "@crm/ui/components/logo";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -11,14 +12,14 @@ export function AuthShell({ children }: { children: ReactNode }) {
 
 				<div className="relative flex gap-2 text-sm/5">
 					<Link href="/" aria-label="Homepage" className="flex">
-						<Logo className="size-5 shrink-0" />
+						<Logo className="h-6 w-auto max-w-[120px] shrink-0" />
 					</Link>
 				</div>
 
 				<div className="relative flex max-w-lg flex-col gap-8">
 					<div className="flex flex-col gap-4">
 						<p className="font-mono text-xs/4 text-muted-foreground uppercase">
-							CRM
+							{PRODUCT_BRAND.name}
 						</p>
 						<h1 className="max-w-[14ch] text-5xl/14 font-semibold text-balance">
 							Every customer, one place.
@@ -27,21 +28,20 @@ export function AuthShell({ children }: { children: ReactNode }) {
 				</div>
 
 				<p className="relative font-mono text-xs/4 text-muted-foreground">
-					Made with love by{" "}
 					<a
-						href="https://trycomp.ai"
+						href={PRODUCT_BRAND.websiteUrl}
 						target="_blank"
 						rel="noreferrer"
 						className="underline underline-offset-4 hover:text-foreground"
 					>
-						Comp AI
+						{PRODUCT_BRAND.name}
 					</a>
 				</p>
 			</section>
 
 			<section className="flex min-h-svh flex-col bg-background px-6 py-8 sm:px-10 lg:px-14">
 				<div className="flex gap-2 text-sm/5 max-lg:hidden lg:invisible">
-					<Logo className="size-5 shrink-0" />
+					<Logo className="h-6 w-auto max-w-[120px] shrink-0" />
 				</div>
 
 				<div className="flex flex-1 items-center justify-center py-12">
@@ -62,7 +62,7 @@ export function AuthHeading({
 	return (
 		<div className="flex flex-col gap-3 text-left">
 			<Link href="/" aria-label="Homepage" className="flex">
-				<Logo className="size-6 shrink-0" />
+				<Logo className="h-8 w-auto max-w-[160px] shrink-0" />
 			</Link>
 			<div className="flex flex-col gap-1">
 				<h2 className="text-2xl/8 font-semibold tracking-tight text-balance">

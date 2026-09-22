@@ -2,11 +2,17 @@ import { Badge } from "@crm/ui/components/badge";
 import GoogleLogo from "@crm/ui/components/brand-logos/google";
 import SlackLogo from "@crm/ui/components/brand-logos/slack";
 import CompLogo from "@crm/ui/components/logo";
-import type { ComponentType, SVGProps } from "react";
+import type { ComponentType } from "react";
+
+type ScopeLogo = ComponentType<{
+	className?: string;
+	"aria-hidden"?: boolean | "true" | "false";
+	"data-icon"?: string;
+}>;
 
 const BRANDS: Array<{
 	match: RegExp;
-	Logo: ComponentType<SVGProps<SVGSVGElement>>;
+	Logo: ScopeLogo;
 }> = [
 	{ match: /\bcrm\b/i, Logo: CompLogo },
 	{ match: /\bslack\b/i, Logo: SlackLogo },

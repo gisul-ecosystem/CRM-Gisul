@@ -54,14 +54,14 @@ function SheetHeader({ compact }: { compact?: boolean }) {
 			)}
 		>
 			<div className="flex items-start gap-3">
-				<CompanyMark company={{ name: "Comp AI" }} size={32} glyph={18} />
+				<CompanyMark company={{ name: "Gisul" }} size={32} glyph={18} />
 
 				<div className="min-w-0 grow pt-0.5">
 					<p className="mb-0.5 font-medium text-lg/[125%] tracking-[-0.45px]">
-						Comp AI
+						Gisul
 					</p>
 					<p className="text-muted-foreground text-xs/[162.5%]">
-						trycomp.ai · Compliance
+						gisul.co.in
 					</p>
 				</div>
 
@@ -203,7 +203,7 @@ function AgentEmptyState({ compact }: { compact?: boolean }) {
 			<div className="flex max-w-xl flex-col items-center gap-2">
 				<span className="flex shrink-0 items-center justify-center pb-2">
 					<span className="flex size-8 shrink-0 items-center justify-center bg-foreground">
-						<Logo className="size-4 shrink-0 text-background" />
+						<Logo className="h-4 w-auto max-w-[56px] shrink-0" />
 					</span>
 				</span>
 				<p className="text-center font-medium text-sm/5">

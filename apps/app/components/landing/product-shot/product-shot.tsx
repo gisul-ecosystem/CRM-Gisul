@@ -57,11 +57,11 @@ function AppHeader() {
 		<div className="flex h-12 shrink-0 items-center gap-2 border-border border-b px-3">
 			<div className="flex shrink-0 items-center gap-1">
 				<span className="flex size-8 shrink-0 items-center justify-center">
-					<Logo className="size-5 shrink-0 text-foreground" />
+					<Logo className="h-5 w-auto max-w-[72px] shrink-0" />
 				</span>
 				<span className="mx-1 h-5 w-px shrink-0" />
 				<span className="line-clamp-1 font-medium text-sm/[142%]">
-					Comp AI CRM
+					Gisul CRM
 				</span>
 			</div>
 

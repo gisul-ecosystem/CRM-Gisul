@@ -1,3 +1,4 @@
+import { PRODUCT_BRAND } from "@crm/brand";
 import { type Db, type FieldEntity, Prisma } from "@crm/db";
 import { PRIORITY } from "@crm/db/agent-tasks";
 import { CRM_EVENT_CATALOG, type CrmEventType } from "@crm/db/crm-events";
@@ -176,7 +177,7 @@ export class AgentTriggerService {
 		return this.enqueue(
 			{
 				kind: "slack-channel-join",
-				reason: `Add Comp AI to #${channelName}`,
+				reason: `Add ${PRODUCT_BRAND.name} to #${channelName}`,
 				priority: PRIORITY.slackJoin,
 				budget: 1,
 				subject: { path: ["channelId"], value: channelId },

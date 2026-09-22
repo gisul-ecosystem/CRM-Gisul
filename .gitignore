@@ -34,6 +34,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # Misc
+.tools/
 .DS_Store
 *.pem
 

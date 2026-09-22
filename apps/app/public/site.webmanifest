@@ -1,7 +1,13 @@
 {
-	"name": "Comp AI CRM",
-	"short_name": "Comp AI CRM",
+	"name": "Gisul CRM",
+	"short_name": "Gisul CRM",
 	"icons": [
+		{
+			"src": "/gisul-logo.png",
+			"sizes": "1024x444",
+			"type": "image/png",
+			"purpose": "any"
+		},
 		{
 			"src": "/web-app-manifest-192x192.png",
 			"sizes": "192x192",
