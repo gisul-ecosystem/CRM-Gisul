@@ -51,8 +51,16 @@ bun_bin="$(resolve_bun)" || {
 case "$bun_bin" in
 */*)
 	bun_dir="${bun_bin%/*}"
-	PATH="$bun_dir${PATH:+:$PATH}"
+	if [ -f "$bun_dir/bun.exe" ] && [ ! -f "$bun_dir/bun.cmd" ]; then
+		printf '@echo off\r\n"%~dp0bun.exe" %%*\r\n' >"$bun_dir/bun.cmd"
+	fi
+	if command -v cygpath >/dev/null 2>&1; then
+		PATH="$(cygpath -m "$bun_dir")${PATH:+;$PATH}"
+	else
+		PATH="$bun_dir${PATH:+:$PATH}"
+	fi
 	export PATH
+	export BUN="$bun_bin"
 	;;
 esac
 
