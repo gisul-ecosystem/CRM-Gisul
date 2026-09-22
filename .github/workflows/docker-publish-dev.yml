@@ -40,12 +40,6 @@ jobs:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Read version
-        id: pkg
-        run: |
-          version=$(jq -r .version package.json)
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
       - name: Resolve API URL
         id: api
         run: |
@@ -65,8 +59,6 @@ jobs:
           build-args: |
             API_URL=${{ steps.api.outputs.url }}
           tags: |
-            gisuldocker/${{ matrix.image }}:dev
-            gisuldocker/${{ matrix.image }}:dev-${{ steps.pkg.outputs.version }}
-            gisuldocker/${{ matrix.image }}:dev-sha-${{ github.sha }}
+            gisuldocker/${{ matrix.image }}:latest
           cache-from: type=gha,scope=${{ matrix.service }}-dev
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}-dev

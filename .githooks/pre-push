@@ -48,6 +48,14 @@ bun_bin="$(resolve_bun)" || {
 	exit 1
 }
 
+case "$bun_bin" in
+*/*)
+	bun_dir="${bun_bin%/*}"
+	PATH="$bun_dir${PATH:+:$PATH}"
+	export PATH
+	;;
+esac
+
 for task in check-types lint lint:slop test; do
 	echo "pre-push: bun run $task"
 	"$bun_bin" run "$task" || fail "$task"
