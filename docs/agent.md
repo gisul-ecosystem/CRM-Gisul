@@ -11,14 +11,16 @@ are in `docs/setup.md`.
 
 ## Model
 
-Default `zai/glm-5.2-fast`; `DEFAULT_AGENT_MODEL` in `@crm/db/settings` because the
-agent and the API both need it.
+Default Azure deployment `gpt-4o`; `DEFAULT_AGENT_MODEL` in `@crm/db/settings`
+because the agent and the API both need it. Override the default name with
+`AZURE_OPENAI_DEPLOYMENT`.
 
-- **A row (`AppSetting`), not an env var**, via `defineDynamic` on `session.started`.
-  Open conversations keep their model — prompt caches are per model.
+- **A row (`AppSetting`), not an env var**, via `defineDynamic` on `step.started`.
+  The handler returns an Azure `LanguageModel`. A string id would still route
+  through the Vercel AI Gateway.
 - **`lib/model.ts` always sends `modelContextWindowTokens`**; eve never inherits it.
 - **A failed read logs and keeps the compiled fallback.** Never throws.
-- **The chooser offers only `tool-use` models** (`ModelCatalogService`).
+- **The chooser lists Azure chat deployments** (`ModelCatalogService`).
 - **Not a frontier model, deliberately** — refusing wrong answers is enforced by the
   tools and evidence model, not model strength.
 

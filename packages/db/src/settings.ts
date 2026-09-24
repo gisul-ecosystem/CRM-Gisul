@@ -1,3 +1,4 @@
+import { AZURE } from "./azure-models";
 import type { Db } from "./client";
 import {
 	DEFAULT_REPORTING_CURRENCY,
@@ -8,8 +9,8 @@ import {
 export const SETTINGS_ID = "app";
 
 export const DEFAULT_AGENT_MODEL = {
-	id: "zai/glm-5.2-fast",
-	contextWindowTokens: 1_000_000,
+	id: AZURE.defaultDeployment,
+	contextWindowTokens: AZURE.defaultContextWindowTokens,
 } as const;
 
 export interface AgentModelSetting {

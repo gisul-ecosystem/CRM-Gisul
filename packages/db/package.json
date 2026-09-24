@@ -7,6 +7,7 @@
 		".": "./src/index.ts",
 		"./agent-tasks": "./src/agent-tasks.ts",
 		"./attribution": "./src/attribution.ts",
+		"./azure-models": "./src/azure-models.ts",
 		"./blob": "./src/blob.ts",
 		"./client": "./src/client.ts",
 		"./currency": "./src/currency.ts",

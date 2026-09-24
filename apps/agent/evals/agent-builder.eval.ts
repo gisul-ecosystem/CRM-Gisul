@@ -13,10 +13,11 @@ export default defineEval({
 		if (
 			!process.env.DATABASE_URL ||
 			!secret ||
-			(!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN)
+			!process.env.AZURE_OPENAI_API_KEY?.trim() ||
+			!process.env.AZURE_OPENAI_ENDPOINT?.trim()
 		) {
 			t.skip(
-				"Requires DATABASE_URL, AGENT_BRIDGE_SECRET, and an AI Gateway credential.",
+				"Requires DATABASE_URL, AGENT_BRIDGE_SECRET, and Azure OpenAI credentials.",
 			);
 			return;
 		}

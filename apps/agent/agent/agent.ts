@@ -1,10 +1,13 @@
 import "@crm/env/load";
 
-import { DEFAULT_AGENT_MODEL } from "@crm/db/settings";
 import { onTelemetryProblem, syncVersion } from "@crm/telemetry";
 import { defineAgent, defineDynamic } from "eve";
+import {
+	azureLanguageModel,
+	azureStepSelection,
+	defaultAzureDeployment,
+} from "./lib/azure-model";
 import { logCapabilities } from "./lib/capabilities";
-import { selectedModel } from "./lib/model";
 
 void logCapabilities();
 
@@ -14,8 +17,8 @@ void syncVersion();
 
 export default defineAgent({
 	model: defineDynamic({
-		fallback: DEFAULT_AGENT_MODEL.id,
-		events: { "session.started": () => selectedModel() },
+		fallback: azureLanguageModel(defaultAzureDeployment()),
+		events: { "step.started": () => azureStepSelection() },
 	}),
 	limits: {
 		maxInputTokensPerSession: 500_000,
