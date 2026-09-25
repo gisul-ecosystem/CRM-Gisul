@@ -158,11 +158,7 @@ export async function dispatchBuilderSubmission(
 
 	try {
 		const session = await send(
-			builderDeliveryMessage(
-				submission.id,
-				submission.message,
-				submission.attachments,
-			),
+			builderDeliveryMessage(submission.message, submission.attachments),
 			{
 				auth: {
 					authenticator: "crm-builder",
@@ -831,7 +827,6 @@ async function recoverAgentRuns() {
 }
 
 export function builderDeliveryMessage(
-	submissionId: string,
 	value: Prisma.JsonValue,
 	attachments: readonly BuilderDeliveryAttachment[] = [],
 ): Parameters<SendFn>[0] {
@@ -851,16 +846,15 @@ export function builderDeliveryMessage(
 	const labels = message.resources
 		.map((resource) => resource.label)
 		.filter(Boolean);
-	const context = [
-		`Submission id: ${submissionId}`,
+	const context =
 		message.resources.length > 0
 			? `Tagged resources: ${labels.join(", ")}`
-			: null,
-	]
-		.filter(Boolean)
-		.join("\n");
+			: "";
 	const parts: BuilderMessageParts = [
-		{ type: "text", text: `${context}\n\n${message.text}` },
+		{
+			type: "text",
+			text: context ? `${context}\n\n${message.text}` : message.text,
+		},
 	];
 
 	for (const attachment of attachments) {
