@@ -88,6 +88,7 @@ export const auth = betterAuth({
 		accountLinking: {
 			enabled: true,
 			trustedProviders: [GOOGLE_PROVIDER_ID, MICROSOFT_PROVIDER_ID],
+			allowDifferentEmails: true,
 		},
 	},
 

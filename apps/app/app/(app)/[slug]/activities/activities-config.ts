@@ -3,6 +3,7 @@ export const ACTIVITIES = {
 	owners: ["Rahul Kumar", "Priya Sen", "Ananya Das"] as const,
 	viewModes: ["list", "week"] as const,
 	quickFilters: [
+		"all",
 		"today",
 		"week",
 		"upcoming",

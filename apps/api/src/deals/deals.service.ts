@@ -250,7 +250,13 @@ export class DealsService {
 			),
 		);
 
-		const rows = products.map((product) => ({
+		const rows: Array<{
+			id: string | null;
+			name: string;
+			color: string;
+			deals: number;
+			pipelineCents: number;
+		}> = products.map((product) => ({
 			id: product.id,
 			name: product.name,
 			color: product.color,

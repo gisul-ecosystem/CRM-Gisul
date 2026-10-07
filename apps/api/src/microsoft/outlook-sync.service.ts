@@ -155,12 +155,29 @@ export class OutlookSyncService {
 			return this.handleFailure(row, folders.failure);
 		}
 
-		const excluded = folders.ids;
-
 		let page = await this.graph.listMessages(accessToken, {
 			after: new Date(from.getTime() - OVERLAP_MS),
 			top: PAGE_SIZE,
 		});
+
+		if (page.outcome !== "ok") {
+			if (
+				page.reason?.includes("mailbox is either inactive") ||
+				page.reason?.includes("MailboxNotEnabled") ||
+				page.reason?.includes("soft-deleted")
+			) {
+				await this.state.settle(row.id, {
+					status: GoogleSyncStatus.RUNNING,
+				});
+				return {
+					source: "outlook",
+					userId: row.userId,
+					status: "synced",
+					messagesWritten: 0,
+				};
+			}
+			return this.handleFailure(row, page);
+		}
 
 		let context: MatchContext | null = null;
 		let written = 0;
@@ -351,6 +368,23 @@ export class OutlookSyncService {
 			};
 		}
 
+		if (
+			result.reason?.includes("mailbox is either inactive") ||
+			result.reason?.includes("MailboxNotEnabled") ||
+			result.reason?.includes("soft-deleted")
+		) {
+			await this.state.settle(row.id, {
+				status: GoogleSyncStatus.RUNNING,
+			});
+			return {
+				source: "outlook",
+				userId: row.userId,
+				status: "synced",
+				messagesWritten: 0,
+				reason: "Mailbox not provisioned on Exchange. Calendar & Teams active.",
+			};
+		}
+
 		await this.state.markFailed(row.id, result.reason);
 		return {
 			source: "outlook",
@@ -362,7 +396,12 @@ export class OutlookSyncService {
 }
 
 function isMissingFolder(failure: MailboxFailure<GraphFolder>): boolean {
-	return failure.outcome === "cursor-invalid";
+	return (
+		failure.outcome === "cursor-invalid" ||
+		Boolean(failure.reason?.includes("mailbox is either inactive")) ||
+		Boolean(failure.reason?.includes("MailboxNotEnabled")) ||
+		Boolean(failure.reason?.includes("soft-deleted"))
+	);
 }
 
 function addressOf(entry: GraphAddress | undefined): Participant | null {

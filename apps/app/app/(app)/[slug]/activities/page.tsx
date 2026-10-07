@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Bebas_Neue, Poppins } from "next/font/google";
+import { Suspense } from "react";
 import {
 	PageShell,
 	PageShellContent,
+	PageShellLoading,
 } from "@/components/page-shell";
 import { requireSession } from "@/lib/session";
 import { ActivitiesPageClient } from "./activities-page-client";
@@ -24,16 +26,22 @@ export const metadata: Metadata = {
 	title: "Activities",
 };
 
-export default async function ActivitiesPage() {
-	await requireSession();
-
+export default function ActivitiesPage() {
 	return (
 		<div className={`${display.variable} ${sans.variable} ${styles.shell}`}>
 			<PageShell className="min-h-0 gap-4">
 				<PageShellContent className="min-h-0 gap-0">
-					<ActivitiesPageClient />
+					<Suspense fallback={<PageShellLoading />}>
+						<ActivitiesContent />
+					</Suspense>
 				</PageShellContent>
 			</PageShell>
 		</div>
 	);
 }
+
+async function ActivitiesContent() {
+	await requireSession();
+	return <ActivitiesPageClient />;
+}
+
