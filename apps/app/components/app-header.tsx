@@ -4,6 +4,7 @@ import Asleep from "@carbon/icons-react/es/Asleep";
 import Light from "@carbon/icons-react/es/Light";
 import Logout from "@carbon/icons-react/es/Logout";
 import Menu from "@carbon/icons-react/es/Menu";
+import SidePanelOpen from "@carbon/icons-react/es/SidePanelOpen";
 import UserAvatar from "@carbon/icons-react/es/UserAvatar";
 import { Avatar, AvatarFallback, AvatarImage } from "@crm/ui/components/avatar";
 import { Button } from "@crm/ui/components/button";
@@ -15,6 +16,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@crm/ui/components/dropdown-menu";
+import { Icon } from "@crm/ui/components/icon";
 import Logo from "@crm/ui/components/logo";
 import { Separator } from "@crm/ui/components/separator";
 import { Skeleton } from "@crm/ui/components/skeleton";
@@ -22,6 +24,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
+import { useAppRail } from "@/components/app-rail";
 import { EnrichmentQueue } from "@/components/enrichment-queue";
 import { useMobileNav } from "@/components/mobile-nav";
 import { signOutAndRedirect } from "@/lib/sign-out";
@@ -33,6 +36,7 @@ type User = { name: string; email: string; image: string | null };
 
 export function AppHeader({ user }: { user: User }) {
 	const { setOpen: setMobileNavOpen } = useMobileNav();
+	const appRail = useAppRail();
 	const trpc = useTRPC();
 	const workspaceUrl = useWorkspaceUrl();
 	const workspace = useQuery(trpc.workspace.get.queryOptions());
@@ -50,6 +54,18 @@ export function AppHeader({ user }: { user: User }) {
 				>
 					<Menu />
 				</Button>
+				{!appRail.open ? (
+					<Button
+						variant="ghost"
+						size="icon"
+						className="hidden md:inline-flex"
+						aria-label="Open navigation"
+						aria-expanded={false}
+						onClick={appRail.expand}
+					>
+						<Icon icon={SidePanelOpen} />
+					</Button>
+				) : null}
 				<Link
 					href={workspaceUrl()}
 					aria-label="Homepage"

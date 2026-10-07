@@ -1,147 +1,60 @@
 "use client";
 
 import Archive from "@carbon/icons-react/es/Archive";
-import { Button } from "@crm/ui/components/button";
-import {
-	DataTable,
-	type DataTableColumn,
-	type DataTableFacet,
-} from "@crm/ui/components/data-table";
-import { EmptyCellValue } from "@crm/ui/components/empty-cell";
+import Email from "@carbon/icons-react/es/Email";
+import Grid from "@carbon/icons-react/es/Grid";
+import List from "@carbon/icons-react/es/List";
+import OverflowMenuVertical from "@carbon/icons-react/es/OverflowMenuVertical";
+import Search from "@carbon/icons-react/es/Search";
+import { DealStage } from "@crm/db/enums";
+import { Checkbox } from "@crm/ui/components/checkbox";
+import { Icon } from "@crm/ui/components/icon";
+import { TablePagination } from "@crm/ui/components/table-pagination";
+import { useSearchInput } from "@crm/ui/hooks/use-search-input";
 import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
 import { formatMoney } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
-import { CLOSING_OPTIONS } from "@/components/crm/closing-window";
-import { CompanyCell } from "@/components/crm/company-cell";
-import { useFieldColumns } from "@/components/crm/fields/field-columns";
-import { useFieldFacets } from "@/components/crm/fields/field-facets";
-import { OwnerCell } from "@/components/crm/owner-cell";
+import { useQueryStates } from "nuqs";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
-import { DealStageMenu } from "@/components/crm/stage-change";
-import { ListSearch } from "@/components/data-table/list-search";
+import { searchParsers } from "@/components/data-table/list-search-params";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { LocalDay, LocalRelativeTime } from "@/components/local-date-time";
-import { DEAL_STAGE_OPTIONS } from "@/lib/deal-stage";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
+import { DealsAnalytics } from "./deals-analytics";
 import { DealsBulkActions } from "./deals-bulk-actions";
+import styles from "./deals-design.module.css";
+import { DealsFilters } from "./deals-filters";
 import { dealsSearchParams } from "./deals-search-params";
 
 type DealRow = RouterOutputs["deals"]["list"]["rows"][number];
 
-const COLUMNS: DataTableColumn<DealRow>[] = [
-	{
-		id: "name",
-		header: "Deal",
-		sortable: true,
-		hideable: false,
-		width: "w-[24%]",
-		cell: (row) => <span className="truncate font-medium">{row.name}</span>,
+const STAGE_PILL: Record<
+	DealStage,
+	{ label: string; className: string }
+> = {
+	[DealStage.DEMO_BOOKED]: { label: "New", className: styles.stageNew },
+	[DealStage.QUALIFIED_TO_BUY]: {
+		label: "Qualified",
+		className: styles.stageQualified,
 	},
-	{
-		id: "company",
-		header: "Company",
-		sortable: true,
-		width: "w-[18%]",
-		cell: (row) => <CompanyCell company={row.company} />,
+	[DealStage.DECISION_MAKER_BOUGHT_IN]: {
+		label: "Proposal",
+		className: styles.stageProposal,
 	},
-	{
-		id: "stage",
-		header: "Stage",
-		sortable: true,
-		width: "w-[18%]",
-		cell: (row) => <DealStageMenu dealId={row.id} stage={row.stage} />,
+	[DealStage.CONTRACT_SENT]: {
+		label: "Negotiation",
+		className: styles.stageNegotiation,
 	},
-	{
-		id: "amount",
-		header: "Amount",
-		sortable: true,
-		align: "right",
-		width: "w-[12%]",
-		hideBelow: "sm",
-		cell: (row) =>
-			row.amountCents === null ? (
-				<EmptyCellValue />
-			) : (
-				<span className="tabular-nums">
-					{formatMoney(row.amountCents, row.currency)}
-				</span>
-			),
+	[DealStage.CLOSED_WON]: { label: "Won", className: styles.stageWon },
+	[DealStage.CLOSED_LOST]: { label: "Lost", className: styles.stageLost },
+	[DealStage.UNQUALIFIED_TO_BUY]: {
+		label: "Lost",
+		className: styles.stageLost,
 	},
-	{
-		id: "owner",
-		header: "Owner",
-		sortable: true,
-		width: "w-[14%]",
-		hideBelow: "md",
-		cell: (row) => <OwnerCell owner={row.owner} />,
-	},
-	{
-		id: "expectedCloseDate",
-		header: "Close date",
-		sortable: true,
-		width: "w-[12%]",
-		hideBelow: "lg",
-		cell: (row) =>
-			row.expectedCloseDate ? (
-				<span className="text-muted-foreground">
-					<LocalDay date={row.expectedCloseDate} />
-				</span>
-			) : (
-				<EmptyCellValue />
-			),
-	},
-	{
-		id: "createdAt",
-		header: "Created",
-		label: "Created date",
-		sortable: true,
-		align: "right",
-		width: "w-[10%]",
-		defaultHidden: true,
-		cell: (row) => (
-			<span className="text-muted-foreground">
-				<LocalRelativeTime date={row.createdAt} />
-			</span>
-		),
-	},
-	{
-		id: "lastActivity",
-		header: "Last activity",
-		sortable: true,
-		align: "right",
-		width: "w-[12%]",
-		hideBelow: "lg",
-		cell: (row) => (
-			<span className="text-muted-foreground">
-				{row.lastActivityAt ? (
-					<LocalRelativeTime date={row.lastActivityAt} />
-				) : (
-					<EmptyCellValue />
-				)}
-			</span>
-		),
-	},
-];
-
-const ARCHIVED_COLUMN: DataTableColumn<DealRow> = {
-	id: "archivedAt",
-	header: "Archived",
-	label: "Archived date",
-	sortable: true,
-	align: "right",
-	width: "w-[12%]",
-	cell: (row) => (
-		<span className="text-muted-foreground">
-			{row.archivedAt ? (
-				<LocalRelativeTime date={row.archivedAt} />
-			) : (
-				<EmptyCellValue />
-			)}
-		</span>
-	),
 };
 
 export function DealsTable() {
@@ -149,14 +62,19 @@ export function DealsTable() {
 	const trpc = useTRPC();
 	const prefetchRecord = usePrefetchRecord();
 	const { query, input, setArchived } = useTableQuery(dealsSearchParams);
+	const [{ q }, setSearch] = useQueryStates(searchParsers);
+	const [searchValue, setSearchValue] = useSearchInput(q, (next) =>
+		setSearch({ q: next, page: 1 }),
+	);
+	const [view, setView] = useState<"list" | "grid">("list");
 
 	const deals = useQuery({
 		...trpc.deals.list.queryOptions(input),
 		placeholderData: (previous) => previous,
 	});
-	const users = useQuery(trpc.users.list.queryOptions());
 
 	const rows = deals.data?.rows ?? [];
+	const total = deals.data?.total ?? 0;
 	const selection = useTableSelection(
 		useMemo(() => rows.map((row) => row.id), [rows]),
 	);
@@ -169,128 +87,262 @@ export function DealsTable() {
 		return selection.ids.filter((id) => matching.has(id));
 	}, [rows, input.archived, selection.ids]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: clearing on archived-mode change is the entire purpose of this effect.
-	useEffect(() => {
-		selection.clear();
-	}, [input.archived]);
-
-	const toggleArchived = (next: boolean) => {
-		selection.clear();
-		if (!next && query.sort === "archivedAt") query.setSort("");
-		setArchived(next);
-	};
-
+	const pageSize = query.pageSize;
+	const totalPages = Math.max(1, Math.ceil(total / pageSize));
 	const facetCounts = deals.data?.facetCounts;
-	const fieldFacets = useFieldFacets("DEAL", facetCounts);
-
-	const facets: DataTableFacet[] = [
-		{
-			id: "owner",
-			label: "Owner",
-			options: (users.data ?? []).flatMap((user) =>
-				(facetCounts?.owner?.[user.id] ?? 0) > 0
-					? [{ value: user.id, label: user.name }]
-					: [],
-			),
-		},
-		{
-			id: "stage",
-			label: "Stage",
-			options: DEAL_STAGE_OPTIONS.filter(
-				(option) => (facetCounts?.stage?.[option.value] ?? 0) > 0,
-			),
-		},
-		{
-			id: "closing",
-			label: "Closing",
-			options: CLOSING_OPTIONS.flatMap((option) =>
-				(facetCounts?.closing?.[option.value] ?? 0) > 0
-					? [{ value: option.value, label: option.label }]
-					: [],
-			),
-		},
-		...fieldFacets,
-	];
-
-	const openValueCents = deals.data?.openValueCents;
-	const reportingCurrency = deals.data?.reportingCurrency;
-	const unconverted = deals.data?.unconverted;
-	const uncounted = unconverted?.count ?? 0;
-	const openPipelineCents = openValueCents ?? (uncounted > 0 ? 0 : null);
-
-	const fieldColumns = useFieldColumns<DealRow>("DEAL");
-	const columns = useMemo(
-		() =>
-			input.archived
-				? [...COLUMNS, ARCHIVED_COLUMN, ...fieldColumns]
-				: [...COLUMNS, ...fieldColumns],
-		[fieldColumns, input.archived],
-	);
 
 	return (
-		<DataTable
-			query={query}
-			search={<ListSearch placeholder="Search deals by name or company…" />}
-			actions={
-				<Button
-					variant={input.archived ? "contrast" : "outline"}
-					size="sm"
-					className="justify-start sm:justify-center"
-					onClick={() => toggleArchived(!input.archived)}
-				>
-					<Archive data-icon="inline-start" />
-					Archived
-				</Button>
-			}
-			columns={columns}
-			rows={rows}
-			total={deals.data?.total ?? 0}
-			facetCounts={facetCounts}
-			facets={facets}
-			tabs={{
-				id: "status",
-				allLabel: "All deals",
-				options: [
-					{ value: "open", label: "Open" },
-					{ value: "closed", label: "Closed" },
-				],
-			}}
-			selection={{
-				state: selection,
-				actions: (
-					<DealsBulkActions
-						ids={settledIds}
-						onDone={selection.clear}
-						archived={input.archived}
+		<div className={styles.wrap}>
+			<DealsAnalytics facetCounts={facetCounts} total={total} />
+
+			<div className={styles.toolbar}>
+				<label className={styles.search}>
+					<Icon icon={Search} />
+					<input
+						value={searchValue}
+						onChange={(event) => setSearchValue(event.target.value)}
+						placeholder="Search deals..."
+						autoComplete="off"
 					/>
-				),
-				rowLabel: (row) => row.name,
-			}}
-			getRowId={(row) => row.id}
-			loading={deals.isFetching}
-			onRowHover={(row) => prefetchRecord({ kind: "deal", id: row.id })}
-			onRowClick={(row) => openRecord({ kind: "deal", id: row.id })}
-			empty={
-				input.archived ? "No archived deals." : "No deals match this view."
-			}
-			meta={
-				input.archived || openPipelineCents === null ? undefined : (
-					<span>
-						{deals.data?.total ?? 0} deals ·{" "}
-						<span className="tabular-nums">
-							{formatMoney(openPipelineCents, reportingCurrency)}
-						</span>{" "}
-						open pipeline
-						{unconverted && unconverted.count > 0 ? (
-							<span className="text-muted-foreground">
-								{" "}
-								· {unconverted.count} not counted (no{" "}
-								{unconverted.currencies.join(", ")} rate)
-							</span>
-						) : null}
-					</span>
-				)
-			}
-		/>
+				</label>
+				<div className={styles.filters}>
+					<DealsFilters
+						selected={{
+							product: input.product,
+							stage: input.stage,
+							company: input.company,
+							owner: input.owner,
+						}}
+						onChange={(id, next) => {
+							selection.clear();
+							query.setFilter(id, next);
+						}}
+					/>
+					<button
+						type="button"
+						className={`${styles.filterChip} ${input.archived ? styles.filterChipOn : ""}`}
+						onClick={() => {
+							const next = !input.archived;
+							selection.clear();
+							if (!next && query.sort === "archivedAt") query.setSort("");
+							setArchived(next);
+						}}
+					>
+						<Icon icon={Archive} />
+						{input.archived ? "Active" : "Archived"}
+					</button>
+				</div>
+				<div className={styles.viewToggle}>
+					<button
+						type="button"
+						className={`${styles.viewBtn} ${view === "list" ? styles.viewBtnOn : ""}`}
+						aria-label="List view"
+						onClick={() => setView("list")}
+					>
+						<Icon icon={List} />
+					</button>
+					<button
+						type="button"
+						className={`${styles.viewBtn} ${view === "grid" ? styles.viewBtnOn : ""}`}
+						aria-label="Grid view"
+						onClick={() => {
+							setView("grid");
+							toast.message("Grid view is not built yet.");
+						}}
+					>
+						<Icon icon={Grid} />
+					</button>
+				</div>
+			</div>
+
+			<section className={`${styles.card} ${styles.tableCard}`}>
+				{settledIds.length > 0 ? (
+					<div className={styles.bulkBar}>
+						<span>{settledIds.length} selected</span>
+						<DealsBulkActions
+							ids={settledIds}
+							onDone={selection.clear}
+							archived={input.archived}
+						/>
+					</div>
+				) : null}
+
+				{rows.length === 0 ? (
+					<div className={styles.empty}>
+						{input.archived
+							? "No archived deals."
+							: deals.isFetching
+								? "Loading deals…"
+								: "No deals match this view."}
+					</div>
+				) : (
+					<div className={styles.tableScroll}>
+						<table className={styles.table}>
+							<thead>
+								<tr>
+									<th>
+										<Checkbox
+											checked={selection.allSelected}
+											aria-label="Select every row on this page"
+											onCheckedChange={(checked) =>
+												selection.toggleAll(checked === true)
+											}
+										/>
+									</th>
+									<th>Deal Name</th>
+									<th>Company</th>
+									<th>Product</th>
+									<th>Stage</th>
+									<th>Value</th>
+									<th>Owner</th>
+									<th>Close Date</th>
+									<th>Last Activity</th>
+									<th>Actions</th>
+								</tr>
+							</thead>
+							<tbody>
+								{rows.map((row) => {
+									const stage = STAGE_PILL[row.stage];
+									return (
+										<tr
+											key={row.id}
+											onMouseEnter={() =>
+												prefetchRecord({ kind: "deal", id: row.id })
+											}
+											onClick={() =>
+												openRecord({ kind: "deal", id: row.id })
+											}
+										>
+											<td onClick={(event) => event.stopPropagation()}>
+												<Checkbox
+													checked={selection.has(row.id)}
+													aria-label={`Select ${row.name}`}
+													onCheckedChange={(checked) =>
+														selection.toggle(row.id, checked === true)
+													}
+												/>
+											</td>
+											<td>
+												<span className={styles.dealName}>{row.name}</span>
+											</td>
+											<td>
+												{row.company ? (
+													<span className={styles.company}>
+														<span className={styles.companyIcon}>
+															{row.company.name.charAt(0).toUpperCase()}
+														</span>
+														{row.company.name}
+													</span>
+												) : (
+													<span className={styles.blank}>—</span>
+												)}
+											</td>
+											<td>
+												{row.product ? (
+													<span className={styles.company}>
+														<span
+															className={styles.companyIcon}
+															style={{
+																background: row.product.color,
+																color: "#fff",
+															}}
+														>
+															{row.product.name.charAt(0)}
+														</span>
+														{row.product.name}
+													</span>
+												) : (
+													<span className={styles.blank}>—</span>
+												)}
+											</td>
+											<td>
+												<span
+													className={`${styles.pill} ${stage.className}`}
+												>
+													{stage.label}
+												</span>
+											</td>
+											<td>
+												{row.amountCents === null ? (
+													<span className={styles.blank}>—</span>
+												) : (
+													<span className="tabular-nums">
+														{formatMoney(row.amountCents, row.currency)}
+													</span>
+												)}
+											</td>
+											<td>
+												{row.owner ? (
+													<span className={styles.owner}>
+														<span className={styles.av}>
+															{ownerInitials(row.owner.name)}
+														</span>
+														{row.owner.name.split(/\s+/)[0]}
+													</span>
+												) : (
+													<span className={styles.blank}>—</span>
+												)}
+											</td>
+											<td>
+												{row.expectedCloseDate ? (
+													<LocalDay date={row.expectedCloseDate} />
+												) : (
+													<span className={styles.blank}>—</span>
+												)}
+											</td>
+											<td>
+												{row.lastActivityAt ? (
+													<span className={styles.activity}>
+														<Icon icon={Email} />
+														<LocalRelativeTime date={row.lastActivityAt} />
+													</span>
+												) : (
+													<span className={styles.blank}>—</span>
+												)}
+											</td>
+											<td onClick={(event) => event.stopPropagation()}>
+												<button
+													type="button"
+													className={styles.more}
+													aria-label="More actions"
+													onClick={() =>
+														openRecord({ kind: "deal", id: row.id })
+													}
+												>
+													<Icon icon={OverflowMenuVertical} />
+												</button>
+											</td>
+										</tr>
+									);
+								})}
+							</tbody>
+						</table>
+					</div>
+				)}
+
+				<div className={styles.footer}>
+					<p className={styles.note}>
+						Manage products in Settings → Products. Export, import, and grid
+						view are not built yet.
+					</p>
+					<TablePagination
+						page={query.page}
+						totalPages={totalPages}
+						pageSize={pageSize}
+						total={total}
+						onPageChange={(page) => query.setPage(page)}
+						loading={deals.isFetching}
+					/>
+				</div>
+			</section>
+		</div>
 	);
+}
+
+function ownerInitials(name: string): string {
+	const parts = name.trim().split(/\s+/).filter(Boolean);
+	if (parts.length === 0) return "?";
+	const first = parts[0]?.charAt(0) ?? "";
+	const last = parts.length > 1 ? (parts[parts.length - 1]?.charAt(0) ?? "") : "";
+	return `${first}${last}`.toUpperCase() || "?";
 }

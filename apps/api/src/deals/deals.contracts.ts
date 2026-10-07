@@ -29,7 +29,9 @@ export type ClosingWindow = (typeof CLOSING_WINDOWS)[number];
 export const dealListInput = listInput.extend({
 	status: z.string().default("all"),
 	owner: z.array(z.string()).default([]),
+	company: z.array(z.string()).default([]),
 	stage: z.array(z.string()).default([]),
+	product: z.array(z.string()).default([]),
 	closing: z.array(z.string()).default([]),
 	fields: z.record(z.string(), z.array(z.string())).default({}),
 	archived: z.boolean().default(false),
@@ -45,6 +47,7 @@ export const dealCreateInput = z.object({
 	name: z.string().trim().min(1, "A deal needs a name."),
 	companyId: z.string().min(1, "A deal belongs to a company."),
 	ownerId: z.string().min(1, "A deal needs an owner."),
+	productId: z.string().nullable().optional(),
 	stage: stageEnum.optional(),
 	amountCents,
 	currency: currencyCode.optional(),
@@ -58,6 +61,7 @@ const dealUpdateInput = z.object({
 	description: z.string().nullable().optional(),
 	companyId: z.string().optional(),
 	ownerId: z.string().optional(),
+	productId: z.string().nullable().optional(),
 	amountCents,
 	currency: currencyCode.optional(),
 	expectedCloseDate: z.string().nullable().optional(),
@@ -193,6 +197,12 @@ const dealContactOutput = dealContactSummaryOutput.extend({
 	role: z.string().nullable(),
 });
 
+const dealProductOutput = z.object({
+	id: z.string(),
+	name: z.string(),
+	color: z.string(),
+});
+
 const dealListRowOutput = z.object({
 	id: z.string(),
 	name: z.string(),
@@ -200,6 +210,7 @@ const dealListRowOutput = z.object({
 	currency: z.string(),
 	company: dealCompanyOutput,
 	owner: dealOwnerOutput,
+	product: dealProductOutput.nullable(),
 	amountCents: z.number().nullable(),
 	baseAmountCents: z.number().nullable(),
 	expectedCloseDate: z.string().nullable(),
@@ -299,3 +310,78 @@ export const dealBulkResultOutput = z.object({
 });
 
 export type DealBulkResult = z.infer<typeof dealBulkResultOutput>;
+
+export const dealTrendPointOutput = z.object({
+	month: z.string(),
+	yearMonth: z.string(),
+	created: z.number(),
+	won: z.number(),
+});
+
+export const dealTrendOutput = z.object({
+	points: z.array(dealTrendPointOutput),
+});
+
+export type DealTrendOutput = z.infer<typeof dealTrendOutput>;
+
+export const dealPipelineProductOutput = z.object({
+	id: z.string().nullable(),
+	name: z.string(),
+	color: z.string(),
+	deals: z.number(),
+	pipelineCents: z.number(),
+});
+
+export const dealPipelineByProductOutput = z.object({
+	reportingCurrency: z.string(),
+	products: z.array(dealPipelineProductOutput),
+});
+
+export type DealPipelineByProductOutput = z.infer<
+	typeof dealPipelineByProductOutput
+>;
+
+export const dealStageCatalogOutput = z.object({
+	stages: z.array(
+		z.object({
+			stage: stageEnum,
+			label: z.string(),
+			kind: z.enum(["open", "won", "lost"]),
+		}),
+	),
+});
+
+export type DealStageCatalogOutput = z.infer<typeof dealStageCatalogOutput>;
+
+export const dealExportInput = dealListInput;
+
+export type DealExportInput = z.infer<typeof dealExportInput>;
+
+export const dealExportOutput = z.object({
+	csv: z.string(),
+	filename: z.string(),
+	rowCount: z.number(),
+});
+
+export const dealImportInput = z.object({
+	csv: z.string().min(1, "Paste or upload a CSV."),
+});
+
+export type DealImportInput = z.infer<typeof dealImportInput>;
+
+export const dealImportOutput = z.object({
+	created: z.number(),
+	updated: z.number(),
+	failed: z.number(),
+	errors: z.array(
+		z.object({
+			line: z.number(),
+			message: z.string(),
+		}),
+	),
+});
+
+export const dealImportTemplateOutput = z.object({
+	csv: z.string(),
+	filename: z.string(),
+});

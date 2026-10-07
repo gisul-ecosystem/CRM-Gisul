@@ -54,6 +54,11 @@ import {
 import { LocalDateTime, LocalRelativeDate } from "@/components/local-date-time";
 import { factsByField } from "@/lib/contact-facts";
 import { ENRICHMENT_POLL_MS, isEnriching } from "@/lib/enrichment-status";
+import {
+	LEAD_SOURCE_OPTIONS,
+	LEAD_STATUS_OPTIONS,
+	toDateInputValue,
+} from "@/lib/lead-fields";
 import { savingField } from "@/lib/pending-field";
 import { hasContactLinks } from "@/lib/social-links";
 import { useCrmCache } from "@/lib/trpc/cache";
@@ -290,6 +295,8 @@ function ContactOverview({ contact }: { contact: Contact }) {
 	const cache = useCrmCache();
 
 	const users = useQuery(trpc.users.list.queryOptions());
+	const products = useQuery(trpc.products.options.queryOptions());
+	const productOptions = products.data?.options ?? [];
 
 	const { applied, proposed } = factsByField(contact.facts);
 
@@ -404,6 +411,53 @@ function ContactOverview({ contact }: { contact: Contact }) {
 						]}
 						onSave={(ownerId) =>
 							save({ ownerId: ownerId === NONE ? null : ownerId })
+						}
+					/>
+					<InlineSelectField
+						label="Product"
+						value={contact.product?.id ?? NONE}
+						options={[
+							{ value: NONE, label: "No product" },
+							...productOptions.map((product) => ({
+								value: product.id,
+								label: product.name,
+							})),
+						]}
+						onSave={(productId) =>
+							save({ productId: productId === NONE ? null : productId })
+						}
+					/>
+					<InlineSelectField
+						label="Status"
+						value={contact.leadStatus}
+						options={LEAD_STATUS_OPTIONS.map((option) => ({
+							value: option.value,
+							label: option.label,
+						}))}
+						onSave={(leadStatus) => save({ leadStatus })}
+					/>
+					<InlineSelectField
+						label="Source"
+						value={contact.leadSource ?? NONE}
+						options={[
+							{ value: NONE, label: "No source" },
+							...LEAD_SOURCE_OPTIONS.map((option) => ({
+								value: option.value,
+								label: option.label,
+							})),
+						]}
+						onSave={(leadSource) =>
+							save({ leadSource: leadSource === NONE ? null : leadSource })
+						}
+					/>
+					<InlineField
+						label="Next follow-up"
+						value={toDateInputValue(contact.nextFollowUpAt)}
+						type="date"
+						placeholder="Set date"
+						saving={isSaving("nextFollowUpAt")}
+						onSave={(nextFollowUpAt) =>
+							save({ nextFollowUpAt: nextFollowUpAt || null })
 						}
 					/>
 					<RecordFields

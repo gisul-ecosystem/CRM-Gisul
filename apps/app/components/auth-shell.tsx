@@ -6,48 +6,36 @@ import { AuthShader } from "@/components/auth-shader";
 
 export function AuthShell({ children }: { children: ReactNode }) {
 	return (
-		<main className="dark grid min-h-svh bg-background text-foreground lg:grid-cols-[minmax(0,1fr)_minmax(420px,520px)]">
-			<section className="relative hidden min-h-svh overflow-hidden bg-muted p-8 lg:flex lg:flex-col lg:justify-between xl:p-12">
-				<AuthShader />
+		<main className="relative min-h-svh overflow-hidden bg-[#fdfdff] text-foreground">
+			<AuthShader />
 
-				<div className="relative flex gap-2 text-sm/5">
-					<Link href="/" aria-label="Homepage" className="flex">
-						<Logo className="h-6 w-auto max-w-[120px] shrink-0" />
-					</Link>
-				</div>
-
-				<div className="relative flex max-w-lg flex-col gap-8">
-					<div className="flex flex-col gap-4">
-						<p className="font-mono text-xs/4 text-muted-foreground uppercase">
-							{PRODUCT_BRAND.name}
-						</p>
-						<h1 className="max-w-[14ch] text-5xl/14 font-semibold text-balance">
-							Every customer, one place.
-						</h1>
-					</div>
-				</div>
-
-				<p className="relative font-mono text-xs/4 text-muted-foreground">
-					<a
-						href={PRODUCT_BRAND.websiteUrl}
-						target="_blank"
-						rel="noreferrer"
-						className="underline underline-offset-4 hover:text-foreground"
+			<div className="relative z-10 mx-auto grid min-h-svh w-full max-w-[1280px] gap-10 px-6 py-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,440px)] lg:items-center lg:gap-12 lg:px-10 xl:px-14">
+				<section className="flex flex-col gap-8 lg:gap-10">
+					<Link
+						href="/"
+						aria-label={`${PRODUCT_BRAND.name} homepage`}
+						className="w-fit"
 					>
-						{PRODUCT_BRAND.name}
-					</a>
-				</p>
-			</section>
+						<Logo className="h-8 w-auto max-w-[140px] shrink-0 dark:brightness-100 dark:invert-0" />
+					</Link>
 
-			<section className="flex min-h-svh flex-col bg-background px-6 py-8 sm:px-10 lg:px-14">
-				<div className="flex gap-2 text-sm/5 max-lg:hidden lg:invisible">
-					<Logo className="h-6 w-auto max-w-[120px] shrink-0" />
-				</div>
+					<div className="flex max-w-xl flex-col gap-4">
+						<h1 className="text-[clamp(2rem,4vw,3.25rem)] leading-[1.05] font-bold tracking-tight text-[#1c1a22] uppercase">
+							Welcome back. Pick up where you left off.
+						</h1>
+						<p className="max-w-[36ch] text-base leading-6 text-[#6b6575]">
+							Manage your leads, follow-ups and deals from one workspace.
+						</p>
+					</div>
 
-				<div className="flex flex-1 items-center justify-center py-12">
-					<div className="flex w-full max-w-sm flex-col gap-8">{children}</div>
-				</div>
-			</section>
+				</section>
+
+				<section className="flex justify-center lg:justify-end">
+					<div className="flex w-full max-w-[420px] flex-col gap-8 rounded-xl border border-[#ece8f4]/90 bg-white/95 p-7 shadow-[0_20px_50px_rgba(70,55,120,0.12)] backdrop-blur-sm sm:p-9">
+						{children}
+					</div>
+				</section>
+			</div>
 		</main>
 	);
 }
@@ -60,18 +48,11 @@ export function AuthHeading({
 	description: ReactNode;
 }) {
 	return (
-		<div className="flex flex-col gap-3 text-left">
-			<Link href="/" aria-label="Homepage" className="flex">
-				<Logo className="h-8 w-auto max-w-[160px] shrink-0" />
-			</Link>
-			<div className="flex flex-col gap-1">
-				<h2 className="text-2xl/8 font-semibold tracking-tight text-balance">
-					{title}
-				</h2>
-				<p className="max-w-[32ch] text-sm/5 text-muted-foreground text-pretty">
-					{description}
-				</p>
-			</div>
+		<div className="flex flex-col gap-2">
+			<h2 className="text-[1.75rem] leading-none font-bold tracking-tight text-[#1c1a22] uppercase">
+				{title}
+			</h2>
+			<p className="text-sm text-[#7a7485]">{description}</p>
 		</div>
 	);
 }

@@ -17,6 +17,7 @@ export {
 	canChangeRole,
 	canManageConnections,
 	canManageCurrency,
+	canManageProducts,
 	canManageTracking,
 	canRenameWorkspace,
 	DEFAULT_WORKSPACE_NAME,

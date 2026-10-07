@@ -277,6 +277,53 @@ enum AgentResponseRating {
   DOWN
 }
 
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  UNQUALIFIED
+}
+
+enum LeadSource {
+  WEBSITE
+  LINKEDIN
+  REFERRAL
+  COLD_OUTREACH
+  DIRECT
+  OTHER
+}
+
+model Product {
+  id                 String        @id @default(cuid())
+  name               String
+  shortDescription   String
+  detailedDescription String?
+  category           String
+  type               String
+  color              String
+  iconUrl            String?
+  status             ProductStatus @default(ACTIVE)
+  isCore             Boolean       @default(false)
+  position           Int           @default(0)
+  archivedAt         DateTime?
+
+  contacts Contact[]
+  deals    Deal[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([position])
+  @@index([archivedAt])
+  @@map("product")
+}
+
 model Company {
   id          String  @id @default(cuid())
   name        String
@@ -379,6 +426,13 @@ model Contact {
   owner     User?    @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   primaryOf Company? @relation("PrimaryContact")
 
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  leadStatus     LeadStatus  @default(NEW)
+  leadSource     LeadSource?
+  nextFollowUpAt DateTime?
+
   source RecordSource @default(MANUAL)
 
   lastActivityAt DateTime?
@@ -398,6 +452,10 @@ model Contact {
   @@unique([email], map: "contact_email_active_key", where: { archivedAt: null })
   @@index([companyId])
   @@index([ownerId])
+  @@index([productId])
+  @@index([leadStatus])
+  @@index([leadSource])
+  @@index([nextFollowUpAt])
   @@index([lastActivityAt])
   @@index([archivedAt])
   @@map("contact")
@@ -922,6 +980,8 @@ model Deal {
   company       Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
   ownerId       String
   owner         User                @relation("DealOwner", fields: [ownerId], references: [id])
+  productId     String?
+  product       Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   stage             DealStage @default(DEMO_BOOKED)
   stageChangedAt    DateTime  @default(now())
@@ -947,6 +1007,7 @@ model Deal {
 
   @@index([companyId])
   @@index([ownerId])
+  @@index([productId])
   @@index([stage])
   @@index([expectedCloseDate])
   @@index([lastActivityAt])
@@ -1310,6 +1371,12 @@ model AppSetting {
   ratesRefreshedAt DateTime?
 
   archiveRetentionDays Int @default(180)
+
+  productShowInLeadCreation     Boolean @default(true)
+  productShowInCustomerCreation Boolean @default(true)
+  productShowInDealCreation     Boolean @default(true)
+  productDefaultId              String?
+  productAllowMultipleOnDeal    Boolean @default(false)
 
   trackingSiteId           String? @unique
   trackingCrossDomain      Boolean @default(true)

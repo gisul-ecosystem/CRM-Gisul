@@ -43,24 +43,47 @@ import { useTRPC } from "@/lib/trpc/client";
 
 const UNSET = "";
 
-function AddButton(props: ComponentProps<typeof Button>) {
+function AddButton({
+	label = "New deal",
+	...props
+}: ComponentProps<typeof Button> & { label?: string }) {
 	return (
 		<Button {...props}>
 			<Icon icon={Add} data-icon="inline-start" />
-			New deal
+			{label}
 		</Button>
 	);
 }
 
-export function CreateDealSheet({ companyId }: { companyId?: string }) {
+export function CreateDealSheet({
+	companyId,
+	triggerLabel = "New deal",
+	triggerClassName,
+}: {
+	companyId?: string;
+	triggerLabel?: string;
+	triggerClassName?: string;
+}) {
 	return (
-		<Suspense fallback={<AddButton disabled />}>
-			<CreateDealForm companyId={companyId} />
+		<Suspense fallback={<AddButton label={triggerLabel} disabled />}>
+			<CreateDealForm
+				companyId={companyId}
+				triggerLabel={triggerLabel}
+				triggerClassName={triggerClassName}
+			/>
 		</Suspense>
 	);
 }
 
-function CreateDealForm({ companyId }: { companyId?: string }) {
+function CreateDealForm({
+	companyId,
+	triggerLabel,
+	triggerClassName,
+}: {
+	companyId?: string;
+	triggerLabel: string;
+	triggerClassName?: string;
+}) {
 	const openRecord = useOpenRecord();
 	const trpc = useTRPC();
 	const cache = useCrmCache();
@@ -72,6 +95,7 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 	const [name, setName] = useState("");
 	const [company, setCompany] = useState(companyId ?? UNSET);
 	const [ownerId, setOwnerId] = useState(UNSET);
+	const [productId, setProductId] = useState(UNSET);
 	const [stage, setStage] = useState<string>("DEMO_BOOKED");
 	const [amount, setAmount] = useState("");
 	const [currency, setCurrency] = useState("");
@@ -84,8 +108,17 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 	const users = useQuery(trpc.users.list.queryOptions());
 	const me = useQuery(trpc.users.me.queryOptions());
 	const currencies = useQuery(trpc.currency.settings.queryOptions());
+	const products = useQuery(trpc.products.options.queryOptions());
 
 	const resolvedOwner = ownerId || me.data?.id || UNSET;
+	const showProduct = products.data?.showInDealCreation ?? true;
+	const productOptions = products.data?.options ?? [];
+	const resolvedProduct =
+		productId !== UNSET
+			? productId
+			: products.data?.defaultProductId && showProduct
+				? products.data.defaultProductId
+				: UNSET;
 	const workspaceCurrency = currencies.data?.reportingCurrency;
 	const resolvedCurrency = currency || workspaceCurrency || "USD";
 
@@ -111,11 +144,18 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 	return (
 		<Sheet open={open} onOpenChange={(next) => setOpen(next || null)}>
 			<SheetTrigger asChild>
-				<AddButton />
+				{triggerClassName ? (
+					<button type="button" className={triggerClassName}>
+						<Icon icon={Add} />
+						{triggerLabel}
+					</button>
+				) : (
+					<AddButton label={triggerLabel} />
+				)}
 			</SheetTrigger>
 			<SheetContent side="right">
 				<SheetHeader>
-					<SheetTitle>New deal</SheetTitle>
+					<SheetTitle>{triggerLabel}</SheetTitle>
 					<SheetDescription>
 						Every deal belongs to a company and has someone's name against it.
 					</SheetDescription>
@@ -131,6 +171,10 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 							name,
 							companyId: company,
 							ownerId: resolvedOwner,
+							productId:
+								showProduct && resolvedProduct !== UNSET
+									? resolvedProduct
+									: null,
 							stage: stage as never,
 							amountCents: Number.isFinite(parsed)
 								? Math.round(parsed * 100)
@@ -177,6 +221,28 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 								</SelectContent>
 							</Select>
 						</Field>
+
+						{showProduct ? (
+							<Field>
+								<FieldLabel htmlFor="create-deal-product">Product</FieldLabel>
+								<Select
+									value={resolvedProduct}
+									onValueChange={setProductId}
+								>
+									<SelectTrigger id="create-deal-product">
+										<SelectValue placeholder="Select product" />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value={UNSET}>No product</SelectItem>
+										{productOptions.map((product) => (
+											<SelectItem key={product.id} value={product.id}>
+												{product.name}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</Field>
+						) : null}
 
 						<Field>
 							<FieldLabel htmlFor="create-deal-stage">Stage</FieldLabel>

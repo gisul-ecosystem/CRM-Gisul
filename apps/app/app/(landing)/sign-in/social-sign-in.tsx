@@ -46,11 +46,12 @@ export function SocialSignIn({ provider }: { provider: MailboxProviderId }) {
 
 	return (
 		<Button
-			className="w-full"
+			className="h-11 w-full rounded-lg text-sm font-medium"
 			disabled={pending}
 			onClick={() => {
 				handleClick().catch(() => fail());
 			}}
+			size="xl"
 			type="button"
 			variant="outline"
 		>

@@ -39,24 +39,42 @@ import { useTRPC } from "@/lib/trpc/client";
 
 const UNASSIGNED = "unassigned";
 
-function AddButton(props: ComponentProps<typeof Button>) {
+function AddButton({
+	label = "New company",
+	...props
+}: ComponentProps<typeof Button> & { label?: string }) {
 	return (
 		<Button {...props}>
 			<Icon icon={Add} data-icon="inline-start" />
-			New company
+			{label}
 		</Button>
 	);
 }
 
-export function CreateCompanySheet() {
+export function CreateCompanySheet({
+	triggerLabel = "New company",
+	triggerClassName,
+}: {
+	triggerLabel?: string;
+	triggerClassName?: string;
+}) {
 	return (
-		<Suspense fallback={<AddButton disabled />}>
-			<CreateCompanyForm />
+		<Suspense fallback={<AddButton label={triggerLabel} disabled />}>
+			<CreateCompanyForm
+				triggerLabel={triggerLabel}
+				triggerClassName={triggerClassName}
+			/>
 		</Suspense>
 	);
 }
 
-function CreateCompanyForm() {
+function CreateCompanyForm({
+	triggerLabel,
+	triggerClassName,
+}: {
+	triggerLabel: string;
+	triggerClassName?: string;
+}) {
 	const openRecord = useOpenRecord();
 	const trpc = useTRPC();
 	const cache = useCrmCache();
@@ -92,11 +110,18 @@ function CreateCompanyForm() {
 	return (
 		<Sheet open={open} onOpenChange={(next) => setOpen(next || null)}>
 			<SheetTrigger asChild>
-				<AddButton />
+				{triggerClassName ? (
+					<button type="button" className={triggerClassName}>
+						<Icon icon={Add} />
+						{triggerLabel}
+					</button>
+				) : (
+					<AddButton label={triggerLabel} />
+				)}
 			</SheetTrigger>
 			<SheetContent side="right">
 				<SheetHeader>
-					<SheetTitle>New company</SheetTitle>
+					<SheetTitle>{triggerLabel}</SheetTitle>
 					<SheetDescription>
 						Give it a name and a domain. The agent fills in the logo,
 						description, industry, address and socials.

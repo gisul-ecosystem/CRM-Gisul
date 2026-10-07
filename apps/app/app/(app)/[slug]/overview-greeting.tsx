@@ -1,35 +1,35 @@
 "use client";
 
-import { useQueryState } from "nuqs";
-import { PageShellDescription, PageShellTitle } from "@/components/page-shell";
-import { SEARCH_PARAM } from "@/lib/search-param-keys";
-import { overviewParsers } from "./overview-search-params";
+import styles from "./dashboard-design.module.css";
 
 export function OverviewGreetingFallback() {
 	return (
-		<>
-			<PageShellTitle>Welcome back</PageShellTitle>
-			<PageShellDescription>
-				What you have closed, what is still in play, and what needs you today.
-			</PageShellDescription>
-		</>
+		<div>
+			<h1 className={styles.greetTitle}>Good morning</h1>
+			<p className={styles.greetSub}>
+				Here&apos;s what&apos;s happening across your sales pipeline today.
+			</p>
+		</div>
 	);
 }
 
-export function OverviewGreeting() {
-	const [scope] = useQueryState(
-		SEARCH_PARAM.overview.scope,
-		overviewParsers[SEARCH_PARAM.overview.scope],
-	);
-
+export function OverviewGreeting({ name }: { name: string }) {
+	const first = name.trim().split(/\s+/)[0] ?? name;
 	return (
-		<>
-			<PageShellTitle>Welcome back</PageShellTitle>
-			<PageShellDescription>
-				{scope === "me"
-					? "What you have closed, what is still in play, and what needs you today."
-					: "What the team has closed, what is still in play, and what needs you today."}
-			</PageShellDescription>
-		</>
+		<div>
+			<h1 className={styles.greetTitle} suppressHydrationWarning>
+				{dayPart()}, {first} 👋
+			</h1>
+			<p className={styles.greetSub}>
+				Here&apos;s what&apos;s happening across your sales pipeline today.
+			</p>
+		</div>
 	);
+}
+
+function dayPart(): string {
+	const hour = new Date().getHours();
+	if (hour < 12) return "Good morning";
+	if (hour < 17) return "Good afternoon";
+	return "Good evening";
 }

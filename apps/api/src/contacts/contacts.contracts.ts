@@ -3,17 +3,26 @@ import {
 	EnrichmentStatus,
 	FactBand,
 	FactStatus,
+	LeadSource,
+	LeadStatus,
 	RecordSource,
 } from "@crm/db";
 import { FIELD_ENTITIES, FIELD_TYPES } from "@crm/db/fields";
 import { z } from "zod";
 import { bulkIdsInput } from "../crm/bulk";
 import { recordFieldValues } from "../fields/fields.contracts";
+import {
+	leadSourceEnum,
+	leadStatusEnum,
+} from "../products/products.contracts";
 import { activityFacetInput, listInput } from "../trpc/list-input";
 
 export const contactListInput = listInput.extend({
 	owner: z.array(z.string()).default([]),
 	company: z.array(z.string()).default([]),
+	product: z.array(z.string()).default([]),
+	leadStatus: z.array(z.string()).default([]),
+	leadSource: z.array(z.string()).default([]),
 	source: z.array(z.string()).default([]),
 	title: z.array(z.string()).default([]),
 	seniority: z.array(z.string()).default([]),
@@ -33,6 +42,10 @@ export const contactCreateInput = z.object({
 	title: z.string().trim().optional(),
 	companyId: z.string().nullable().optional(),
 	ownerId: z.string().nullable().optional(),
+	productId: z.string().nullable().optional(),
+	leadStatus: leadStatusEnum.optional(),
+	leadSource: leadSourceEnum.nullable().optional(),
+	nextFollowUpAt: z.string().nullable().optional(),
 });
 
 export type ContactCreateInput = z.infer<typeof contactCreateInput>;
@@ -48,6 +61,10 @@ const contactUpdateInput = z.object({
 	githubUrl: z.string().optional(),
 	companyId: z.string().nullable().optional(),
 	ownerId: z.string().nullable().optional(),
+	productId: z.string().nullable().optional(),
+	leadStatus: leadStatusEnum.optional(),
+	leadSource: leadSourceEnum.nullable().optional(),
+	nextFollowUpAt: z.string().nullable().optional(),
 	fields: recordFieldValues.optional(),
 });
 
@@ -130,6 +147,12 @@ const contactOwnerOutput = z.object({
 	image: z.string().nullable(),
 });
 
+const contactProductOutput = z.object({
+	id: z.string(),
+	name: z.string(),
+	color: z.string(),
+});
+
 export const contactRowOutput = z.object({
 	id: z.string(),
 	firstName: z.string(),
@@ -140,6 +163,14 @@ export const contactRowOutput = z.object({
 	source: z.enum(
 		Object.values(RecordSource) as [RecordSource, ...RecordSource[]],
 	),
+	leadStatus: z.enum(
+		Object.values(LeadStatus) as [LeadStatus, ...LeadStatus[]],
+	),
+	leadSource: z
+		.enum(Object.values(LeadSource) as [LeadSource, ...LeadSource[]])
+		.nullable(),
+	nextFollowUpAt: z.string().nullable(),
+	product: contactProductOutput.nullable(),
 	company: contactCompanyOutput.nullable(),
 	owner: contactOwnerOutput.nullable(),
 	lastActivityAt: z.string().nullable(),
@@ -234,6 +265,10 @@ export const contactByIdOutput = z.object({
 	twitterUrl: z.string().nullable(),
 	githubUrl: z.string().nullable(),
 	imageUrl: z.string().nullable(),
+	leadStatus: leadStatusEnum,
+	leadSource: leadSourceEnum.nullable(),
+	nextFollowUpAt: z.string().nullable(),
+	product: contactProductOutput.nullable(),
 	enrichmentStatus: z.enum(
 		Object.values(EnrichmentStatus) as [
 			EnrichmentStatus,
@@ -286,4 +321,37 @@ export const decideFactOutput = z.object({
 	contactId: z.string(),
 	field: z.string(),
 	applied: z.boolean(),
+});
+
+export const contactExportInput = contactListInput;
+
+export type ContactExportInput = z.infer<typeof contactExportInput>;
+
+export const contactExportOutput = z.object({
+	csv: z.string(),
+	filename: z.string(),
+	rowCount: z.number(),
+});
+
+export const contactImportInput = z.object({
+	csv: z.string().min(1, "Paste or upload a CSV."),
+});
+
+export type ContactImportInput = z.infer<typeof contactImportInput>;
+
+export const contactImportOutput = z.object({
+	created: z.number(),
+	updated: z.number(),
+	failed: z.number(),
+	errors: z.array(
+		z.object({
+			line: z.number(),
+			message: z.string(),
+		}),
+	),
+});
+
+export const contactImportTemplateOutput = z.object({
+	csv: z.string(),
+	filename: z.string(),
 });

@@ -20,7 +20,12 @@ import {
 	contactByIdOutput,
 	contactCreateInput,
 	contactEnrichOutput,
+	contactExportInput,
+	contactExportOutput,
 	contactIdInput,
+	contactImportInput,
+	contactImportOutput,
+	contactImportTemplateOutput,
 	contactListInput,
 	contactListOutput,
 	contactNameOutput,
@@ -44,6 +49,32 @@ export class ContactsRouter {
 	})
 	async list(@Input() input: z.infer<typeof contactListInput>) {
 		return this.contacts.list(input);
+	}
+
+	@Query({
+		input: contactExportInput,
+		output: contactExportOutput,
+		meta: restMeta("POST", "/contacts/export", ["Contacts"]),
+	})
+	async exportCsv(@Input() input: z.infer<typeof contactExportInput>) {
+		return this.contacts.exportCsv(input);
+	}
+
+	@Query({
+		output: contactImportTemplateOutput,
+		meta: restMeta("GET", "/contacts/import-template", ["Contacts"]),
+	})
+	importTemplate() {
+		return this.contacts.importTemplate();
+	}
+
+	@Mutation({
+		input: contactImportInput,
+		output: contactImportOutput,
+		meta: restMeta("POST", "/contacts/import", ["Contacts"]),
+	})
+	async importCsv(@Input() input: z.infer<typeof contactImportInput>) {
+		return this.contacts.importCsv(input);
 	}
 
 	@Query({

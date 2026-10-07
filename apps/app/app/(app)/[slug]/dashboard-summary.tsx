@@ -1,110 +1,87 @@
 "use client";
 
-import { Button } from "@crm/ui/components/button";
-import {
-	Card,
-	CardAction,
-	CardDescription,
-	CardHeader,
-	CardPanel,
-	CardPanelEmpty,
-	CardTitle,
-} from "@crm/ui/components/card";
-import { CardTableEmpty } from "@crm/ui/components/card-table";
+import ArrowRight from "@carbon/icons-react/es/ArrowRight";
+import Email from "@carbon/icons-react/es/Email";
+import Phone from "@carbon/icons-react/es/Phone";
+import Video from "@carbon/icons-react/es/Video";
+import View from "@carbon/icons-react/es/View";
 import { Checkbox } from "@crm/ui/components/checkbox";
-import { EmptyCellValue } from "@crm/ui/components/empty-cell";
-import {
-	EntityLogo,
-	type EntityLogoTone,
-} from "@crm/ui/components/entity-logo";
-import {
-	SimpleTable,
-	type SimpleTableColumn,
-	SimpleTableRow,
-} from "@crm/ui/components/simple-table";
+import type { CarbonIcon } from "@crm/ui/components/icon";
+import { Icon } from "@crm/ui/components/icon";
+import { formatMoneyCompact } from "@crm/ui/lib/format";
 import { Spinner } from "@crm/ui/components/spinner";
-import { StatusIndicator } from "@crm/ui/components/status-indicator";
-import { TableCell } from "@crm/ui/components/table";
-import { formatCount, formatMoneyCompact } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useQueryState } from "nuqs";
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties } from "react";
 import { toast } from "sonner";
-import { DealStageIndicator } from "@/components/crm/deal-stage";
-import { RecordLink } from "@/components/crm/record-sheet/record-link";
-import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
+import { contactsSearchParams } from "@/app/(app)/[slug]/contacts/contacts-search-params";
+import { contactName } from "@/components/crm/contact-name";
 import { LocalRelativeTime } from "@/components/local-date-time";
-import { activityLabel } from "@/lib/activity-presentation";
-import { dealStageColor } from "@/lib/deal-stage";
+import { activityIcon, activityLabel } from "@/lib/activity-presentation";
+import { LEAD_SOURCE_OPTIONS, leadSourceLabel } from "@/lib/lead-fields";
 import { SEARCH_PARAM } from "@/lib/search-param-keys";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
+import type { RouterOutputs } from "@/lib/trpc/types";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
+import {
+	chartBarPercent,
+	chartTopCents,
+	chartYLabels,
+} from "./dashboard-chart";
+import styles from "./dashboard-design.module.css";
+import { DUMMY_ACTIVITIES } from "./dashboard-dummy";
 import { overviewParsers } from "./overview-search-params";
 import { SalesDashboard } from "./sales-dashboard";
 
-const CELL = "px-3 py-2.5 align-middle";
-const OPEN_COLUMNS: SimpleTableColumn[] = [
-	{ id: "deal", header: "Deal" },
-	{
-		id: "stage",
-		header: "Stage",
-		width: "w-32",
-		className: "hidden lg:table-cell",
-	},
-	{
-		id: "share",
-		srLabel: "Share of the largest",
-		width: "w-24",
-		className: "hidden sm:table-cell",
-	},
-	{ id: "value", header: "Value", width: "w-20", align: "right" },
-];
-const TASK_COLUMNS: SimpleTableColumn[] = [
-	{ id: "done", srLabel: "Done", width: "w-8" },
-	{ id: "task", header: "Task" },
-	{ id: "overdue", header: "Overdue", width: "w-24", align: "right" },
-];
-const ACTIVITY_COLUMNS: SimpleTableColumn[] = [
-	{ id: "activity", header: "Activity" },
-	{
-		id: "company",
-		header: "Company",
-		width: "w-44",
-		className: "hidden md:table-cell",
-	},
-	{
-		id: "deal",
-		header: "Deal",
-		width: "w-48",
-		className: "hidden lg:table-cell",
-	},
-	{
-		id: "who",
-		header: "Who",
-		width: "w-32",
-		className: "hidden md:table-cell",
-	},
-	{ id: "when", header: "When", width: "w-20", align: "right" },
-];
+type Task = RouterOutputs["activities"]["myTasks"][number];
+type ContactRow = RouterOutputs["contacts"]["list"]["rows"][number];
+type DashboardSummaryData = RouterOutputs["dashboard"]["summary"];
+type PriorityTab = "today" | "overdue" | "upcoming";
+
+const SOURCE_BAR_COLORS = [
+	"#5f3fa3",
+	"#5f3fa3",
+	"#b79ce8",
+	"#a888e0",
+	"#c9b6ee",
+	"#ddd0f5",
+	"#e8e4f2",
+] as const;
+
+const RECENT_LEADS_INPUT = {
+	...contactsSearchParams.defaultInput(),
+	pageSize: 4,
+	sort: "createdAt",
+	dir: "desc" as const,
+};
 
 export function DashboardSummary() {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
-	const openRecord = useOpenRecord();
 	const workspaceUrl = useWorkspaceUrl();
-
+	const [tab, setTab] = useState<PriorityTab>("today");
 	const [scope] = useQueryState(
 		SEARCH_PARAM.overview.scope,
 		overviewParsers[SEARCH_PARAM.overview.scope],
 	);
+	const [month] = useQueryState(
+		SEARCH_PARAM.overview.month,
+		overviewParsers[SEARCH_PARAM.overview.month],
+	);
 
 	const summaryQuery = useQuery({
-		...trpc.dashboard.summary.queryOptions({ scope }),
+		...trpc.dashboard.summary.queryOptions({
+			scope,
+			...(month ? { month } : {}),
+		}),
 		placeholderData: (previous) => previous,
 	});
-
+	const leadsQuery = useQuery(trpc.contacts.list.queryOptions(RECENT_LEADS_INPUT));
+	const tasksQuery = useQuery(
+		trpc.activities.myTasks.queryOptions({ window: "all", limit: 50 }),
+	);
 	const complete = useMutation(
 		trpc.activities.complete.mutationOptions({
 			onSuccess: () => cache.activity(),
@@ -113,7 +90,6 @@ export function DashboardSummary() {
 	);
 
 	const summary = summaryQuery.data;
-
 	if (!summary) {
 		return (
 			<div className="flex flex-1 justify-center py-12">
@@ -122,264 +98,435 @@ export function DashboardSummary() {
 		);
 	}
 
-	const { biggestOpen, overdueTasks, recentActivity } = summary;
-
-	const mine = scope === "me";
-	const largestOpenCents = biggestOpen[0]?.baseAmountCents ?? 0;
+	const grouped = groupTasks(tasksQuery.data ?? []);
+	const visible = grouped[tab].slice(0, 5);
+	const trend = summary.trend;
+	const maxWon = trend.reduce((m, p) => Math.max(m, p.won), 0);
+	const chartTop = chartTopCents(maxWon);
+	const yLabels = chartYLabels(maxWon, summary.reportingCurrency);
+	const lastIdx = Math.max(trend.length - 1, 0);
 
 	return (
-		<div className="flex flex-col gap-6">
+		<div className={styles.wrap}>
 			<SalesDashboard summary={summary} />
 
-			<div className="grid gap-6 @3xl/page-content:grid-cols-2">
-				<Card className="min-w-0">
-					<CardHeader>
-						<CardTitle>Deals in progress</CardTitle>
-						<CardDescription>
-							The largest open deals, and how long each has sat in its stage
-						</CardDescription>
-						<CardAction>
-							<Button asChild variant="default" size="sm">
-								<Link href={workspaceUrl("/deals")}>Open deals</Link>
-							</Button>
-						</CardAction>
-					</CardHeader>
-					<CardPanel>
-						{biggestOpen.length === 0 ? (
-							<CardPanelEmpty>
-								Nothing open. Time to fill the pipeline.
-							</CardPanelEmpty>
-						) : (
-							<SimpleTable
-								variant="panel"
-								surface="page"
-								columns={OPEN_COLUMNS}
+			<section className={styles.grid2}>
+				<div className={`${styles.card} ${styles.panel}`}>
+					<div className={styles.head}>
+						<h2 className={styles.panelTitle}>Today&apos;s Priorities</h2>
+						<Link href={workspaceUrl("/deals")} className={styles.linkSm}>
+							View All <Icon icon={ArrowRight} />
+						</Link>
+					</div>
+					<div className={styles.tabs}>
+						{(
+							[
+								["today", "Today"],
+								["overdue", "Overdue"],
+								["upcoming", "Upcoming"],
+							] as const
+						).map(([id, label]) => (
+							<button
+								key={id}
+								type="button"
+								className={[
+									styles.tab,
+									tab === id ? styles.tabOn : "",
+									id === "overdue" ? styles.tabOd : "",
+								]
+									.filter(Boolean)
+									.join(" ")}
+								onClick={() => setTab(id)}
 							>
-								{biggestOpen.map((deal) => (
-									<SimpleTableRow
-										key={deal.id}
-										clickable
-										onClick={() => openRecord({ kind: "deal", id: deal.id })}
-									>
-										<TableCell className={CELL}>
-											<DealCell
-												name={deal.name}
-												company={deal.company}
-												meta={<LocalRelativeTime date={deal.stageChangedAt} />}
-											/>
-										</TableCell>
-										<TableCell className={`${CELL} hidden lg:table-cell`}>
-											<DealStageIndicator stage={deal.stage} />
-										</TableCell>
-										<TableCell className={`${CELL} hidden sm:table-cell`}>
-											<ValueMeter
-												share={
-													largestOpenCents > 0
-														? ((deal.baseAmountCents ?? 0) / largestOpenCents) *
-															100
-														: 0
-												}
-												color={dealStageColor(deal.stage)}
-											/>
-										</TableCell>
-										<TableCell className={`${CELL} text-right tabular-nums`}>
-											{deal.amountCents === null ? (
-												<EmptyCellValue />
-											) : (
-												formatMoneyCompact(deal.amountCents, deal.currency)
-											)}
-										</TableCell>
-									</SimpleTableRow>
-								))}
-							</SimpleTable>
-						)}
-					</CardPanel>
-				</Card>
-
-				<Card className="min-w-0">
-					<CardHeader>
-						<CardTitle>Overdue tasks</CardTitle>
-						<CardDescription>
-							{overdueTasks.length === 0
-								? "Every task you have logged is either done or still to come"
-								: `${formatCount(overdueTasks.length, "task")} past due`}
-						</CardDescription>
-					</CardHeader>
-					<CardPanel>
-						{overdueTasks.length === 0 ? (
-							<CardPanelEmpty>Nothing overdue. Good.</CardPanelEmpty>
-						) : (
-							<SimpleTable
-								variant="panel"
-								surface="page"
-								columns={TASK_COLUMNS}
-							>
-								{overdueTasks.map((task) => (
-									<SimpleTableRow key={task.id}>
-										<TableCell className={CELL}>
-											<Checkbox
-												checked={false}
-												disabled={complete.isPending}
-												aria-label="Mark as done"
-												onCheckedChange={() =>
-													complete.mutate({ id: task.id, completed: true })
-												}
-											/>
-										</TableCell>
-										<TableCell className={CELL}>
-											<span className="flex min-w-0 flex-col">
-												<span className="truncate">{task.subject}</span>
-												<span className="flex min-w-0 text-muted-foreground">
-													{task.deal ? (
-														<RecordLink kind="deal" id={task.deal.id}>
-															{task.deal.name}
-														</RecordLink>
-													) : task.company ? (
-														<RecordLink kind="company" id={task.company.id}>
-															{task.company.name}
-														</RecordLink>
-													) : null}
-												</span>
-											</span>
-										</TableCell>
-										<TableCell className={`${CELL} text-right`}>
-											<StatusIndicator
-												tone="error"
-												label={
-													task.dueAt ? (
-														<LocalRelativeTime date={task.dueAt} />
-													) : (
-														"No due date"
-													)
-												}
-											/>
-										</TableCell>
-									</SimpleTableRow>
-								))}
-							</SimpleTable>
-						)}
-					</CardPanel>
-				</Card>
-			</div>
-
-			<Card className="min-w-0">
-				<CardHeader>
-					<CardTitle>
-						{mine ? "Your recent activity" : "Recent activity"}
-					</CardTitle>
-					<CardDescription>
-						{mine
-							? "Every note, task and stage change you have logged"
-							: "Every note, task and stage change across the workspace"}
-					</CardDescription>
-					<CardAction>
-						<Button asChild variant="default" size="sm">
-							<Link href={workspaceUrl("/companies")}>All companies</Link>
-						</Button>
-					</CardAction>
-				</CardHeader>
-				{recentActivity.length === 0 ? (
-					<CardTableEmpty>Nothing has happened yet.</CardTableEmpty>
-				) : (
-					<SimpleTable columns={ACTIVITY_COLUMNS}>
-						{recentActivity.map((entry) => (
-							<SimpleTableRow key={entry.id}>
-								<TableCell className={CELL}>
-									<span className="truncate">
-										{entry.subject ?? activityLabel(entry.type)}
-									</span>
-								</TableCell>
-								<TableCell className={`${CELL} hidden md:table-cell`}>
-									{entry.company ? (
-										<RecordLink kind="company" id={entry.company.id}>
-											{entry.company.name}
-										</RecordLink>
-									) : (
-										<EmptyCellValue />
-									)}
-								</TableCell>
-								<TableCell className={`${CELL} hidden lg:table-cell`}>
-									{entry.deal ? (
-										<RecordLink kind="deal" id={entry.deal.id}>
-											{entry.deal.name}
-										</RecordLink>
-									) : (
-										<EmptyCellValue />
-									)}
-								</TableCell>
-								<TableCell
-									className={`${CELL} hidden truncate text-muted-foreground md:table-cell`}
-								>
-									{entry.createdBy.name}
-								</TableCell>
-								<TableCell
-									className={`${CELL} text-right text-muted-foreground`}
-								>
-									<LocalRelativeTime date={entry.createdAt} />
-								</TableCell>
-							</SimpleTableRow>
+								{label}{" "}
+								<span className={styles.tabBadge}>{grouped[id].length}</span>
+							</button>
 						))}
-					</SimpleTable>
-				)}
-			</Card>
+					</div>
+
+					{visible.length === 0 ? (
+						<p className={styles.note}>No tasks in this list.</p>
+					) : (
+						<div className={styles.taskList}>
+							{visible.map((task) => {
+								const action = taskAction(task, workspaceUrl);
+								return (
+									<div key={task.id} className={styles.task}>
+										<Checkbox
+											checked={false}
+											disabled={complete.isPending}
+											aria-label="Mark as done"
+											onCheckedChange={() =>
+												complete.mutate({ id: task.id, completed: true })
+											}
+										/>
+										<span className={`${styles.tic} ${toneFor(task.type)}`}>
+											<Icon icon={activityIcon(task.type)} />
+										</span>
+										<div className={styles.taskText}>
+											<b>{task.subject ?? "Task"}</b>
+											<small>
+												{task.deal
+													? `Deal · ${task.deal.name}`
+													: task.company
+														? `Company · ${task.company.name}`
+														: "Unlinked"}
+											</small>
+										</div>
+										<span className={styles.taskTime}>
+											{task.dueAt
+												? new Date(task.dueAt).toLocaleTimeString([], {
+														hour: "numeric",
+														minute: "2-digit",
+													})
+												: "—"}
+										</span>
+										<Link
+											href={action.href}
+											className={`${styles.btn} ${action.variant === "dark" ? styles.btnDark : ""} ${action.variant === "ghost" ? styles.btnGhost : ""}`}
+										>
+											<Icon icon={action.icon} />
+											{action.label}
+										</Link>
+									</div>
+								);
+							})}
+						</div>
+					)}
+				</div>
+
+				<div className={`${styles.card} ${styles.panel}`}>
+					<div className={styles.head}>
+						<h2 className={styles.panelTitle}>Recent Leads</h2>
+						<Link href={workspaceUrl("/contacts")} className={styles.linkSm}>
+							View All <Icon icon={ArrowRight} />
+						</Link>
+					</div>
+					{leadsQuery.isLoading ? (
+						<p className={styles.note}>Loading contacts…</p>
+					) : (leadsQuery.data?.rows.length ?? 0) === 0 ? (
+						<p className={styles.note}>No contacts yet.</p>
+					) : (
+						<div className={styles.tableScroll}>
+							<table className={styles.table}>
+								<thead>
+									<tr>
+										<th>Name</th>
+										<th>Company</th>
+										<th>Product</th>
+										<th>Status</th>
+										<th>Created</th>
+									</tr>
+								</thead>
+								<tbody>
+									{leadsQuery.data?.rows.map((lead) => (
+										<tr key={lead.id}>
+											<td>
+												<Link
+													href={workspaceUrl(`/contacts/${lead.id}`)}
+													className={styles.who}
+												>
+													<span className={styles.av}>
+														{initials(lead)}
+													</span>
+													{contactName(lead)}
+												</Link>
+											</td>
+											<td>{lead.company?.name ?? "—"}</td>
+											<td>—</td>
+											<td>—</td>
+											<td>
+												<LocalRelativeTime date={lead.createdAt} />
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					)}
+					<p className={styles.note}>
+						Product and status need a backend. Columns stay blank for now.
+					</p>
+				</div>
+			</section>
+
+			<section className={styles.grid3}>
+				<div className={`${styles.card} ${styles.p3}`}>
+					<div className={styles.head}>
+						<h2 className={styles.p3Title}>Deal Performance</h2>
+					</div>
+					<div className={styles.sels}>
+						<span className={styles.sel}>Won revenue</span>
+						<span className={styles.sel}>Last 6 months</span>
+					</div>
+					<div className={styles.chart}>
+						<div className={styles.yl}>
+							{yLabels.map((label, index) => (
+								<span key={`y-${index}`}>{label}</span>
+							))}
+						</div>
+						<div className={styles.bars}>
+							{trend.map((point, index) => {
+								const h = chartBarPercent(point.won, chartTop);
+								const on = index === lastIdx;
+								return (
+									<div
+										key={`${point.month}-${index}`}
+										className={styles.bw}
+										style={
+											on
+												? ({ "--h": `${Math.max(h, 1)}%` } as CSSProperties)
+												: undefined
+										}
+									>
+										<div
+											className={`${styles.bar} ${on ? styles.barOn : ""}`}
+											style={{ height: `${h}%` }}
+										/>
+										{on ? (
+											<div className={styles.tip}>
+												<b>
+													{formatMoneyCompact(
+														point.won,
+														summary.reportingCurrency,
+													)}
+												</b>
+												<small>{point.month}</small>
+											</div>
+										) : null}
+									</div>
+								);
+							})}
+						</div>
+					</div>
+					<div className={styles.xl}>
+						<span />
+						<div className={styles.xlRow}>
+							{trend.map((point, index) => (
+								<span
+									key={`${point.month}-${index}`}
+									className={index === lastIdx ? styles.xlOn : undefined}
+								>
+									{point.month.slice(0, 3)}
+								</span>
+							))}
+						</div>
+					</div>
+				</div>
+
+				<div className={`${styles.card} ${styles.p3}`}>
+					<div className={styles.head}>
+						<h2 className={styles.p3Title}>Leads by Source</h2>
+						<Link href={workspaceUrl("/contacts")} className={styles.linkSm}>
+							View All <Icon icon={ArrowRight} />
+						</Link>
+					</div>
+					<div className={styles.src}>
+						{leadSourceRows(summary.leadSources).map((row) => (
+							<div key={row.label} className={styles.srcRow}>
+								{row.label}
+								<span className={styles.tr}>
+									<span
+										className={styles.trFill}
+										style={{
+											width: `${row.pct}%`,
+											background: row.color,
+										}}
+									/>
+								</span>
+								<span className={styles.srcPct}>{row.pct}%</span>
+							</div>
+						))}
+					</div>
+					{summary.leadSources.every((row) => row.count === 0) ? (
+						<p className={styles.note}>No lead sources yet.</p>
+					) : null}
+				</div>
+
+				<div className={`${styles.card} ${styles.p3}`}>
+					<div className={styles.head}>
+						<h2 className={styles.p3Title}>Product Performance</h2>
+					</div>
+					{summary.productPerformance.length === 0 ? (
+						<p className={styles.note}>
+							No products yet. Add products in Settings → Products.
+						</p>
+					) : (
+						<div className={styles.tableScroll}>
+							<table className={styles.pt}>
+								<thead>
+									<tr>
+										<th>Product</th>
+										<th>Leads</th>
+										<th>Deals</th>
+										<th>Won</th>
+										<th>Pipeline</th>
+									</tr>
+								</thead>
+								<tbody>
+									{summary.productPerformance.map((row) => (
+										<tr key={row.id}>
+											<td>
+												<span
+													className={styles.dot}
+													style={{ background: row.color }}
+												/>
+												<b>{row.name}</b>
+											</td>
+											<td>{row.leads}</td>
+											<td>{row.deals}</td>
+											<td>{row.won}</td>
+											<td>
+												<b>
+													{formatMoneyCompact(
+														row.pipelineCents,
+														summary.reportingCurrency,
+													)}
+												</b>
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					)}
+				</div>
+			</section>
+
+			<section className={`${styles.card} ${styles.act}`}>
+				<h2 className={styles.actTitle}>Recent Activity</h2>
+				<div className={styles.alist}>
+					{(summary.recentActivity.length > 0
+						? summary.recentActivity.slice(0, 4).map((entry) => ({
+								id: entry.id,
+								time: new Date(entry.createdAt).toLocaleTimeString([], {
+									hour: "numeric",
+									minute: "2-digit",
+								}),
+								tone: "tBlue" as const,
+								body: entry.subject ?? activityLabel(entry.type),
+								accent: null as string | null,
+								won: null as string | null,
+								meta:
+									entry.company?.name ??
+									entry.deal?.name ??
+									entry.createdBy.name,
+								icon: activityIcon(entry.type),
+							}))
+						: DUMMY_ACTIVITIES.map((row) => ({
+								...row,
+								won: "won" in row ? row.won : null,
+								icon: null as CarbonIcon | null,
+							}))
+					).map((item) => (
+						<div key={item.id} className={styles.ai}>
+							<span className={`${styles.tic} ${styles[item.tone]}`}>
+								{item.icon ? <Icon icon={item.icon} /> : "•"}
+							</span>
+							<div>
+								<time>{item.time}</time>
+								<p>
+									{item.body}
+									{item.accent ? (
+										<span className={styles.aiAccent}>{item.accent}</span>
+									) : null}
+									{item.won ? (
+										<span className={styles.aiWon}>{item.won}</span>
+									) : null}
+								</p>
+								{item.meta ? (
+									<small className={styles.aiMeta}>{item.meta}</small>
+								) : null}
+							</div>
+						</div>
+					))}
+				</div>
+				{summary.recentActivity.length === 0 ? (
+					<p className={styles.note}>
+						Sample activity. Live feed appears when events exist.
+					</p>
+				) : null}
+			</section>
 		</div>
 	);
 }
 
-function DealCell({
-	name,
-	company,
-	meta,
-}: {
-	name: string;
-	company: {
-		name: string;
-		iconUrl: string | null;
-		iconDarkUrl: string | null;
-		iconTone: string | null;
-	};
-	meta?: ReactNode;
-}) {
-	return (
-		<span className="flex min-w-0 items-center gap-2">
-			<EntityLogo
-				src={company.iconUrl}
-				darkSrc={company.iconDarkUrl}
-				tone={company.iconTone as EntityLogoTone | null | undefined}
-				name={company.name}
-				size="sm"
-			/>
-			<span className="flex min-w-0 flex-col">
-				<span className="truncate font-medium">{name}</span>
-				<span className="truncate text-muted-foreground">
-					{meta ? (
-						<>
-							{company.name} · {meta}
-						</>
-					) : (
-						company.name
-					)}
-				</span>
-			</span>
-		</span>
-	);
+function leadSourceRows(rows: DashboardSummaryData["leadSources"]) {
+	const total = rows.reduce((sum, row) => sum + row.count, 0);
+	const withCounts = rows.filter((row) => row.count > 0);
+	const ordered =
+		withCounts.length > 0
+			? withCounts
+			: LEAD_SOURCE_OPTIONS.map((option) => ({
+					source: option.value,
+					count: 0,
+				}));
+
+	return ordered.map((row, index) => {
+		const label =
+			row.source === null ? "No source" : leadSourceLabel(row.source);
+		const color =
+			LEAD_SOURCE_OPTIONS.find((option) => option.value === row.source)
+				?.color ?? SOURCE_BAR_COLORS[index % SOURCE_BAR_COLORS.length];
+		const pct = total > 0 ? Math.round((row.count / total) * 100) : 0;
+		return { label, pct, color, count: row.count };
+	});
 }
 
-function ValueMeter({ share, color }: { share: number; color: string }) {
-	return (
-		<span
-			className="bloom-low flex h-1.5 w-full overflow-hidden bg-muted"
-			style={{ "--bloom-color": color } as CSSProperties}
-		>
-			<span
-				className="h-full w-(--share)"
-				style={
-					{
-						backgroundColor: color,
-						"--share": `${Math.round(Math.max(Math.min(share, 100), 0))}%`,
-					} as CSSProperties
-				}
-			/>
-		</span>
-	);
+function initials(contact: ContactRow): string {
+	const first = contact.firstName.trim().charAt(0);
+	const last = contact.lastName?.trim().charAt(0) ?? "";
+	return `${first}${last}`.toUpperCase() || "?";
+}
+
+function toneFor(type: Task["type"]): string {
+	if (type === "CALL") return styles.tPurple;
+	if (type === "EMAIL") return styles.tRed;
+	if (type === "MEETING") return styles.tBlue;
+	if (type === "TASK") return styles.tYellow;
+	return styles.tGreen;
+}
+
+function taskAction(
+	task: Task,
+	workspaceUrl: (path?: string) => string,
+): {
+	label: string;
+	icon: CarbonIcon;
+	href: string;
+	variant: "default" | "dark" | "ghost";
+} {
+	const href = task.deal
+		? workspaceUrl(`/deals/${task.deal.id}`)
+		: task.company
+			? workspaceUrl(`/companies/${task.company.id}`)
+			: workspaceUrl("/");
+	if (task.type === "CALL")
+		return { label: "Call", icon: Phone, href, variant: "default" };
+	if (task.type === "EMAIL")
+		return { label: "Email", icon: Email, href, variant: "default" };
+	if (task.type === "MEETING")
+		return { label: "Join", icon: Video, href, variant: "dark" };
+	return { label: "View", icon: View, href, variant: "ghost" };
+}
+
+function groupTasks(tasks: Task[]): Record<PriorityTab, Task[]> {
+	const start = new Date();
+	start.setHours(0, 0, 0, 0);
+	const end = new Date(start);
+	end.setDate(end.getDate() + 1);
+	const today: Task[] = [];
+	const overdue: Task[] = [];
+	const upcoming: Task[] = [];
+	for (const task of tasks) {
+		if (!task.dueAt) {
+			upcoming.push(task);
+			continue;
+		}
+		const due = new Date(task.dueAt);
+		if (due < start) overdue.push(task);
+		else if (due < end) today.push(task);
+		else upcoming.push(task);
+	}
+	return { today, overdue, upcoming };
 }

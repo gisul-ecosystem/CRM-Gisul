@@ -1,47 +1,58 @@
 import type { Metadata } from "next";
+import { Bebas_Neue, Poppins } from "next/font/google";
 import { Suspense } from "react";
 import {
 	PageShell,
-	PageShellActions,
 	PageShellContent,
-	PageShellDescription,
-	PageShellHeader,
-	PageShellHeading,
 	PageShellLoading,
-	PageShellTitle,
 } from "@/components/page-shell";
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { contactsSearchParams } from "./contacts-search-params";
 import { ContactsTable } from "./contacts-table";
-import { CreateContactSheet } from "./create-contact-sheet";
+import { LeadsHeaderActions } from "./leads-header-actions";
+import styles from "./leads-design.module.css";
+
+const display = Bebas_Neue({
+	weight: "400",
+	subsets: ["latin"],
+	variable: "--font-dashboard-display",
+});
+
+const sans = Poppins({
+	weight: ["400", "500", "600"],
+	subsets: ["latin"],
+	variable: "--font-dashboard-sans",
+});
 
 export const metadata: Metadata = {
-	title: "Contacts",
+	title: "Leads",
 };
 
 export default function ContactsPage({
 	searchParams,
 }: PageProps<"/[slug]/contacts">) {
 	return (
-		<PageShell className="min-h-0">
-			<PageShellHeader>
-				<PageShellHeading>
-					<PageShellTitle>Contacts</PageShellTitle>
-					<PageShellDescription>Everyone in the pipeline.</PageShellDescription>
-				</PageShellHeading>
-				<PageShellActions>
-					<CreateContactSheet />
-				</PageShellActions>
-			</PageShellHeader>
+		<div className={`${display.variable} ${sans.variable} ${styles.shell}`}>
+			<PageShell className="min-h-0 gap-4">
+				<header className={styles.top}>
+					<div className={styles.topText}>
+						<h1 className={styles.title}>Leads</h1>
+						<p className={styles.subtitle}>
+							Manage and convert potential customers across all products.
+						</p>
+					</div>
+					<LeadsHeaderActions />
+				</header>
 
-			<PageShellContent className="min-h-0">
-				<Suspense fallback={<PageShellLoading />}>
-					<Contacts searchParams={searchParams} />
-				</Suspense>
-			</PageShellContent>
-		</PageShell>
+				<PageShellContent className="min-h-0 gap-0">
+					<Suspense fallback={<PageShellLoading />}>
+						<Contacts searchParams={searchParams} />
+					</Suspense>
+				</PageShellContent>
+			</PageShell>
+		</div>
 	);
 }
 

@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { AppHeader, AppHeaderFallback } from "@/components/app-header";
 import { AppIconRail, AppIconRailFallback } from "@/components/app-icon-rail";
+import { AppRailProvider } from "@/components/app-rail";
 import { QuickSwitcher } from "@/components/crm/quick-switcher";
 import { RecordSheetHost } from "@/components/crm/record-sheet/record-sheet-host";
 import { MobileNavProvider } from "@/components/mobile-nav";
@@ -16,26 +17,28 @@ export default function AppLayout({
 }: LayoutProps<"/[slug]">) {
 	return (
 		<MobileNavProvider>
-			<div className="isolate flex h-svh flex-col">
-				<Suspense fallback={<AppHeaderFallback />}>
-					<WorkspaceHeader params={params} />
-				</Suspense>
-
-				<div className="flex min-h-0 flex-1">
-					<Suspense fallback={<AppIconRailFallback />}>
-						<AppIconRail />
+			<AppRailProvider>
+				<div className="isolate flex h-svh flex-col">
+					<Suspense fallback={<AppHeaderFallback />}>
+						<WorkspaceHeader params={params} />
 					</Suspense>
-					{children}
+
+					<div className="flex min-h-0 flex-1">
+						<Suspense fallback={<AppIconRailFallback />}>
+							<AppIconRail />
+						</Suspense>
+						{children}
+					</div>
+
+					<Suspense fallback={null}>
+						<RecordSheetHost />
+					</Suspense>
+
+					<Suspense fallback={null}>
+						<QuickSwitcher />
+					</Suspense>
 				</div>
-
-				<Suspense fallback={null}>
-					<RecordSheetHost />
-				</Suspense>
-
-				<Suspense fallback={null}>
-					<QuickSwitcher />
-				</Suspense>
-			</div>
+			</AppRailProvider>
 		</MobileNavProvider>
 	);
 }

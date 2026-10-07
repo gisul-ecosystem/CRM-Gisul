@@ -10,6 +10,7 @@ import Partnership from "@carbon/icons-react/es/Partnership";
 import Play from "@carbon/icons-react/es/Play";
 import Renew from "@carbon/icons-react/es/Renew";
 import Reply from "@carbon/icons-react/es/Reply";
+import SidePanelOpen from "@carbon/icons-react/es/SidePanelOpen";
 import ThumbsDown from "@carbon/icons-react/es/ThumbsDown";
 import ThumbsUp from "@carbon/icons-react/es/ThumbsUp";
 import User from "@carbon/icons-react/es/User";
@@ -89,6 +90,8 @@ import {
 	ChatCommandChip,
 	ChatReferenceChip,
 } from "./chat-chips";
+import styles from "./chat-design.module.css";
+import { useChatSidebar } from "./chat-sidebar-context";
 import { DeleteChatAction } from "./delete-chat-action";
 import { ShareChatDialog } from "./share-chat-dialog";
 
@@ -368,7 +371,7 @@ export function AgentBuilderChat({
 
 	return (
 		<main
-			className="flex min-h-0 flex-1 flex-col"
+			className={styles.chatBody}
 			onPointerEnter={() => {
 				if (
 					data.lastAssistantAt &&
@@ -677,12 +680,12 @@ function SharedAgentChat({
 		: latestCompletedArtifactVersionId(conversation.builderArtifacts);
 
 	return (
-		<main className="flex min-h-0 flex-1 flex-col">
-			<header className="flex h-12 shrink-0 items-center gap-3 border-b px-5">
-				<h1 className="min-w-0 flex-1 truncate font-medium text-sm">
+		<main className={styles.chatBody}>
+			<header className={styles.chatHeader}>
+				<h1 className={styles.chatHeaderTitle}>
 					{conversation.agent?.name ?? conversation.title ?? "Agent builder"}
 				</h1>
-				<span className="text-muted-foreground text-xs">Read-only</span>
+				<span className={styles.chatHeaderMeta}>Read-only</span>
 			</header>
 
 			<MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
@@ -756,23 +759,35 @@ function ChatHeader({
 	creatingAgent: boolean;
 }) {
 	const workspaceUrl = useWorkspaceUrl();
+	const chatSidebar = useChatSidebar();
 	const title =
 		(creatingAgent ? conversation.agent?.name : null) ??
 		conversation.title ??
 		"Agent chat";
 
 	return (
-		<header className="flex h-12 shrink-0 items-center gap-2 border-b px-4 sm:gap-2.5 sm:pr-4 sm:pl-5">
+		<header className={styles.chatHeader}>
+			{chatSidebar && !chatSidebar.open ? (
+				<button
+					type="button"
+					className={styles.expandChat}
+					aria-label="Open chat sidebar"
+					aria-expanded={false}
+					onClick={chatSidebar.expand}
+				>
+					<Icon icon={SidePanelOpen} />
+				</button>
+			) : null}
 			<div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-				<h1 className="truncate font-medium text-sm">{title}</h1>
-				<span className="hidden shrink-0 text-muted-foreground text-xs sm:inline">
+				<h1 className={styles.chatHeaderTitle}>{title}</h1>
+				<span className={`${styles.chatHeaderMeta} hidden sm:inline`}>
 					Private
 				</span>
 				{working ? (
-					<span className="flex shrink-0 items-center gap-2 text-muted-foreground text-xs">
+					<span className={styles.working}>
 						<Icon
 							icon={Renew}
-							className="size-3.5 animate-spin text-ring"
+							className="size-3.5 animate-spin"
 							motion="none"
 						/>
 						<span className="sr-only">Working in background</span>

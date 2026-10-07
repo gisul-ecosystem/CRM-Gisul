@@ -3,12 +3,15 @@ import {
 	type Db,
 	type FactEvidence,
 	FactStatus,
+	type LeadSource,
+	type LeadStatus,
 	type Prisma,
 	Prisma as PrismaNamespace,
 	type RecordSource,
 } from "@crm/db";
 import type { FieldDefinitionWithOptions } from "@crm/db/fields";
 import {
+	BadRequestException,
 	ConflictException,
 	Injectable,
 	Logger,
@@ -39,10 +42,20 @@ import {
 	resolveOrderBy,
 	splitSentinel,
 } from "../trpc/list-input";
+import {
+	contactCsvTemplate,
+	parseContactCsv,
+	parseLeadSource,
+	parseLeadStatus,
+	serializeContactCsv,
+} from "./contacts-csv";
+import { CONTACT_IO } from "./contacts-io-config";
 import type {
 	ContactBulkCompanyInput,
 	ContactBulkOwnerInput,
 	ContactCreateInput,
+	ContactExportInput,
+	ContactImportInput,
 	ContactListInput,
 	ContactRow,
 	ContactUpdateInput,
@@ -66,7 +79,15 @@ const COMPANY_SELECT = {
 	logoUrl: true,
 } as const;
 
+const PRODUCT_SELECT = {
+	id: true,
+	name: true,
+	color: true,
+} as const;
+
 const NO_COMPANY = "none";
+const NO_PRODUCT = "none";
+const NO_LEAD_SOURCE = "none";
 
 type FactColumns = Record<string, string | undefined>;
 
@@ -86,6 +107,9 @@ const SORTABLE: OrderByColumns<Prisma.ContactOrderByWithRelationInput[]> = {
 	company: (dir) => [{ company: { name: dir } }, { lastName: "asc" }],
 	createdAt: (dir) => [{ createdAt: dir }],
 	owner: (dir) => [{ owner: { name: dir } }, { lastName: "asc" }],
+	product: (dir) => [{ product: { name: dir } }, { lastName: "asc" }],
+	leadStatus: (dir) => [{ leadStatus: dir }, { lastName: "asc" }],
+	nextFollowUp: (dir) => [{ nextFollowUpAt: { sort: dir, nulls: "last" } }],
 	lastActivity: (dir) => [{ lastActivityAt: { sort: dir, nulls: "last" } }],
 	archivedAt: (dir) => [{ archivedAt: { sort: dir, nulls: "last" } }],
 };
@@ -122,6 +146,10 @@ export class ContactsService {
 					title: true,
 					imageUrl: true,
 					source: true,
+					leadStatus: true,
+					leadSource: true,
+					nextFollowUpAt: true,
+					product: { select: PRODUCT_SELECT },
 					company: { select: COMPANY_SELECT },
 					owner: { select: OWNER_SELECT },
 					lastActivityAt: true,
@@ -141,6 +169,7 @@ export class ContactsService {
 		return {
 			rows: rows.map((row) => ({
 				...row,
+				nextFollowUpAt: row.nextFollowUpAt?.toISOString() ?? null,
 				lastActivityAt: row.lastActivityAt?.toISOString() ?? null,
 				createdAt: row.createdAt.toISOString(),
 				archivedAt: row.archivedAt?.toISOString() ?? null,
@@ -148,6 +177,175 @@ export class ContactsService {
 			})),
 			total,
 			facetCounts,
+		};
+	}
+
+	async exportCsv(input: ContactExportInput) {
+		const filterableFields = await this.fields.filterableFieldsFor("CONTACT");
+		const where = this.buildWhere(input, filterableFields);
+
+		const total = await this.db.contact.count({ where });
+		if (total > CONTACT_IO.export.maxRows) {
+			throw new BadRequestException(
+				`Export is capped at ${CONTACT_IO.export.maxRows} leads. Narrow the filters first.`,
+			);
+		}
+
+		const rows = await this.db.contact.findMany({
+			where,
+			orderBy: resolveOrderBy(input, SORTABLE, [{ createdAt: "desc" }]),
+			take: CONTACT_IO.export.maxRows,
+			select: {
+				firstName: true,
+				lastName: true,
+				email: true,
+				phone: true,
+				title: true,
+				leadStatus: true,
+				leadSource: true,
+				nextFollowUpAt: true,
+				company: { select: { name: true } },
+				owner: { select: { email: true } },
+				product: { select: { name: true } },
+			},
+		});
+
+		const csv = serializeContactCsv(
+			rows.map((row) => ({
+				firstName: row.firstName,
+				lastName: row.lastName ?? "",
+				email: row.email ?? "",
+				phone: row.phone ?? "",
+				title: row.title ?? "",
+				company: row.company?.name ?? "",
+				ownerEmail: row.owner?.email ?? "",
+				product: row.product?.name ?? "",
+				leadStatus: row.leadStatus,
+				leadSource: row.leadSource ?? "",
+				nextFollowUpAt: row.nextFollowUpAt
+					? row.nextFollowUpAt.toISOString().slice(0, 10)
+					: "",
+			})),
+		);
+
+		const day = new Date().toISOString().slice(0, 10);
+		return {
+			csv,
+			filename: `leads-${day}.csv`,
+			rowCount: rows.length,
+		};
+	}
+
+	importTemplate() {
+		return {
+			csv: contactCsvTemplate(),
+			filename: "leads-import-template.csv",
+		};
+	}
+
+	async importCsv(input: ContactImportInput) {
+		const parsed = parseContactCsv(input.csv);
+		let created = 0;
+		let updated = 0;
+		const errors: { line: number; message: string }[] = [];
+
+		for (const [index, row] of parsed.entries()) {
+			const line = index + 2;
+			try {
+				const firstName = row.firstName.trim();
+				if (!firstName) {
+					throw new BadRequestException("firstName is required.");
+				}
+
+				const leadStatus = parseLeadStatus(row.leadStatus);
+				if (row.leadStatus.trim() && leadStatus === undefined) {
+					throw new BadRequestException(
+						`Unknown leadStatus "${row.leadStatus}".`,
+					);
+				}
+
+				const leadSource = parseLeadSource(row.leadSource);
+				if (row.leadSource.trim() && leadSource === undefined) {
+					throw new BadRequestException(
+						`Unknown leadSource "${row.leadSource}".`,
+					);
+				}
+
+				const email = normalizeEmail(row.email);
+				const companyId = row.company.trim()
+					? await this.resolveCompanyId(row.company)
+					: undefined;
+				const ownerId = row.ownerEmail.trim()
+					? await this.resolveOwnerId(row.ownerEmail)
+					: undefined;
+				const productId = row.product.trim()
+					? await this.resolveProductId(row.product)
+					: undefined;
+
+				const existing = email
+					? await this.db.contact.findFirst({
+							where: {
+								email: { equals: email, mode: "insensitive" },
+								archivedAt: null,
+							},
+							select: { id: true },
+						})
+					: null;
+
+				if (existing) {
+					await this.update(existing.id, {
+						firstName,
+						...(row.lastName.trim() ? { lastName: row.lastName } : {}),
+						...(email ? { email } : {}),
+						...(row.phone.trim() ? { phone: row.phone } : {}),
+						...(row.title.trim() ? { title: row.title } : {}),
+						...(companyId !== undefined ? { companyId } : {}),
+						...(ownerId !== undefined ? { ownerId } : {}),
+						...(productId !== undefined ? { productId } : {}),
+						...(leadStatus !== undefined ? { leadStatus } : {}),
+						...(leadSource !== undefined ? { leadSource } : {}),
+						...(row.nextFollowUpAt.trim()
+							? { nextFollowUpAt: row.nextFollowUpAt }
+							: {}),
+					});
+					updated += 1;
+					continue;
+				}
+
+				await this.create({
+					firstName,
+					lastName: row.lastName || undefined,
+					email: email ?? undefined,
+					phone: row.phone || undefined,
+					title: row.title || undefined,
+					companyId: companyId ?? null,
+					ownerId: ownerId ?? null,
+					productId: productId ?? null,
+					leadStatus,
+					leadSource,
+					nextFollowUpAt: row.nextFollowUpAt || null,
+				});
+				created += 1;
+			} catch (error) {
+				errors.push({
+					line,
+					message: error instanceof Error ? error.message : "Import failed.",
+				});
+			}
+		}
+
+		this.logger.log({
+			message: "Contacts imported",
+			created,
+			updated,
+			failed: errors.length,
+		});
+
+		return {
+			created,
+			updated,
+			failed: errors.length,
+			errors: errors.slice(0, 50),
 		};
 	}
 
@@ -165,6 +363,9 @@ export class ContactsService {
 				twitterUrl: true,
 				githubUrl: true,
 				imageUrl: true,
+				leadStatus: true,
+				leadSource: true,
+				nextFollowUpAt: true,
 				enrichmentStatus: true,
 				enrichmentError: true,
 				createdAt: true,
@@ -194,6 +395,7 @@ export class ContactsService {
 						observedAt: true,
 					},
 				},
+				product: { select: PRODUCT_SELECT },
 				company: {
 					select: { ...COMPANY_SELECT, industry: true, primaryContactId: true },
 				},
@@ -226,12 +428,21 @@ export class ContactsService {
 			contact.company?.id ?? null,
 		);
 
-		const { deals, createdAt, archivedAt, brief, facts, company, ...rest } =
-			contact;
+		const {
+			deals,
+			createdAt,
+			archivedAt,
+			brief,
+			facts,
+			company,
+			nextFollowUpAt,
+			...rest
+		} = contact;
 
 		return {
 			...rest,
 			company,
+			nextFollowUpAt: nextFollowUpAt?.toISOString() ?? null,
 			fields: await this.fields.valuesFor("CONTACT", id),
 			queued: await this.queue.isQueued({ contactId: id }),
 			createdAt: createdAt.toISOString(),
@@ -298,6 +509,10 @@ export class ContactsService {
 					title: blankToNull(input.title ?? ""),
 					companyId,
 					ownerId: input.ownerId ?? null,
+					productId: input.productId ?? null,
+					leadStatus: input.leadStatus,
+					leadSource: input.leadSource ?? null,
+					nextFollowUpAt: parseOptionalDate(input.nextFollowUpAt),
 				},
 				select: {
 					id: true,
@@ -496,6 +711,16 @@ export class ContactsService {
 			data.owner = input.ownerId
 				? { connect: { id: input.ownerId } }
 				: { disconnect: true };
+		}
+		if (input.productId !== undefined) {
+			data.product = input.productId
+				? { connect: { id: input.productId } }
+				: { disconnect: true };
+		}
+		if (input.leadStatus !== undefined) data.leadStatus = input.leadStatus;
+		if (input.leadSource !== undefined) data.leadSource = input.leadSource;
+		if (input.nextFollowUpAt !== undefined) {
+			data.nextFollowUpAt = parseOptionalDate(input.nextFollowUpAt);
 		}
 
 		try {
@@ -779,6 +1004,51 @@ export class ContactsService {
 		return { contactId: fact.contactId, field: fact.field, applied: accepted };
 	}
 
+	private async resolveCompanyId(name: string): Promise<string | null> {
+		const trimmed = name.trim();
+		if (!trimmed) return null;
+		const company = await this.db.company.findFirst({
+			where: {
+				name: { equals: trimmed, mode: "insensitive" },
+				archivedAt: null,
+			},
+			select: { id: true },
+		});
+		if (!company) {
+			throw new BadRequestException(`No company named "${trimmed}".`);
+		}
+		return company.id;
+	}
+
+	private async resolveOwnerId(email: string): Promise<string | null> {
+		const normalized = normalizeEmail(email);
+		if (!normalized) return null;
+		const user = await this.db.user.findFirst({
+			where: { email: { equals: normalized, mode: "insensitive" } },
+			select: { id: true },
+		});
+		if (!user) {
+			throw new BadRequestException(`No owner with email ${normalized}.`);
+		}
+		return user.id;
+	}
+
+	private async resolveProductId(name: string): Promise<string | null> {
+		const trimmed = name.trim();
+		if (!trimmed) return null;
+		const product = await this.db.product.findFirst({
+			where: {
+				name: { equals: trimmed, mode: "insensitive" },
+				archivedAt: null,
+			},
+			select: { id: true },
+		});
+		if (!product) {
+			throw new BadRequestException(`No product named "${trimmed}".`);
+		}
+		return product.id;
+	}
+
 	private searchFilter(q: string): Prisma.ContactWhereInput {
 		const term = q.trim();
 		if (!term) return {};
@@ -820,6 +1090,15 @@ export class ContactsService {
 		const company = this.companyFilter(input.company);
 		if (company) and.push(company);
 
+		const product = this.productFilter(input.product);
+		if (product) and.push(product);
+
+		if (input.leadStatus.length > 0) {
+			and.push({ leadStatus: { in: input.leadStatus as LeadStatus[] } });
+		}
+		if (input.leadSource.length > 0) {
+			and.push({ leadSource: { in: input.leadSource as LeadSource[] } });
+		}
 		if (input.source.length > 0) {
 			and.push({ source: { in: input.source as RecordSource[] } });
 		}
@@ -835,6 +1114,17 @@ export class ContactsService {
 		return { AND: and };
 	}
 
+	private productFilter(
+		values: string[],
+	): Prisma.ContactWhereInput | undefined {
+		if (values.length === 0) return undefined;
+
+		const { ids, includesSentinel } = splitSentinel(values, NO_PRODUCT);
+		if (includesSentinel && ids.length === 0) return { productId: null };
+		if (!includesSentinel) return { productId: { in: ids } };
+		return { OR: [{ productId: { in: ids } }, { productId: null }] };
+	}
+
 	private async facetCounts(
 		input: ContactListInput,
 		filterableFields: FieldDefinitionWithOptions[],
@@ -846,6 +1136,9 @@ export class ContactsService {
 		const [
 			owners,
 			companies,
+			products,
+			leadStatuses,
+			leadSources,
 			sources,
 			titles,
 			seniorities,
@@ -860,6 +1153,21 @@ export class ContactsService {
 			}),
 			this.db.contact.groupBy({
 				by: ["companyId"],
+				where,
+				_count: { _all: true },
+			}),
+			this.db.contact.groupBy({
+				by: ["productId"],
+				where,
+				_count: { _all: true },
+			}),
+			this.db.contact.groupBy({
+				by: ["leadStatus"],
+				where,
+				_count: { _all: true },
+			}),
+			this.db.contact.groupBy({
+				by: ["leadSource"],
 				where,
 				_count: { _all: true },
 			}),
@@ -892,6 +1200,9 @@ export class ContactsService {
 		return {
 			owner: countsByKey(owners, "ownerId", FACET_UNASSIGNED),
 			company: countsByKey(companies, "companyId", NO_COMPANY),
+			product: countsByKey(products, "productId", NO_PRODUCT),
+			leadStatus: countsByKey(leadStatuses, "leadStatus"),
+			leadSource: countsByKey(leadSources, "leadSource", NO_LEAD_SOURCE),
 			source: countsByKey(sources, "source"),
 			title: countsByKey(titles, "title"),
 			seniority: countsByKey(seniorities, "seniority"),
@@ -926,4 +1237,33 @@ function nameOf(contact: {
 	lastName: string | null;
 }): string {
 	return [contact.firstName, contact.lastName].filter(Boolean).join(" ");
+}
+
+function parseOptionalDate(value: string | null | undefined): Date | null {
+	if (value === undefined || value === null || value.trim() === "") return null;
+	const trimmed = value.trim();
+
+	const isoDay = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+	if (isoDay) {
+		const date = new Date(
+			Number(isoDay[1]),
+			Number(isoDay[2]) - 1,
+			Number(isoDay[3]),
+		);
+		return Number.isNaN(date.getTime()) ? null : date;
+	}
+
+	const dmy = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(trimmed);
+	if (dmy) {
+		const date = new Date(
+			Number(dmy[3]),
+			Number(dmy[2]) - 1,
+			Number(dmy[1]),
+		);
+		return Number.isNaN(date.getTime()) ? null : date;
+	}
+
+	const date = new Date(trimmed);
+	if (Number.isNaN(date.getTime())) return null;
+	return date;
 }

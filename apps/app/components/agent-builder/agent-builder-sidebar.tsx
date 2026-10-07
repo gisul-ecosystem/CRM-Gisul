@@ -5,7 +5,7 @@ import Bot from "@carbon/icons-react/es/Bot";
 import CheckmarkFilled from "@carbon/icons-react/es/CheckmarkFilled";
 import CircleFilled from "@carbon/icons-react/es/CircleFilled";
 import Renew from "@carbon/icons-react/es/Renew";
-import { Button } from "@crm/ui/components/button";
+import SidePanelClose from "@carbon/icons-react/es/SidePanelClose";
 import { Icon } from "@crm/ui/components/icon";
 import { cn } from "@crm/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +16,8 @@ import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { useHydrated } from "@/lib/use-hydrated";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
+import styles from "./chat-design.module.css";
+import { useChatSidebar } from "./chat-sidebar-context";
 import { DeleteChatAction } from "./delete-chat-action";
 
 type Conversation = RouterOutputs["conversations"]["builderList"][number];
@@ -74,28 +76,39 @@ export function AgentBuilderSidebar({
 		showData ? groupNow : 0,
 	);
 	const teamAgents = showData ? (agents.data ?? []) : [];
+	const chatSidebar = useChatSidebar();
 
 	return (
-		<aside className={cn("min-h-0 min-w-0 flex-col p-4 font-sans", className)}>
-			<div className="flex h-7 shrink-0 items-center justify-between pl-2">
-				<span className="font-medium text-xs">Chats</span>
-				<Button asChild variant="ghost" size="icon-xs">
+		<aside className={cn(styles.sidebar, className)}>
+			<div className={styles.sidebarHead}>
+				<span className={styles.sidebarTitle}>Chats</span>
+				<div className={styles.sidebarActions}>
 					<Link
 						href={workspaceUrl("/chat")}
 						aria-label="New agent chat"
 						onClick={onNavigate}
+						className={styles.newChat}
 					>
 						<Icon icon={Add} />
 					</Link>
-				</Button>
+					{chatSidebar ? (
+						<button
+							type="button"
+							className={styles.collapseChat}
+							aria-label="Close chat sidebar"
+							aria-expanded={chatSidebar.open}
+							onClick={chatSidebar.collapse}
+						>
+							<Icon icon={SidePanelClose} />
+						</button>
+					) : null}
+				</div>
 			</div>
 
-			<nav aria-label="Agent chats" className="min-h-0 flex-1 overflow-y-auto">
+			<nav aria-label="Agent chats" className={styles.nav}>
 				{groups.map((group) => (
 					<div key={group.label}>
-						<div className="flex h-8 items-end pb-1 pl-2 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.08em]">
-							{group.label}
-						</div>
+						<div className={styles.groupLabel}>{group.label}</div>
 						{group.items.map((conversation) => {
 							const href = workspaceUrl(`/chat/${conversation.id}`);
 							const active = pathname === href;
@@ -103,7 +116,7 @@ export function AgentBuilderSidebar({
 							return (
 								<div
 									key={conversation.id}
-									className="group relative flex h-7 min-w-0 items-center"
+									className={`group ${styles.chatLink}`}
 								>
 									<Link
 										href={href}
@@ -115,15 +128,15 @@ export function AgentBuilderSidebar({
 											onNavigate?.();
 										}}
 										className={cn(
-											"flex h-7 min-w-0 flex-1 items-center gap-3 rounded-sm pr-8 pl-2 text-xs outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/60",
-											active && "bg-muted font-medium",
+											styles.chatAnchor,
+											active && styles.chatActive,
 											!active &&
 												conversation.state === "idle" &&
-												"text-muted-foreground",
+												styles.chatIdle,
 										)}
 									>
 										<ConversationState state={conversation.state} />
-										<span className="min-w-0 flex-1 truncate">{title}</span>
+										<span className={styles.chatTitle}>{title}</span>
 									</Link>
 									<DeleteChatAction
 										conversationId={conversation.id}
@@ -140,9 +153,7 @@ export function AgentBuilderSidebar({
 				))}
 
 				{groups.length === 0 ? (
-					<p className="px-2 py-3 text-muted-foreground text-xs">
-						No chats in the last 7 days.
-					</p>
+					<p className={styles.emptyChats}>No chats in the last 7 days.</p>
 				) : null}
 
 				<TeamAgents
@@ -167,15 +178,15 @@ function TeamAgents({
 	const workspaceUrl = useWorkspaceUrl();
 
 	return (
-		<div className="mt-3 border-t pt-1">
+		<div className={styles.teamBlock}>
 			<Link
 				href={workspaceUrl("/agents")}
 				transitionTypes={["nav-lateral"]}
 				onClick={onNavigate}
-				className="flex h-8 items-end gap-2 rounded-sm px-2 pb-1 font-medium text-[11px] text-muted-foreground uppercase tracking-[0.08em] outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
+				className={styles.teamHead}
 			>
 				<span className="min-w-0 flex-1">Team agents</span>
-				<span className="shrink-0 font-mono">{agents.length}</span>
+				<span className={styles.teamCount}>{agents.length}</span>
 			</Link>
 			{agents.map((agent) => {
 				const href = workspaceUrl(`/agents/${agent.id}`);
@@ -186,10 +197,7 @@ function TeamAgents({
 						href={href}
 						aria-current={active ? "page" : undefined}
 						onClick={onNavigate}
-						className={cn(
-							"flex h-7 items-center gap-3 rounded-sm px-2 text-xs outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/60",
-							active ? "bg-muted font-medium" : "text-muted-foreground",
-						)}
+						className={cn(styles.agentLink, active && styles.agentActive)}
 					>
 						<span className="flex size-5 shrink-0 items-center justify-center">
 							<Icon icon={Bot} className="size-3.5" />
@@ -205,7 +213,7 @@ function TeamAgents({
 function ConversationState({ state }: { state: Conversation["state"] }) {
 	if (state === "working") {
 		return (
-			<span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground">
+			<span className={styles.stateIcon}>
 				<Icon icon={Renew} className="size-3.5 animate-spin" motion="none" />
 			</span>
 		);
@@ -213,7 +221,7 @@ function ConversationState({ state }: { state: Conversation["state"] }) {
 
 	if (state === "unread") {
 		return (
-			<span className="flex size-5 shrink-0 items-center justify-center text-ring">
+			<span className={`${styles.stateIcon} ${styles.stateActive}`}>
 				<Icon icon={CircleFilled} className="size-3.5" motion="none" />
 			</span>
 		);
@@ -221,7 +229,7 @@ function ConversationState({ state }: { state: Conversation["state"] }) {
 
 	if (state === "deployed") {
 		return (
-			<span className="flex size-5 shrink-0 items-center justify-center text-ring">
+			<span className={`${styles.stateIcon} ${styles.stateActive}`}>
 				<Icon icon={CheckmarkFilled} className="size-3.5" motion="none" />
 			</span>
 		);

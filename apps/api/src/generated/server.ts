@@ -17,15 +17,16 @@ import { timelineInput, timelineOutput, timelineCountsInput, timelineCountsOutpu
 import { agentListOutput, agentReviseInput, agentReviseOutput, agentIdInput, agentFilesOutput, agentSaveFileInput, agentSaveFileOutput, agentByIdOutput, agentHistoryInput, agentHistoryOutput, agentActivityOutput, agentUpdateInput, agentUpdateOutput, agentDeployInput, agentDeployOutput, agentPauseOutput, agentResumeOutput, agentArchiveOutput, agentRestoreOutput, agentRemoveOutput, agentRunNowInput, agentRunNowOutput, agentRetryRunInput, agentRetryRunOutput, agentCancelRunInput, agentCancelRunOutput } from "../agent/agents.contracts";
 import { apiKeyListInput, apiKeyListOutput, createApiKeyInput, createApiKeyOutput, revokeApiKeyInput, revokeApiKeyOutput } from "../api-keys/api-keys.contracts";
 import { companyListInput, companyListOutput, companyIdInput, companyDetailOutput, companyOptionsInput, companyOptionOutput, companyCreateInput, companySummaryOutput, companyUpdateArgs, companyArchiveResultOutput, companyBulkOwnerInput, companyBulkResultOutput, companyBulkInput, companyEnrichOutput, companyResearchOutput, setPrimaryContactInput, companySetPrimaryContactOutput } from "../companies/companies.contracts";
-import { contactListInput, contactListOutput, contactIdInput, contactByIdOutput, contactCreateInput, contactBasicOutput, contactUpdateArgs, contactNameOutput, contactEnrichOutput, contactBulkOwnerInput, bulkResultOutput, contactBulkCompanyInput, contactBulkInput, factDecisionInput, decideFactOutput } from "../contacts/contacts.contracts";
+import { contactListInput, contactListOutput, contactExportInput, contactExportOutput, contactImportTemplateOutput, contactImportInput, contactImportOutput, contactIdInput, contactByIdOutput, contactCreateInput, contactBasicOutput, contactUpdateArgs, contactNameOutput, contactEnrichOutput, contactBulkOwnerInput, bulkResultOutput, contactBulkCompanyInput, contactBulkInput, factDecisionInput, decideFactOutput } from "../contacts/contacts.contracts";
 import { conversationListInput, conversationListOutput, builderListOutput, builderResourceSearchInput, builderResourcesOutput, conversationIdInput, builderConversationDetailOutput, conversationEventsInput, conversationEventsOutput, conversationSaveInput, conversationIdOutput, builderConversationCreateInput, builderConversationSubmitInput, builderQuestionResponseInput, builderResponseRatingInput, builderResponseRatingOutput, conversationShareStatusOutput, conversationShareTokenOutput, sharedConversationInput, sharedConversationOutput } from "../conversations/conversations.contracts";
 import { currencySettingsOutput, setReportingCurrencyInput, setManualRateInput, removeManualRateInput } from "../currency/currency.contracts";
-import { dashboardSummaryInput, dashboardSummaryOutput } from "../dashboard/dashboard.contracts";
-import { dealListInput, dealListOutput, dealIdInput, dealDetailOutput, dealCreateInput, dealCreateOutput, dealUpdateArgs, dealMutateOutput, setStageInput, dealSetStageOutput, dealContactsInput, dealContactOptionsOutput, dealAttachContactInput, dealContactLinkOutput, dealDetachContactInput, dealContactRoleInput, dealContactRoleOutput, dealBulkOwnerInput, dealBulkResultOutput, dealBulkStageInput, dealBulkInput } from "../deals/deals.contracts";
+import { dashboardSummaryInput, dashboardSummaryOutput, dashboardReportInput, dashboardReportOutput } from "../dashboard/dashboard.contracts";
+import { dealListInput, dealListOutput, dealExportInput, dealExportOutput, dealImportTemplateOutput, dealImportInput, dealImportOutput, dealStageCatalogOutput, dealTrendOutput, dealPipelineByProductOutput, dealIdInput, dealDetailOutput, dealCreateInput, dealCreateOutput, dealUpdateArgs, dealMutateOutput, setStageInput, dealSetStageOutput, dealContactsInput, dealContactOptionsOutput, dealAttachContactInput, dealContactLinkOutput, dealDetachContactInput, dealContactRoleInput, dealContactRoleOutput, dealBulkOwnerInput, dealBulkResultOutput, dealBulkStageInput, dealBulkInput } from "../deals/deals.contracts";
 import { enrichmentQueueInput } from "@crm/validation/enrichment-queue";
 import { fieldListInput, fieldListOutput, fieldByKeyInput, serializedFieldOutput, fieldEntityInput, fieldFiltersOutput, fieldIdInput, fieldCoverageOutput, fieldCreateInput, fieldUpdateArgs, fieldReorderInput, fieldReorderOutput, fieldDeleteOutput, fieldBackfillOutput } from "../fields/fields.contracts";
 import { googleConnectionStatusOutput, setAutoCreateInput, suppressDomainInput, suppressDomainOutput, threadInput, emailThreadOutput, calendarEventInput, calendarEventOutput } from "../google/google.contracts";
 import { purgeSyncedDataOutput, revokeAccessOutput, microsoftConnectionStatusOutput, setOutlookAutoCreateInput } from "../microsoft/microsoft.contracts";
+import { productMetaOutput, productListInput, productListOutput, productOptionsOutput, productDisplayOutput, productDisplayInput, productCreateInput, productRowOutput, productUpdateInput, productIdInput } from "../products/products.contracts";
 import { savedViewListInput, savedViewListOutput, savedViewCreateInput, savedViewOutput, savedViewUpdateArgs, savedViewIdInput, savedViewDeleteOutput } from "../saved-views/saved-views.contracts";
 import { agentModelOutput, modelCatalogOutput, setAgentModelInput, researchKeyOutput, setResearchKeyInput, archiveRetentionOutput, setArchiveRetentionDaysInput } from "../settings/settings.contracts";
 import { slackStatusOutput, slackMatchesOutput, slackChannelsInput, slackChannelsOutput, slackJoinChannelInput, slackJoinChannelOutput, slackRefreshPeopleOutput, slackCreateChannelInput, slackCreateChannelOutput, slackDisconnectOutput } from "../slack/slack.contracts";
@@ -211,6 +212,17 @@ const appRouter = t.router({
       .input(contactListInput)
       .output(contactListOutput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    exportCsv: publicProcedure
+      .input(contactExportInput)
+      .output(contactExportOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    importTemplate: publicProcedure
+      .output(contactImportTemplateOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    importCsv: publicProcedure
+      .input(contactImportInput)
+      .output(contactImportOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     byId: publicProcedure
       .input(contactIdInput)
       .output(contactByIdOutput)
@@ -357,12 +369,36 @@ const appRouter = t.router({
     summary: publicProcedure
       .input(dashboardSummaryInput)
       .output(dashboardSummaryOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    report: publicProcedure
+      .input(dashboardReportInput)
+      .output(dashboardReportOutput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
     }),
   deals: t.router({
     list: publicProcedure
       .input(dealListInput)
       .output(dealListOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    exportCsv: publicProcedure
+      .input(dealExportInput)
+      .output(dealExportOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    importTemplate: publicProcedure
+      .output(dealImportTemplateOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    importCsv: publicProcedure
+      .input(dealImportInput)
+      .output(dealImportOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    stages: publicProcedure
+      .output(dealStageCatalogOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    trend: publicProcedure
+      .output(dealTrendOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    pipelineByProduct: publicProcedure
+      .output(dealPipelineByProductOutput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     byId: publicProcedure
       .input(dealIdInput)
@@ -574,6 +610,37 @@ const appRouter = t.router({
     setAutoCreate: publicProcedure
       .input(setOutlookAutoCreateInput)
       .output(microsoftConnectionStatusOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
+    }),
+  products: t.router({
+    meta: publicProcedure
+      .output(productMetaOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    list: publicProcedure
+      .input(productListInput)
+      .output(productListOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    options: publicProcedure
+      .output(productOptionsOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    display: publicProcedure
+      .output(productDisplayOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    updateDisplay: publicProcedure
+      .input(productDisplayInput)
+      .output(productDisplayOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    create: publicProcedure
+      .input(productCreateInput)
+      .output(productRowOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    update: publicProcedure
+      .input(productUpdateInput)
+      .output(productRowOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    archive: publicProcedure
+      .input(productIdInput)
+      .output(productIdInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
     }),
   savedViews: t.router({

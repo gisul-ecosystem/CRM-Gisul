@@ -1,41 +1,30 @@
+import {
+	DEAL_STAGE_CATALOG,
+	dealStageLabel as catalogLabel,
+	isClosedStage as catalogIsClosed,
+	LOSING_DEAL_STAGES,
+	OPEN_DEAL_STAGES,
+} from "@crm/db/deal-stage";
 import { DealStage } from "@crm/db/enums";
 import type { StatusTone } from "@crm/ui/components/status-indicator";
 
-const ORDER = [
-	DealStage.DEMO_BOOKED,
-	DealStage.QUALIFIED_TO_BUY,
-	DealStage.DECISION_MAKER_BOUGHT_IN,
-	DealStage.CONTRACT_SENT,
-	DealStage.CLOSED_WON,
-	DealStage.CLOSED_LOST,
-	DealStage.UNQUALIFIED_TO_BUY,
-] as const;
-
-type DealStagePresentation = Record<
-	DealStage,
-	{ label: string; tone: StatusTone }
->;
-
-const PRESENTATION: DealStagePresentation = {
-	DEMO_BOOKED: { label: "Demo booked", tone: "neutral" },
-	QUALIFIED_TO_BUY: { label: "Qualified to buy", tone: "info" },
-	DECISION_MAKER_BOUGHT_IN: { label: "Decision maker in", tone: "info" },
-	CONTRACT_SENT: { label: "Contract sent", tone: "warning" },
-	CLOSED_WON: { label: "Closed won", tone: "success" },
-	CLOSED_LOST: { label: "Closed lost", tone: "error" },
-	UNQUALIFIED_TO_BUY: { label: "Unqualified", tone: "neutral" },
+const TONE: Record<DealStage, StatusTone> = {
+	DEMO_BOOKED: "neutral",
+	QUALIFIED_TO_BUY: "info",
+	DECISION_MAKER_BOUGHT_IN: "info",
+	CONTRACT_SENT: "warning",
+	CLOSED_WON: "success",
+	CLOSED_LOST: "error",
+	UNQUALIFIED_TO_BUY: "neutral",
 };
 
-export const OPEN_STAGES = ORDER.slice(0, 4) as readonly DealStage[];
+export const OPEN_STAGES = OPEN_DEAL_STAGES;
 
-export const LOSING_STAGES: readonly DealStage[] = [
-	DealStage.CLOSED_LOST,
-	DealStage.UNQUALIFIED_TO_BUY,
-];
+export const LOSING_STAGES = LOSING_DEAL_STAGES;
 
-export const DEAL_STAGE_OPTIONS = ORDER.map((value) => ({
-	value,
-	label: PRESENTATION[value].label,
+export const DEAL_STAGE_OPTIONS = DEAL_STAGE_CATALOG.map((entry) => ({
+	value: entry.stage,
+	label: entry.label,
 }));
 
 const OPEN_STAGE_COLORS = [
@@ -46,17 +35,21 @@ const OPEN_STAGE_COLORS = [
 ] as const;
 
 export function isClosedStage(stage: DealStage): boolean {
-	return !OPEN_STAGES.includes(stage);
+	return catalogIsClosed(stage);
 }
 
 export function dealStageColor(stage: DealStage): string {
-	return OPEN_STAGE_COLORS[OPEN_STAGES.indexOf(stage)] ?? "var(--chart-5)";
+	const index = OPEN_STAGES.indexOf(stage);
+	return OPEN_STAGE_COLORS[index] ?? "var(--chart-5)";
 }
 
 export function dealStageLabel(stage: DealStage): string {
-	return PRESENTATION[stage].label;
+	return catalogLabel(stage);
 }
 
 export function dealStagePresentation(stage: DealStage) {
-	return PRESENTATION[stage];
+	return {
+		label: catalogLabel(stage),
+		tone: TONE[stage],
+	};
 }

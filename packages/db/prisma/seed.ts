@@ -1004,7 +1004,7 @@ async function main() {
 	console.log(
 		`Seeded ${companies.length} companies, ${contacts.length} contacts, ` +
 			`${deals.length} deals, ${activities} activities, ${rates} exchange rates, ` +
-			"7 company fields.",
+			`7 company fields.`,
 	);
 }
 
