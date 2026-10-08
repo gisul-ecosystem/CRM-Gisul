@@ -94,7 +94,7 @@ export function dateKey(d: Date) {
 }
 
 export function parseDateKey(k: string) {
-	const [y, m, d] = k.split("-").map(Number);
+	const [y = 2026, m = 1, d = 1] = k.split("-").map(Number);
 	return new Date(y, m - 1, d);
 }
 
@@ -159,15 +159,17 @@ export function buildDemoActivities(): ActivityItem[] {
 
 	function gen(date: Date, count: number, done: number) {
 		for (let i = 0; i < count; i++) {
-			const t = CYC[i % CYC.length];
-			const [person, company] = PEOPLE[(i + date.getDate() + 3) % 4];
+			const t = CYC[i % CYC.length] ?? "meeting";
+			const personTuple = PEOPLE[(i + date.getDate() + 3) % PEOPLE.length];
+			const person = personTuple ? personTuple[0] : "Rahul Shah";
+			const company = personTuple ? personTuple[1] : "Acme Technologies";
 			acts.push({
 				id: uid++,
 				type: t,
 				title: `${ACTIVITY_TYPE_META[t].lead} ${person}`,
 				desc: ACTIVITY_TYPE_META[t].desc,
 				company,
-				owner: OWN_ROT[(i + date.getDate() + 3) % 4],
+				owner: OWN_ROT[(i + date.getDate() + 3) % OWN_ROT.length] ?? "Samira",
 				date: dateKey(date),
 				min: 630 + i * 40,
 				done: i < done,

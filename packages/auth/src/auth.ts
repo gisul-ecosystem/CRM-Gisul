@@ -52,6 +52,15 @@ if (env.google) {
 	socialProviders.google = google;
 }
 
+function nameFromEmail(email: string): string {
+	const local = email.split("@")[0] ?? email;
+	return local
+		.split(/[._-]+/)
+		.filter(Boolean)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+		.join(" ");
+}
+
 if (env.microsoft) {
 	socialProviders.microsoft = {
 		clientId: env.microsoft.clientId,
@@ -64,9 +73,18 @@ if (env.microsoft) {
 
 		disableProfilePhoto: true,
 
-		mapProfileToUser: (profile) => ({
-			email: profile.email ?? profile.preferred_username ?? profile.upn,
-		}),
+		mapProfileToUser: (profile) => {
+			const email =
+				profile.email ?? profile.preferred_username ?? profile.upn ?? "";
+			const name =
+				profile.name ??
+				profile.displayName ??
+				(email ? nameFromEmail(email) : "User");
+			return {
+				name,
+				email,
+			};
+		},
 	};
 }
 
@@ -286,6 +304,21 @@ export const auth = betterAuth({
 			create: {
 				before: async (session) => {
 					const workspaceId = await ensureWorkspaceMembership(session.userId);
+
+					const user = await db.user.findUnique({
+						where: { id: session.userId },
+						select: { id: true, email: true, name: true },
+					});
+
+					if (user && user.email) {
+						const expected = nameFromEmail(user.email);
+						if (expected && user.name !== expected) {
+							await db.user.update({
+								where: { id: user.id },
+								data: { name: expected },
+							});
+						}
+					}
 
 					return {
 						data: { ...session, activeOrganizationId: workspaceId ?? null },

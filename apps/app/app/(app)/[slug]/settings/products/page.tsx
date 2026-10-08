@@ -21,15 +21,6 @@ export const metadata: Metadata = {
 export default function ProductsSettingsPage() {
 	return (
 		<PageShell>
-			<PageShellHeader>
-				<PageShellHeading>
-					<PageShellTitle>Products</PageShellTitle>
-					<PageShellDescription>
-						Manage your products and services offered under Gisul CRM.
-					</PageShellDescription>
-				</PageShellHeading>
-			</PageShellHeader>
-
 			<PageShellContent>
 				<Suspense fallback={<PageShellLoading />}>
 					<Products />

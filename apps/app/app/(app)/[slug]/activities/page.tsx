@@ -7,6 +7,8 @@ import {
 	PageShellLoading,
 } from "@/components/page-shell";
 import { requireSession } from "@/lib/session";
+import { HydrateClient } from "@/lib/trpc/hydrate";
+import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { ActivitiesPageClient } from "./activities-page-client";
 import styles from "./activities-design.module.css";
 
@@ -42,6 +44,21 @@ export default function ActivitiesPage() {
 
 async function ActivitiesContent() {
 	await requireSession();
-	return <ActivitiesPageClient />;
+	const trpc = getServerTrpc();
+	const queryClient = getServerQueryClient();
+	try {
+		await queryClient.prefetchQuery(
+			trpc.activities.list.queryOptions({ limit: 200 }),
+		);
+	} catch {
+		// Fallback gracefully on cold boot
+	}
+
+	return (
+		<HydrateClient>
+			<ActivitiesPageClient />
+		</HydrateClient>
+	);
 }
+
 

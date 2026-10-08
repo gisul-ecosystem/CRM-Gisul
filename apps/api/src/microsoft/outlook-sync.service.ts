@@ -110,7 +110,7 @@ export class OutlookSyncService {
 		}
 
 		if (!row.cursor) {
-			return this.start(row, initializedAt);
+			return this.start(row, token.accessToken, mailbox, initializedAt);
 		}
 
 		return this.incremental(row, token.accessToken, mailbox, row.cursor);
@@ -118,19 +118,25 @@ export class OutlookSyncService {
 
 	private async start(
 		row: MailboxSync,
+		accessToken: string,
+		mailbox: string,
 		initializedAt: Date,
 	): Promise<OutlookSyncOutcome> {
+		// Look back 30 days on first run so recent emails appear in Activities immediately
+		const lookbackDate = new Date(initializedAt.getTime() - 30 * 24 * 60 * 60 * 1000);
+		const initialCursor = lookbackDate.toISOString();
+
 		await this.state.settle(row.id, {
-			cursor: initializedAt.toISOString(),
+			cursor: initialCursor,
 			status: GoogleSyncStatus.RUNNING,
 		});
 
 		this.logger.log({
-			message: "Outlook sync started — watching for new mail",
+			message: "Outlook sync started — fetching recent mail and watching for new mail",
 			userId: row.userId,
 		});
 
-		return { source: "outlook", userId: row.userId, status: "synced" };
+		return this.incremental(row, accessToken, mailbox, initialCursor);
 	}
 
 	private async incremental(
@@ -154,6 +160,7 @@ export class OutlookSyncService {
 		if (folders.outcome !== "ok") {
 			return this.handleFailure(row, folders.failure);
 		}
+		const excluded = folders.ids;
 
 		let page = await this.graph.listMessages(accessToken, {
 			after: new Date(from.getTime() - OVERLAP_MS),
@@ -216,7 +223,7 @@ export class OutlookSyncService {
 				if (stored) written += 1;
 			}
 
-			const nextLink = page.data["@odata.nextLink"];
+			const nextLink: string | undefined = page.data["@odata.nextLink"];
 			if (!nextLink || seen >= MAX_MESSAGES_PER_TICK) break;
 
 			page = await this.graph.nextPage(accessToken, nextLink);
@@ -224,6 +231,31 @@ export class OutlookSyncService {
 
 		if (page.outcome !== "ok") {
 			return this.handleFailure(row, page);
+		}
+
+		// Also check latest inbox messages directly to guarantee real-time arrival
+		try {
+			const inboxRes = await this.graph.listInboxMessages(accessToken, 50);
+			if (inboxRes.outcome === "ok" && inboxRes.data.value) {
+				for (const message of inboxRes.data.value) {
+					const parsed = this.parse(message);
+					if (!parsed) continue;
+
+					context ??= await this.threads.context();
+					const stored = await this.threads.store(
+						row,
+						{ mailbox, origin: "outlook" },
+						parsed,
+						context,
+					);
+					if (stored) written += 1;
+				}
+			}
+		} catch (error) {
+			this.logger.warn({
+				message: "Direct inbox query skipped",
+				error: error instanceof Error ? error.message : String(error),
+			});
 		}
 
 		await this.state.settle(row.id, {

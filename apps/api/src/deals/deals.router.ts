@@ -12,6 +12,7 @@ import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { restMeta } from "../trpc/openapi";
 import {
+	createPipelineStageInput,
 	dealAttachContactInput,
 	dealBulkInput,
 	dealBulkOwnerInput,
@@ -40,7 +41,12 @@ import {
 	dealStageCatalogOutput,
 	dealTrendOutput,
 	dealUpdateArgs,
+	pipelineOverviewOutput,
+	pipelineSettingsOutput,
+	pipelineStageItemOutput,
 	setStageInput,
+	updatePipelineSettingsInput,
+	updatePipelineStageInput,
 } from "./deals.contracts";
 import { DealsService } from "./deals.service";
 
@@ -93,6 +99,62 @@ export class DealsRouter {
 	})
 	stages() {
 		return this.deals.stages();
+	}
+
+	@Query({
+		output: pipelineOverviewOutput,
+		meta: restMeta("GET", "/deals/pipeline-overview", ["Deals"]),
+	})
+	async pipelineOverview(@Ctx() ctx: AuthedTrpcContext) {
+		return this.deals.pipelineOverview(ctx.user.id);
+	}
+
+	@Mutation({
+		input: updatePipelineSettingsInput,
+		output: pipelineSettingsOutput,
+		meta: restMeta("PATCH", "/deals/pipeline-settings", ["Deals"]),
+	})
+	async updatePipelineSettings(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof updatePipelineSettingsInput>,
+	) {
+		return this.deals.updatePipelineSettings(ctx.user.id, input);
+	}
+
+	@Mutation({
+		input: createPipelineStageInput,
+		output: pipelineStageItemOutput,
+		meta: restMeta("POST", "/deals/pipeline-stages", ["Deals"]),
+	})
+	async createPipelineStage(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof createPipelineStageInput>,
+	) {
+		return this.deals.createPipelineStage(ctx.user.id, input);
+	}
+
+	@Mutation({
+		input: updatePipelineStageInput,
+		output: pipelineStageItemOutput,
+		meta: restMeta("PATCH", "/deals/pipeline-stages/{id}", ["Deals"]),
+	})
+	async updatePipelineStage(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof updatePipelineStageInput>,
+	) {
+		return this.deals.updatePipelineStage(ctx.user.id, input);
+	}
+
+	@Mutation({
+		input: dealIdInput,
+		output: dealIdInput,
+		meta: restMeta("DELETE", "/deals/pipeline-stages/{id}", ["Deals"]),
+	})
+	async deletePipelineStage(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof dealIdInput>,
+	) {
+		return this.deals.deletePipelineStage(ctx.user.id, input.id);
 	}
 
 	@Query({

@@ -25,7 +25,7 @@ import type { CarbonIcon } from "@crm/ui/components/icon";
 import { Icon } from "@crm/ui/components/icon";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/lib/trpc/client";
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
 	ACTIVITIES,
 	type ActivityQuickFilter,
@@ -107,7 +107,7 @@ function mapEntryToItem(entry: any): ActivityItem {
 			: type === "meeting"
 				? "Meeting"
 				: type === "email"
-					? "Email"
+					? (entry.meta?.subject || entry.subject || "Email")
 					: "Task";
 
 	return {
@@ -119,12 +119,13 @@ function mapEntryToItem(entry: any): ActivityItem {
 			entry.calendarEvent?.location ||
 			(isTeams ? "Microsoft Teams Online Meeting" : "") ||
 			entry.emailThread?.subject ||
+			(entry.meta?.from ? `From: ${entry.meta.from}` : "") ||
 			ACTIVITY_TYPE_META[type].desc,
 		company:
 			entry.company?.name ||
 			(entry.contact
 				? `${entry.contact.firstName} ${entry.contact.lastName ?? ""}`.trim()
-				: ""),
+				: (entry.meta?.from || "")),
 		owner: entry.createdBy?.name || "Rep",
 		date: dateStr,
 		min,
@@ -142,22 +143,36 @@ export function ActivitiesPageClient() {
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
 
-	const { data: dbActivities } = useQuery(
-		trpc.activities.list.queryOptions({
+	const { data: dbActivities } = useQuery({
+		...trpc.activities.list.queryOptions({
 			limit: 200,
 		}),
-	);
-
-	const [acts, setActs] = useState<ActivityItem[]>(() => {
-		return buildDemoActivities();
+		refetchInterval: 10_000,
 	});
 
-	useEffect(() => {
-		if (dbActivities && dbActivities.length > 0) {
-			const liveItems = dbActivities.map(mapEntryToItem);
-			setActs(liveItems);
+	const { data: dbUsers = [] } = useQuery(trpc.users.list.queryOptions());
+
+	const [localActs, setLocalActs] = useState<ActivityItem[]>([]);
+	const [deletedIds, setDeletedIds] = useState<Set<string | number>>(() => new Set());
+
+	const acts = useMemo(() => {
+		const serverItems = (dbActivities ?? [])
+			.map(mapEntryToItem)
+			.filter((item) => !deletedIds.has(item.id));
+		return [...localActs.filter((item) => !deletedIds.has(item.id)), ...serverItems];
+	}, [dbActivities, localActs, deletedIds]);
+
+	const ownerList = useMemo(() => {
+		const names = new Set<string>();
+		for (const u of dbUsers) {
+			if (u.name?.trim()) names.add(u.name.trim());
 		}
-	}, [dbActivities]);
+		for (const a of acts) {
+			if (a.owner?.trim()) names.add(a.owner.trim());
+		}
+		const list = Array.from(names);
+		return list.length > 0 ? list.sort((a, b) => a.localeCompare(b)) : ["Rep"];
+	}, [dbUsers, acts]);
 
 	const completeMutation = useMutation(
 		trpc.activities.complete.mutationOptions({
@@ -287,7 +302,7 @@ export function ActivitiesPageClient() {
 			done: false,
 		};
 		setNextId((n) => n + 1);
-		setActs((prev) => [...prev, item]);
+		setLocalActs((prev) => [item, ...prev]);
 		closeModal();
 		pick(parseDateKey(date));
 		toast("Activity added");
@@ -436,7 +451,7 @@ export function ActivitiesPageClient() {
 						onChange={(e) => setFiltOwner(e.target.value)}
 					>
 						<option value="">All Owners</option>
-						{ACTIVITIES.owners.map((o) => (
+						{ownerList.map((o) => (
 							<option key={o} value={o}>
 								{o}
 							</option>
@@ -630,9 +645,9 @@ export function ActivitiesPageClient() {
 									>
 										<Icon icon={TYPE_ICON[a.type]} />
 									</span>
-									<div>
-										<div className={styles.ttl}>{a.title}</div>
-										<div className={styles.dsc}>{a.desc}</div>
+									<div className={styles.info}>
+										<div className={styles.ttl} title={a.title}>{a.title}</div>
+										<div className={styles.dsc} title={a.desc}>{a.desc}</div>
 									</div>
 									<div className={styles.tags}>
 										<span
@@ -683,7 +698,7 @@ export function ActivitiesPageClient() {
 															completed: !a.done,
 														});
 													}
-													setActs((prev) =>
+													setLocalActs((prev) =>
 														prev.map((x) =>
 															x.id === a.id ? { ...x, done: !x.done } : x,
 														),
@@ -700,7 +715,8 @@ export function ActivitiesPageClient() {
 											<DropdownMenuItem
 												variant="destructive"
 												onSelect={() => {
-													setActs((prev) => prev.filter((x) => x.id !== a.id));
+													setDeletedIds((prev) => new Set([...prev, a.id]));
+													setLocalActs((prev) => prev.filter((x) => x.id !== a.id));
 													toast("Activity deleted");
 												}}
 											>
@@ -757,9 +773,9 @@ export function ActivitiesPageClient() {
 							<select
 								id={`${dateInputId}-owner`}
 								name="owner"
-								defaultValue={ACTIVITIES.owners[0]}
+								defaultValue={ownerList[0] || ""}
 							>
-								{ACTIVITIES.owners.map((o) => (
+								{ownerList.map((o) => (
 									<option key={o} value={o}>
 										{o}
 									</option>

@@ -112,10 +112,6 @@ export class ThreadWriterService {
 
 			companyId = match.companyId;
 			contactId = match.contactId;
-
-			if (!companyId && !contactId) {
-				return false;
-			}
 		}
 
 		let occurredAt: Date;
@@ -184,6 +180,9 @@ export class ThreadWriterService {
 
 				return this.project(tx, record.id, row.userId, {
 					subject: parsed.subject ?? "(no subject)",
+					from: parsed.from.name
+						? `${parsed.from.name} <${parsed.from.email}>`
+						: parsed.from.email,
 					snippet: snippetOf(parsed.body),
 					lastMessageAt,
 					companyId,
@@ -258,6 +257,7 @@ export class ThreadWriterService {
 		userId: string,
 		summary: {
 			subject: string;
+			from: string;
 			snippet: string | null;
 			lastMessageAt: Date;
 			companyId: string | null;
@@ -276,9 +276,15 @@ export class ThreadWriterService {
 				contactId: summary.contactId,
 				createdById: userId,
 				emailThreadId,
-				meta: { synced: true, source: summary.origin },
+				meta: {
+					synced: true,
+					source: summary.origin,
+					from: summary.from,
+					subject: summary.subject,
+				},
 			},
 			update: {
+				subject: summary.subject,
 				body: summary.snippet,
 				occurredAt: summary.lastMessageAt,
 			},

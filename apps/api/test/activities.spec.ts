@@ -51,7 +51,11 @@ describe("Activities Service", () => {
 			},
 		} as unknown as Db;
 
-		const service = new ActivitiesService(mockDb);
+		const mockStamp = {
+			touch: async () => {},
+		} as any;
+
+		const service = new ActivitiesService(mockDb, mockStamp);
 
 		// Test 1: Fetch all activities
 		const resultAll = await service.list({ limit: 50 });
@@ -60,7 +64,7 @@ describe("Activities Service", () => {
 		expect(resultAll[1]?.subject).toBe("On-site Contract Review");
 
 		// Test 2: Fetch only CALL (Teams) activities
-		const resultCalls = await service.list({ type: "call" });
+		const resultCalls = await service.list({ type: "call", limit: 50 });
 		expect(resultCalls.length).toBe(1);
 		expect(resultCalls[0]?.type).toBe(ActivityType.CALL);
 	});
