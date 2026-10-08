@@ -36,7 +36,7 @@ export function listYearMonthKeys(anchor = new Date()): string[] {
 
 export function monthTitle(key: string, currentKey = yearMonthKey()): string {
 	if (key === currentKey) return "This Month";
-	return monthStartFromKey(key).toLocaleDateString(undefined, {
+	return monthStartFromKey(key).toLocaleDateString("en-US", {
 		month: "short",
 		year: "numeric",
 	});
@@ -49,9 +49,10 @@ export function monthRangeLabel(key: string): string {
 }
 
 function formatDay(date: Date): string {
-	return date.toLocaleDateString(undefined, {
-		day: "numeric",
+	return date.toLocaleDateString("en-US", {
 		month: "short",
+		day: "numeric",
 		year: "numeric",
 	});
 }
+

@@ -181,3 +181,16 @@ export const myTasksOutput = z.array(activityEntryOutput);
 export const activityCreateOutput = activityEntryOutput;
 
 export const completeOutput = activityEntryOutput;
+
+export const activitiesListInput = z.object({
+	startDate: z.string().optional(),
+	endDate: z.string().optional(),
+	type: z.enum(["all", "call", "meeting", "email", "task"]).optional(),
+	search: z.string().optional(),
+	status: z.enum(["all", "pending", "overdue", "completed"]).optional(),
+	limit: z.number().int().min(1).max(200).default(100),
+});
+
+export type ActivitiesListInput = z.infer<typeof activitiesListInput>;
+
+export const activitiesListOutput = z.array(activityEntryOutput);

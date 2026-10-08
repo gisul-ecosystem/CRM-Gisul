@@ -12,6 +12,8 @@ import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { restMeta } from "../trpc/openapi";
 import {
+	activitiesListInput,
+	activitiesListOutput,
 	activityCreateInput,
 	activityCreateOutput,
 	completeInput,
@@ -31,6 +33,15 @@ export class ActivitiesRouter {
 	constructor(
 		@Inject(ActivitiesService) private readonly activities: ActivitiesService,
 	) {}
+
+	@Query({
+		input: activitiesListInput,
+		output: activitiesListOutput,
+		meta: restMeta("GET", "/activities/list", ["Activities"]),
+	})
+	async list(@Input() input: z.infer<typeof activitiesListInput>) {
+		return this.activities.list(input);
+	}
 
 	@Query({
 		input: timelineInput,

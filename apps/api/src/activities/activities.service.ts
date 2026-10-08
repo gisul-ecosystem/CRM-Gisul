@@ -10,6 +10,7 @@ import { ActivityStampService } from "../crm/activity-stamp.service";
 import { blankToNull } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import type {
+	ActivitiesListInput,
 	ActivityCreateInput,
 	ActivityEntry,
 	MyTasksInput,
@@ -212,6 +213,86 @@ export class ActivitiesService {
 		});
 
 		return tasks.map(serializeEntry);
+	}
+
+	async list(input: ActivitiesListInput): Promise<ActivityEntry[]> {
+		const now = new Date();
+		const where: Prisma.ActivityWhereInput = {};
+
+		if (input.type && input.type !== "all") {
+			switch (input.type) {
+				case "call":
+					where.type = ActivityType.CALL;
+					break;
+				case "meeting":
+					where.type = ActivityType.MEETING;
+					break;
+				case "email":
+					where.type = ActivityType.EMAIL;
+					break;
+				case "task":
+					where.type = ActivityType.TASK;
+					break;
+			}
+		}
+
+		if (input.status) {
+			if (input.status === "completed") {
+				where.completedAt = { not: null };
+			} else if (input.status === "overdue") {
+				where.completedAt = null;
+				where.dueAt = { lt: now };
+			} else if (input.status === "pending") {
+				where.completedAt = null;
+			}
+		}
+
+		if (input.startDate || input.endDate) {
+			const start = input.startDate ? new Date(input.startDate) : undefined;
+			const end = input.endDate ? new Date(input.endDate) : undefined;
+
+			where.OR = [
+				{
+					occurredAt: {
+						gte: start,
+						lte: end,
+					},
+				},
+				{
+					dueAt: {
+						gte: start,
+						lte: end,
+					},
+				},
+			];
+		}
+
+		if (input.search?.trim()) {
+			const query = input.search.trim();
+			where.AND = [
+				{
+					OR: [
+						{ subject: { contains: query, mode: "insensitive" } },
+						{ body: { contains: query, mode: "insensitive" } },
+						{ company: { name: { contains: query, mode: "insensitive" } } },
+						{ contact: { firstName: { contains: query, mode: "insensitive" } } },
+						{ contact: { lastName: { contains: query, mode: "insensitive" } } },
+					],
+				},
+			];
+		}
+
+		const rows = await this.db.activity.findMany({
+			where,
+			take: input.limit,
+			orderBy: [
+				{ occurredAt: { sort: "desc", nulls: "last" } },
+				{ createdAt: "desc" },
+			],
+			select: ENTRY_SELECT,
+		});
+
+		return rows.map(serializeEntry);
 	}
 
 	private anchor(

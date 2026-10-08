@@ -100,7 +100,7 @@ const logDefinitions: Prisma.LogDefinition[] = [
 
 const createPrismaClient = () => {
 	const client = new PrismaClient({
-		adapter: new PrismaPg({ connectionString }),
+		adapter: new PrismaPg({ connectionString, max: 4 }),
 		log: logDefinitions,
 	});
 
