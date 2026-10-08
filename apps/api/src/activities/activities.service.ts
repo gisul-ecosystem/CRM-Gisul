@@ -215,9 +215,16 @@ export class ActivitiesService {
 		return tasks.map(serializeEntry);
 	}
 
-	async list(input: ActivitiesListInput): Promise<ActivityEntry[]> {
+	async list(
+		input: ActivitiesListInput,
+		actingUserId?: string,
+	): Promise<ActivityEntry[]> {
 		const now = new Date();
 		const where: Prisma.ActivityWhereInput = {};
+
+		if (actingUserId) {
+			where.createdById = actingUserId;
+		}
 
 		if (input.type && input.type !== "all") {
 			switch (input.type) {

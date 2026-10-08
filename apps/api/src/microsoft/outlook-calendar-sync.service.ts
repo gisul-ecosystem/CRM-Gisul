@@ -34,6 +34,40 @@ export type OutlookCalendarSyncOutcome = {
 	reason?: string;
 };
 
+export function parseGraphEventDate(
+	dateTimeStr?: string | null,
+	timeZone?: string | null,
+): Date | null {
+	if (!dateTimeStr) return null;
+	const clean = dateTimeStr.trim();
+	if (!clean) return null;
+
+	// If already has trailing Z or numeric offset (+05:30, -04:00, etc.)
+	if (clean.endsWith("Z") || /[+-]\d{2}(:\d{2})?$/.test(clean)) {
+		const d = new Date(clean);
+		return Number.isNaN(d.getTime()) ? null : d;
+	}
+
+	// When Prefer: outlook.timezone="UTC" is used or timeZone is UTC:
+	if (!timeZone || timeZone.toUpperCase() === "UTC") {
+		const d = new Date(`${clean}Z`);
+		return Number.isNaN(d.getTime()) ? null : d;
+	}
+
+	// If specific timezone like "India Standard Time" or "IST":
+	if (timeZone === "India Standard Time" || timeZone === "IST") {
+		const d = new Date(`${clean}+05:30`);
+		return Number.isNaN(d.getTime()) ? null : d;
+	}
+
+	// Fallback to UTC ISO string:
+	const d = new Date(`${clean}Z`);
+	if (!Number.isNaN(d.getTime())) return d;
+
+	const fallback = new Date(clean);
+	return Number.isNaN(fallback.getTime()) ? null : fallback;
+}
+
 @Injectable()
 export class OutlookCalendarSyncService {
 	private readonly logger = new Logger(OutlookCalendarSyncService.name);
@@ -163,12 +197,15 @@ export class OutlookCalendarSyncService {
 			currentPage = nextResult.data;
 		}
 
+		const tasksWritten = await this.syncTodoTasks(token.accessToken, row.userId);
+		written += tasksWritten;
+
 		await this.state.settle(row.id, {
 			status: GoogleSyncStatus.RUNNING,
 		});
 
 		this.logger.log({
-			message: "Outlook calendar & Teams sync complete",
+			message: "Outlook calendar, tasks & Teams sync complete",
 			userId: row.userId,
 			eventsWritten: written,
 			eventsRemoved: removed,
@@ -183,6 +220,84 @@ export class OutlookCalendarSyncService {
 		};
 	}
 
+	private async syncTodoTasks(accessToken: string, userId: string): Promise<number> {
+		try {
+			const listsRes = await this.graph.listTodoLists(accessToken);
+			if (listsRes.outcome !== "ok" || !listsRes.data.value) return 0;
+
+			let tasksWritten = 0;
+			for (const list of listsRes.data.value) {
+				const tasksRes = await this.graph.listTodoTasks(accessToken, list.id);
+				if (tasksRes.outcome !== "ok" || !tasksRes.data.value) continue;
+
+				for (const task of tasksRes.data.value) {
+					if (!task.id || !task.title) continue;
+
+					const dueAt = parseGraphEventDate(
+						task.dueDateTime?.dateTime,
+						task.dueDateTime?.timeZone,
+					);
+					const completedAt =
+						task.status === "completed"
+							? parseGraphEventDate(
+									task.completedDateTime?.dateTime,
+									task.completedDateTime?.timeZone,
+								) ?? new Date()
+							: null;
+					const occurredAt =
+						dueAt ?? parseGraphEventDate(task.createdDateTime) ?? new Date();
+
+					const existing = await this.db.activity.findFirst({
+						where: {
+							createdById: userId,
+							type: ActivityType.TASK,
+							OR: [
+								{ meta: { path: ["todoTaskId"], equals: task.id } },
+								{ subject: task.title, dueAt: dueAt ?? undefined },
+							],
+						},
+						select: { id: true },
+					});
+
+					if (existing) {
+						await this.db.activity.update({
+							where: { id: existing.id },
+							data: {
+								subject: task.title,
+								body: task.body?.content || null,
+								dueAt,
+								occurredAt,
+								completedAt,
+								meta: { synced: true, source: "outlook-todo", todoTaskId: task.id },
+							},
+						});
+					} else {
+						await this.db.activity.create({
+							data: {
+								type: ActivityType.TASK,
+								subject: task.title,
+								body: task.body?.content || null,
+								dueAt,
+								occurredAt,
+								completedAt,
+								createdById: userId,
+								meta: { synced: true, source: "outlook-todo", todoTaskId: task.id },
+							},
+						});
+					}
+					tasksWritten += 1;
+				}
+			}
+			return tasksWritten;
+		} catch (error) {
+			this.logger.warn({
+				message: "Microsoft To-Do sync skipped or unsupported on this account",
+				error: error instanceof Error ? error.message : String(error),
+			});
+			return 0;
+		}
+	}
+
 	private async apply(
 		event: GraphEvent,
 		row: MailboxSync,
@@ -191,13 +306,9 @@ export class OutlookCalendarSyncService {
 		const iCalUid = event.iCalUId ?? event.id;
 		if (!iCalUid) return "ignored";
 
-		const startStr = event.start?.dateTime;
-		const endStr = event.end?.dateTime;
-		if (!startStr || !endStr) return "ignored";
-
-		const start = new Date(startStr);
-		const end = new Date(endStr);
-		if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+		const start = parseGraphEventDate(event.start?.dateTime, event.start?.timeZone);
+		const end = parseGraphEventDate(event.end?.dateTime, event.end?.timeZone);
+		if (!start || !end) {
 			return "ignored";
 		}
 
@@ -207,6 +318,27 @@ export class OutlookCalendarSyncService {
 				originalStartTime: start,
 			},
 		};
+
+		// Clean up any previously mis-synced duplicate for the same event (e.g. from prior timezone shifts)
+		if (!event.seriesMasterId) {
+			const staleEvents = await this.db.calendarEvent.findMany({
+				where: {
+					iCalUid,
+					originalStartTime: { not: start },
+				},
+				select: { id: true },
+			});
+
+			if (staleEvents.length > 0) {
+				const staleIds = staleEvents.map((e) => e.id);
+				await this.db.activity.deleteMany({
+					where: { calendarEventId: { in: staleIds } },
+				});
+				await this.db.calendarEvent.deleteMany({
+					where: { id: { in: staleIds } },
+				});
+			}
+		}
 
 		if (event.isCancelled) {
 			const deleted = await this.db.calendarEvent.deleteMany({
@@ -277,14 +409,29 @@ export class OutlookCalendarSyncService {
 			select: { id: true },
 		});
 
+		const myEmail = row.mailbox?.toLowerCase();
+		const hasNoExternalAttendees =
+			(event.attendees ?? []).length === 0 ||
+			(event.attendees ?? []).every(
+				(a) => a.emailAddress?.address?.toLowerCase() === myEmail,
+			);
+		const titleLower = (event.subject ?? "").toLowerCase();
+		const isTask =
+			!isTeams &&
+			(hasNoExternalAttendees ||
+				titleLower.includes("task") ||
+				titleLower.includes("todo") ||
+				Boolean(event.isAllDay));
+
 		await this.syncAttendees(record.id, event.attendees ?? []);
 		await this.project(record.id, row.userId, {
-			title: event.subject ?? (isTeams ? "Teams Meeting" : "Meeting"),
+			title: event.subject ?? (isTeams ? "Teams Meeting" : isTask ? "Task" : "Meeting"),
 			startsAt: start,
 			companyId,
 			contactId,
 			location,
 			isTeams,
+			isTask,
 		});
 
 		return "written";
@@ -348,6 +495,7 @@ export class OutlookCalendarSyncService {
 			contactId: string | null;
 			location: string | null;
 			isTeams: boolean;
+			isTask?: boolean;
 		},
 	): Promise<void> {
 		const body = summary.location
@@ -356,13 +504,20 @@ export class OutlookCalendarSyncService {
 				? "Microsoft Teams Meeting"
 				: null;
 
+		const activityType = summary.isTeams
+			? ActivityType.CALL
+			: summary.isTask
+				? ActivityType.TASK
+				: ActivityType.MEETING;
+
 		const activity = await this.db.activity.upsert({
 			where: { calendarEventId },
 			create: {
-				type: summary.isTeams ? ActivityType.CALL : ActivityType.MEETING,
+				type: activityType,
 				subject: summary.title,
 				body,
 				occurredAt: summary.startsAt,
+				dueAt: summary.isTask ? summary.startsAt : null,
 				companyId: summary.companyId,
 				contactId: summary.contactId,
 				createdById: userId,
@@ -373,9 +528,11 @@ export class OutlookCalendarSyncService {
 				},
 			},
 			update: {
+				type: activityType,
 				subject: summary.title,
 				body,
 				occurredAt: summary.startsAt,
+				dueAt: summary.isTask ? summary.startsAt : null,
 				companyId: summary.companyId,
 				contactId: summary.contactId,
 			},

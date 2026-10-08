@@ -31,7 +31,6 @@ import {
 	chartYLabels,
 } from "./dashboard-chart";
 import styles from "./dashboard-design.module.css";
-import { DUMMY_ACTIVITIES } from "./dashboard-dummy";
 import { overviewParsers } from "./overview-search-params";
 import { SalesDashboard } from "./sales-dashboard";
 
@@ -395,57 +394,49 @@ export function DashboardSummary() {
 
 			<section className={`${styles.card} ${styles.act}`}>
 				<h2 className={styles.actTitle}>Recent Activity</h2>
-				<div className={styles.alist}>
-					{(summary.recentActivity.length > 0
-						? summary.recentActivity.slice(0, 4).map((entry) => ({
+				{summary.recentActivity.length === 0 ? (
+					<div className="py-8 text-center text-sm text-neutral-400">
+						No recent activities recorded yet.
+					</div>
+				) : (
+					<div className={styles.alist}>
+						{summary.recentActivity.slice(0, 6).map((entry) => {
+							const date = new Date(entry.createdAt);
+							const hours = date.getHours();
+							const minutes = date.getMinutes();
+							const ampm = hours >= 12 ? "PM" : "AM";
+							const formattedHour = hours % 12 || 12;
+							const formattedMinute = String(minutes).padStart(2, "0");
+							const timeStr = `${formattedHour}:${formattedMinute} ${ampm}`;
+
+							const item = {
 								id: entry.id,
-								time: new Date(entry.createdAt).toLocaleTimeString([], {
-									hour: "numeric",
-									minute: "2-digit",
-								}),
+								time: timeStr,
 								tone: "tBlue" as const,
 								body: entry.subject ?? activityLabel(entry.type),
-								accent: null as string | null,
-								won: null as string | null,
 								meta:
 									entry.company?.name ??
 									entry.deal?.name ??
 									entry.createdBy.name,
 								icon: activityIcon(entry.type),
-							}))
-						: DUMMY_ACTIVITIES.map((row) => ({
-								...row,
-								won: "won" in row ? row.won : null,
-								icon: null as CarbonIcon | null,
-							}))
-					).map((item) => (
-						<div key={item.id} className={styles.ai}>
-							<span className={`${styles.tic} ${styles[item.tone]}`}>
-								{item.icon ? <Icon icon={item.icon} /> : "•"}
-							</span>
-							<div>
-								<time>{item.time}</time>
-								<p>
-									{item.body}
-									{item.accent ? (
-										<span className={styles.aiAccent}>{item.accent}</span>
-									) : null}
-									{item.won ? (
-										<span className={styles.aiWon}>{item.won}</span>
-									) : null}
-								</p>
-								{item.meta ? (
-									<small className={styles.aiMeta}>{item.meta}</small>
-								) : null}
-							</div>
-						</div>
-					))}
-				</div>
-				{summary.recentActivity.length === 0 ? (
-					<p className={styles.note}>
-						Sample activity. Live feed appears when events exist.
-					</p>
-				) : null}
+							};
+							return (
+								<div key={item.id} className={styles.ai}>
+									<span className={`${styles.tic} ${styles[item.tone]}`}>
+										{item.icon ? <Icon icon={item.icon} /> : "•"}
+									</span>
+									<div>
+										<time suppressHydrationWarning>{item.time}</time>
+										<p>{item.body}</p>
+										{item.meta ? (
+											<small className={styles.aiMeta}>{item.meta}</small>
+										) : null}
+									</div>
+								</div>
+							);
+						})}
+					</div>
+				)}
 			</section>
 		</div>
 	);

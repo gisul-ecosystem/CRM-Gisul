@@ -44,6 +44,9 @@ describe("Outlook & Teams Calendar Sync Service", () => {
 					calendarEventsUpserted.push(args);
 					return { id: "cal-event-123" };
 				},
+				async findMany() {
+					return [];
+				},
 				async deleteMany() {
 					return { count: 0 };
 				},
@@ -59,6 +62,9 @@ describe("Outlook & Teams Calendar Sync Service", () => {
 					activitiesUpserted.push(args);
 					return { id: "act-1", createdAt: new Date() };
 				},
+				async deleteMany() {
+					return { count: 0 };
+				},
 			},
 			contact: {
 				async findMany() {
@@ -72,6 +78,12 @@ describe("Outlook & Teams Calendar Sync Service", () => {
 				return ok({
 					value: options.events ?? [],
 				});
+			},
+			async listTodoLists() {
+				return ok({ value: [] });
+			},
+			async listTodoTasks() {
+				return ok({ value: [] });
 			},
 			async nextPage() {
 				return ok({ value: [] });
@@ -242,4 +254,38 @@ describe("Outlook & Teams Calendar Sync Service", () => {
 		expect(result.status).toBe("skipped");
 		expect(result.reason).toBe("No Microsoft account linked");
 	});
+
+	it("correctly parses Microsoft Graph UTC and India Standard Time without timezone drift", async () => {
+		const teamsMeeting: GraphEvent = {
+			id: "teams-event-ist",
+			iCalUId: "ical-teams-ist",
+			subject: "Brain Storming",
+			bodyPreview: "Brainstorming session",
+			// Microsoft Graph returns 11:30 UTC when meeting is 5:00 PM IST
+			start: { dateTime: "2026-10-07T11:30:00.0000000", timeZone: "UTC" },
+			end: { dateTime: "2026-10-07T13:30:00.0000000", timeZone: "UTC" },
+			location: { displayName: "GISUL OFFICE" },
+			isOnlineMeeting: true,
+			onlineMeetingProvider: "teamsForBusiness",
+			onlineMeeting: { joinUrl: "https://teams.microsoft.com/l/meetup-join/123" },
+			organizer: {
+				emailAddress: { address: "rep@trycomp.ai", name: "Sales Rep" },
+			},
+			attendees: [],
+		};
+
+		const harness = createHarness({
+			events: [teamsMeeting],
+		});
+
+		const result = await harness.service.sync(syncRow);
+		expect(result.status).toBe("synced");
+		expect(harness.calendarEventsUpserted.length).toBe(1);
+
+		const created = harness.calendarEventsUpserted[0].create;
+		// 11:30 UTC = 17:00 (5:00 PM) IST
+		expect(created.startsAt.toISOString()).toBe("2026-10-07T11:30:00.000Z");
+		expect(created.endsAt.toISOString()).toBe("2026-10-07T13:30:00.000Z");
+	});
 });
+
