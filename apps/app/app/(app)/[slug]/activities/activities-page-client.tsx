@@ -23,7 +23,9 @@ import {
 } from "@crm/ui/components/dropdown-menu";
 import type { CarbonIcon } from "@crm/ui/components/icon";
 import { Icon } from "@crm/ui/components/icon";
-import { type ReactNode, useId, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTRPC } from "@/lib/trpc/client";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import {
 	ACTIVITIES,
 	type ActivityQuickFilter,
@@ -60,6 +62,7 @@ const QUICK_META: {
 	label: string;
 	icon: CarbonIcon;
 }[] = [
+	{ key: "all", label: "All Activities", icon: Calendar },
 	{ key: "today", label: "Today", icon: Calendar },
 	{ key: "week", label: "This Week", icon: Calendar },
 	{ key: "upcoming", label: "Upcoming", icon: Calendar },
@@ -77,6 +80,58 @@ const TAB_LABELS: Record<ActivityTab, string> = {
 
 type ScopeMode = "date" | ActivityQuickFilter;
 
+function mapEntryToItem(entry: any): ActivityItem {
+	const rawType = String(entry.type).toUpperCase();
+	let type: ActivityTypeKey = "task";
+	if (rawType === "CALL") type = "call";
+	else if (rawType === "MEETING") type = "meeting";
+	else if (rawType === "EMAIL") type = "email";
+	else if (rawType === "TASK") type = "task";
+
+	const occurredAt = entry.occurredAt ?? entry.dueAt ?? entry.createdAt;
+	const dateObj = new Date(occurredAt);
+	const min = Number.isNaN(dateObj.getTime())
+		? 600
+		: dateObj.getHours() * 60 + dateObj.getMinutes();
+	const dateStr = Number.isNaN(dateObj.getTime())
+		? dateKey(new Date())
+		: dateKey(dateObj);
+
+	const isTeams =
+		entry.meta?.source === "teams" ||
+		Boolean(entry.calendarEvent?.conferenceUrl?.includes("teams.microsoft.com"));
+	const defaultTitle = isTeams
+		? "Teams Call"
+		: type === "call"
+			? "Call"
+			: type === "meeting"
+				? "Meeting"
+				: type === "email"
+					? "Email"
+					: "Task";
+
+	return {
+		id: entry.id,
+		type,
+		title: entry.subject || defaultTitle,
+		desc:
+			entry.body ||
+			entry.calendarEvent?.location ||
+			(isTeams ? "Microsoft Teams Online Meeting" : "") ||
+			entry.emailThread?.subject ||
+			ACTIVITY_TYPE_META[type].desc,
+		company:
+			entry.company?.name ||
+			(entry.contact
+				? `${entry.contact.firstName} ${entry.contact.lastName ?? ""}`.trim()
+				: ""),
+		owner: entry.createdBy?.name || "Rep",
+		date: dateStr,
+		min,
+		done: Boolean(entry.completedAt),
+	};
+}
+
 export function ActivitiesPageClient() {
 	const TODAY = demoToday();
 	const todayKey = dateKey(TODAY);
@@ -84,10 +139,36 @@ export function ActivitiesPageClient() {
 	const dateInputRef = useRef<HTMLInputElement>(null);
 	const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	const [acts, setActs] = useState(() => {
-		const seed = buildDemoActivities();
-		return seed;
+	const trpc = useTRPC();
+	const queryClient = useQueryClient();
+
+	const { data: dbActivities } = useQuery(
+		trpc.activities.list.queryOptions({
+			limit: 200,
+		}),
+	);
+
+	const [acts, setActs] = useState<ActivityItem[]>(() => {
+		return buildDemoActivities();
 	});
+
+	useEffect(() => {
+		if (dbActivities && dbActivities.length > 0) {
+			const liveItems = dbActivities.map(mapEntryToItem);
+			setActs(liveItems);
+		}
+	}, [dbActivities]);
+
+	const completeMutation = useMutation(
+		trpc.activities.complete.mutationOptions({
+			onSuccess: () => {
+				queryClient.invalidateQueries({
+					queryKey: trpc.activities.list.queryKey(),
+				});
+			},
+		}),
+	);
+
 	const [nextId, setNextId] = useState(200);
 	const [sel, setSel] = useState(() => new Date(TODAY));
 	const [cal, setCal] = useState(() => ({
@@ -131,6 +212,7 @@ export function ActivitiesPageClient() {
 	}
 
 	function scopeMatch(a: ActivityItem, key: ActivityQuickFilter) {
+		if (key === "all") return true;
 		if (key === "today") return a.date === todayKey;
 		if (key === "week") return inWeek(a, TODAY);
 		if (key === "upcoming") return !a.done && a.date > todayKey;
@@ -595,6 +677,12 @@ export function ActivitiesPageClient() {
 										<DropdownMenuContent align="end" className="min-w-40">
 											<DropdownMenuItem
 												onSelect={() => {
+													if (typeof a.id === "string") {
+														completeMutation.mutate({
+															id: a.id,
+															completed: !a.done,
+														});
+													}
 													setActs((prev) =>
 														prev.map((x) =>
 															x.id === a.id ? { ...x, done: !x.done } : x,
@@ -659,7 +747,7 @@ export function ActivitiesPageClient() {
 							<select id={`${dateInputId}-type`} name="type" defaultValue="call">
 								{ACTIVITIES.types.map((t) => (
 									<option key={t} value={t}>
-										{ACTIVITY_TYPE_META[t].label}
+										{ACTIVITY_TYPE_META[t]?.label ?? t}
 									</option>
 								))}
 							</select>

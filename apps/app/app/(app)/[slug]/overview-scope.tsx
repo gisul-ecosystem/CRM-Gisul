@@ -34,11 +34,23 @@ const SCOPE_META = {
 } satisfies Record<OverviewScope, { label: string; icon: CarbonIcon }>;
 
 export function OverviewScopeToggleFallback() {
-	const currentKey = yearMonthKey();
 	return (
 		<div className={styles.topControls}>
 			<ScopeSwitch value="everyone" disabled />
-			<MonthRangeChip currentKey={currentKey} monthKey={currentKey} />
+			<button
+				type="button"
+				className={styles.range}
+				disabled
+				aria-label="Current month"
+			>
+				<span className={styles.rangeLeft}>
+					<Icon icon={Calendar} className="text-[12px] text-[#7a7890]" />
+					<span>
+						<b>This Month</b>
+					</span>
+				</span>
+				<Icon icon={ChevronRight} className="text-[11px] text-[#a5a3b5]" />
+			</button>
 		</div>
 	);
 }
@@ -69,6 +81,7 @@ export function OverviewScopeToggle() {
 					<button
 						type="button"
 						className={styles.range}
+						suppressHydrationWarning
 						aria-label={`${monthTitle(monthKey, currentKey)}, ${monthRangeLabel(monthKey)}`}
 					>
 						<span className={styles.rangeLeft}>
@@ -95,10 +108,10 @@ export function OverviewScopeToggle() {
 						{options.map((key) => (
 							<DropdownMenuRadioItem key={key} value={key}>
 								<span className={styles.rangeOption}>
-									<span className={styles.rangeOptionTitle}>
+									<span className={styles.rangeOptionTitle} suppressHydrationWarning>
 										{monthTitle(key, currentKey)}
 									</span>
-									<span className={styles.rangeOptionSub}>
+									<span className={styles.rangeOptionSub} suppressHydrationWarning>
 										{monthRangeLabel(key)}
 									</span>
 								</span>
@@ -163,6 +176,7 @@ function MonthRangeChip({
 			type="button"
 			className={styles.range}
 			disabled
+			suppressHydrationWarning
 			aria-label={`${monthTitle(monthKey, currentKey)}, ${monthRangeLabel(monthKey)}`}
 		>
 			<span className={styles.rangeLeft}>

@@ -5,7 +5,7 @@ import {
 } from "./activities-config";
 
 export type ActivityItem = {
-	id: number;
+	id: string | number;
 	type: ActivityTypeKey;
 	title: string;
 	desc: string;
@@ -140,8 +140,7 @@ export const DAYS = [
 ] as const;
 
 export function demoToday() {
-	const { year, monthIndex, day } = ACTIVITIES.demo;
-	return new Date(year, monthIndex, day);
+	return new Date();
 }
 
 export function activityStatus(
