@@ -22,7 +22,21 @@ export class MicrosoftSyncService {
 		const row = await this.state.get(userId, source);
 		if (!row) return null;
 
-		const mailOutcome = await this.outlook.sync(row);
+		let mailOutcome: OutlookSyncOutcome | null = null;
+		// Drain all available message pages in a single sync session (up to 5 continuous passes)
+		for (let pass = 0; pass < 5; pass += 1) {
+			const currentRow = await this.state.get(userId, source);
+			if (!currentRow) break;
+			mailOutcome = await this.outlook.sync(currentRow);
+			if (
+				!mailOutcome ||
+				mailOutcome.status !== "synced" ||
+				(mailOutcome.messagesWritten ?? 0) === 0
+			) {
+				break;
+			}
+		}
+
 		await this.calendar.sync(row);
 		return mailOutcome;
 	}

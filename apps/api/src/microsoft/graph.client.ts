@@ -146,17 +146,69 @@ export class GraphClient {
 		});
 	}
 
+	async listInboxMessages(
+		accessToken: string,
+		top = 50,
+	): Promise<MailboxResult<MessagePage>> {
+		return this.api.get<MessagePage>(`${BASE}/mailFolders/Inbox/messages`, accessToken, {
+			$select: MESSAGE_FIELDS,
+			$filter: "isDraft eq false",
+			$orderby: "receivedDateTime desc",
+			$top: top,
+		});
+	}
+
 	async listEvents(
 		accessToken: string,
 		options: { startDateTime: string; endDateTime: string; top?: number },
 	): Promise<MailboxResult<EventPage>> {
-		return this.api.get<EventPage>(`${BASE}/calendarView`, accessToken, {
-			$select: EVENT_FIELDS,
-			startDateTime: options.startDateTime,
-			endDateTime: options.endDateTime,
-			$orderby: "start/dateTime asc",
-			$top: options.top ?? 100,
-		});
+		return this.api.get<EventPage>(
+			`${BASE}/calendarView`,
+			accessToken,
+			{
+				$select: EVENT_FIELDS,
+				startDateTime: options.startDateTime,
+				endDateTime: options.endDateTime,
+				$top: options.top ?? 100,
+			},
+			{
+				Prefer: 'outlook.timezone="UTC"',
+			},
+		);
+	}
+
+	async listTodoLists(
+		accessToken: string,
+	): Promise<MailboxResult<{ value: { id: string; displayName: string }[] }>> {
+		return this.api.get<{ value: { id: string; displayName: string }[] }>(
+			`${BASE}/todo/lists`,
+			accessToken,
+		);
+	}
+
+	async listTodoTasks(
+		accessToken: string,
+		listId: string,
+	): Promise<
+		MailboxResult<{
+			value: {
+				id: string;
+				title?: string | null;
+				status?: string;
+				importance?: string;
+				dueDateTime?: { dateTime?: string; timeZone?: string };
+				completedDateTime?: { dateTime?: string; timeZone?: string };
+				createdDateTime?: string;
+				body?: { content?: string };
+			}[];
+		}>
+	> {
+		return this.api.get(
+			`${BASE}/todo/lists/${listId}/tasks`,
+			accessToken,
+			{ $top: 100 },
+			{ Prefer: 'outlook.timezone="UTC"' },
+		);
 	}
 
 	async nextPage<T = MessagePage>(

@@ -1,6 +1,5 @@
 export const ACTIVITIES = {
 	types: ["call", "meeting", "email", "task"] as const,
-	owners: ["Rahul Kumar", "Priya Sen", "Ananya Das"] as const,
 	viewModes: ["list", "week"] as const,
 	quickFilters: [
 		"all",

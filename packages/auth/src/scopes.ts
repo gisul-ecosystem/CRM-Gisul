@@ -17,6 +17,11 @@ export const CALENDAR_SCOPE =
 export const OUTLOOK_MAIL_SCOPE = "Mail.Read";
 export const OUTLOOK_CALENDAR_SCOPE = "Calendars.Read";
 export const TEAMS_MEETINGS_SCOPE = "OnlineMeetings.Read";
+export const REQUIRED_MICROSOFT_SCOPES = [
+	OUTLOOK_MAIL_SCOPE,
+	OUTLOOK_CALENDAR_SCOPE,
+	TEAMS_MEETINGS_SCOPE,
+] as const;
 
 export const SYNC_SCOPES = [GMAIL_SCOPE, CALENDAR_SCOPE] as const;
 export const MICROSOFT_SYNC_SCOPES = [
@@ -27,7 +32,7 @@ export const MICROSOFT_SYNC_SCOPES = [
 
 export const SYNC_SCOPES_FOR = {
 	[GOOGLE_PROVIDER_ID]: SYNC_SCOPES,
-	[MICROSOFT_PROVIDER_ID]: MICROSOFT_SYNC_SCOPES,
+	[MICROSOFT_PROVIDER_ID]: REQUIRED_MICROSOFT_SCOPES,
 } satisfies Record<MailboxProviderId, readonly string[]>;
 
 export const REQUIRED_SCOPES = [...IDENTITY_SCOPES, ...SYNC_SCOPES] as const;

@@ -387,3 +387,84 @@ export const dealImportTemplateOutput = z.object({
 	csv: z.string(),
 	filename: z.string(),
 });
+
+export const pipelineStageItemOutput = z.object({
+	id: z.string(),
+	stage: z.string(),
+	name: z.string(),
+	probability: z.number(),
+	color: z.string(),
+	kind: z.enum(["open", "won", "lost"]),
+	status: z.enum(["active", "won", "lost", "inactive"]),
+	position: z.number(),
+	dealCount: z.number(),
+	totalValueCents: z.number(),
+});
+
+export type PipelineStageItemOutput = z.infer<typeof pipelineStageItemOutput>;
+
+export const pipelineStatsOutput = z.object({
+	totalStages: z.number(),
+	activeStages: z.number(),
+	closedWon: z.number(),
+	closedLost: z.number(),
+});
+
+export const pipelineSettingsOutput = z.object({
+	enableProbabilityTracking: z.boolean(),
+	requireStageUpdateNotes: z.boolean(),
+	autoAssignDeals: z.boolean(),
+	defaultStage: z.string(),
+	applyToAllProducts: z.boolean(),
+	allowSkippingStages: z.boolean(),
+});
+
+export type PipelineSettingsOutput = z.infer<typeof pipelineSettingsOutput>;
+
+export const pipelineOverviewOutput = z.object({
+	stages: z.array(pipelineStageItemOutput),
+	stats: pipelineStatsOutput,
+	currency: z.string(),
+	settings: pipelineSettingsOutput,
+	canManage: z.boolean(),
+});
+
+export type PipelineOverviewOutput = z.infer<typeof pipelineOverviewOutput>;
+
+export const updatePipelineSettingsInput = z.object({
+	enableProbabilityTracking: z.boolean().optional(),
+	requireStageUpdateNotes: z.boolean().optional(),
+	autoAssignDeals: z.boolean().optional(),
+	defaultStage: z.string().optional(),
+	applyToAllProducts: z.boolean().optional(),
+	allowSkippingStages: z.boolean().optional(),
+});
+
+export type UpdatePipelineSettingsInput = z.infer<
+	typeof updatePipelineSettingsInput
+>;
+
+export const createPipelineStageInput = z.object({
+	name: z.string().trim().min(1, "Stage name is required"),
+	probability: z.number().min(0).max(100),
+	color: z.string().min(1),
+	kind: z.enum(["open", "won", "lost"]).default("open"),
+	status: z.enum(["active", "won", "lost", "inactive"]).default("active"),
+});
+
+export type CreatePipelineStageInput = z.infer<
+	typeof createPipelineStageInput
+>;
+
+export const updatePipelineStageInput = z.object({
+	id: z.string().min(1),
+	name: z.string().trim().min(1).optional(),
+	probability: z.number().min(0).max(100).optional(),
+	color: z.string().optional(),
+	status: z.enum(["active", "won", "lost", "inactive"]).optional(),
+	position: z.number().optional(),
+});
+
+export type UpdatePipelineStageInput = z.infer<
+	typeof updatePipelineStageInput
+>;

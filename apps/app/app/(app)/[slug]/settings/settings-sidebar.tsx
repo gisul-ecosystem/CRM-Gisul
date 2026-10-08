@@ -2,11 +2,15 @@
 
 import Analytics from "@carbon/icons-react/es/Analytics";
 import Apps from "@carbon/icons-react/es/Apps";
+import CalendarSettings from "@carbon/icons-react/es/CalendarSettings";
+import CloudUpload from "@carbon/icons-react/es/CloudUpload";
 import Currency from "@carbon/icons-react/es/Currency";
-import Folder from "@carbon/icons-react/es/Folder";
+import Filter from "@carbon/icons-react/es/Filter";
 import Key from "@carbon/icons-react/es/Key";
+import Product from "@carbon/icons-react/es/Product";
 import Security from "@carbon/icons-react/es/Security";
 import Settings from "@carbon/icons-react/es/Settings";
+import UserFollow from "@carbon/icons-react/es/UserFollow";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
 import type { CarbonIcon } from "@crm/ui/components/icon";
 import Link from "next/link";
@@ -41,13 +45,37 @@ const ITEMS: SettingsNavItem[] = [
 		title: "Products",
 		description: "Manage your products and services",
 		href: `${ROOT}/products`,
-		icon: Folder,
+		icon: Product,
+	},
+	{
+		title: "Deal Pipeline",
+		description: "Customize deal stages",
+		href: `${ROOT}/deal-pipeline`,
+		icon: Filter,
+	},
+	{
+		title: "Lead Settings",
+		description: "Configure lead sources and fields",
+		href: `${ROOT}/lead-settings`,
+		icon: UserFollow,
+	},
+	{
+		title: "Activity Settings",
+		description: "Manage activity types and reminders",
+		href: `${ROOT}/activity-settings`,
+		icon: CalendarSettings,
 	},
 	{
 		title: "Integrations",
 		description: "Connect with other tools",
 		href: `${ROOT}/connections`,
 		icon: Apps,
+	},
+	{
+		title: "Data Management",
+		description: "Import, export and backup",
+		href: `${ROOT}/data-management`,
+		icon: CloudUpload,
 	},
 	{
 		title: "Tracking",

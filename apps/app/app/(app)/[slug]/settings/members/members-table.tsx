@@ -78,7 +78,9 @@ function columns(
 			sortable: true,
 			width: "w-[14%]",
 			cell: (row) => (
-				<span className="text-muted-foreground">{ROLE_LABEL[row.role]}</span>
+				<span className="text-muted-foreground">
+					{ROLE_LABEL[row.role as Role] ?? row.role}
+				</span>
 			),
 		},
 		{

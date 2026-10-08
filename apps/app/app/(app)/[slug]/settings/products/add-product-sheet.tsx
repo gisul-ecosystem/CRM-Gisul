@@ -29,6 +29,7 @@ import {
 	SheetTrigger,
 } from "@crm/ui/components/sheet";
 import { Spinner } from "@crm/ui/components/spinner";
+import { Switch } from "@crm/ui/components/switch";
 import { Textarea } from "@crm/ui/components/textarea";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
@@ -38,6 +39,9 @@ import { useTRPC } from "@/lib/trpc/client";
 export function AddProductSheet({
 	canManage,
 	product,
+	trigger,
+	open: controlledOpen,
+	onOpenChange: setControlledOpen,
 }: {
 	canManage: boolean;
 	product?: {
@@ -52,11 +56,24 @@ export function AddProductSheet({
 		status: ProductStatus;
 		isCore: boolean;
 	};
+	trigger?: React.ReactNode;
+	open?: boolean;
+	onOpenChange?: (open: boolean) => void;
 }) {
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
 	const meta = useQuery(trpc.products.meta.queryOptions());
-	const [open, setOpen] = useState(false);
+	const [internalOpen, setInternalOpen] = useState(false);
+
+	const isControlled = controlledOpen !== undefined;
+	const open = isControlled ? controlledOpen : internalOpen;
+	const setOpen = (next: boolean) => {
+		if (isControlled) {
+			setControlledOpen?.(next);
+		} else {
+			setInternalOpen(next);
+		}
+	};
 
 	const invalidate = () =>
 		queryClient.invalidateQueries({ queryKey: trpc.products.pathKey() });
@@ -74,9 +91,11 @@ export function AddProductSheet({
 	const [detailedDescription, setDetailedDescription] = useState(
 		product?.detailedDescription ?? "",
 	);
-	const [category, setCategory] = useState(product?.category ?? "");
-	const [type, setType] = useState(product?.type ?? "");
-	const [color, setColor] = useState(product?.color ?? "#1a9b6a");
+	const [category, setCategory] = useState(
+		product?.category ?? "Core Software",
+	);
+	const [type, setType] = useState(product?.type ?? "SaaS Platform");
+	const [color, setColor] = useState(product?.color ?? "#5e3da8");
 	const [status, setStatus] = useState<ProductStatus>(
 		product?.status ?? ProductStatus.ACTIVE,
 	);
@@ -89,9 +108,9 @@ export function AddProductSheet({
 		setName(product?.name ?? "");
 		setShortDescription(product?.shortDescription ?? "");
 		setDetailedDescription(product?.detailedDescription ?? "");
-		setCategory(product?.category ?? "");
-		setType(product?.type ?? "");
-		setColor(product?.color ?? "#1a9b6a");
+		setCategory(product?.category ?? "Core Software");
+		setType(product?.type ?? "SaaS Platform");
+		setColor(product?.color ?? "#5e3da8");
 		setStatus(product?.status ?? ProductStatus.ACTIVE);
 		setIsCore(product?.isCore ?? false);
 		setLogo(null);
@@ -103,7 +122,7 @@ export function AddProductSheet({
 		trpc.products.create.mutationOptions({
 			onSuccess: async () => {
 				await invalidate();
-				toast.success(`${name.trim()} added.`);
+				toast.success(`${name.trim()} added successfully.`);
 				setOpen(false);
 				reset();
 			},
@@ -115,7 +134,7 @@ export function AddProductSheet({
 		trpc.products.update.mutationOptions({
 			onSuccess: async () => {
 				await invalidate();
-				toast.success(`${name.trim()} saved.`);
+				toast.success(`${name.trim()} updated successfully.`);
 				setOpen(false);
 			},
 			onError: (error) => toast.error(error.message),
@@ -123,9 +142,30 @@ export function AddProductSheet({
 	);
 
 	const pending = create.isPending || update.isPending;
-	const colors = meta.data?.colors ?? [];
-	const categories = meta.data?.categories ?? [];
-	const types = meta.data?.types ?? [];
+	const colors = meta.data?.colors ?? [
+		"#5e3da8",
+		"#22c55e",
+		"#ef4444",
+		"#8b5cf6",
+		"#3b82f6",
+		"#f59e0b",
+		"#ec4899",
+		"#14b8a6",
+	];
+	const categories = meta.data?.categories ?? [
+		"Core Software",
+		"Cloud Infrastructure",
+		"EdTech & Skills",
+		"Marketing & CRM",
+		"Consulting",
+	];
+	const types = meta.data?.types ?? [
+		"SaaS Platform",
+		"Infrastructure Service",
+		"Assessment Tool",
+		"Integration",
+		"Service Package",
+	];
 
 	return (
 		<Sheet
@@ -135,27 +175,43 @@ export function AddProductSheet({
 				if (next) reset();
 			}}
 		>
-			<SheetTrigger asChild>
-				{editing ? (
-					<Button variant="outline" size="sm" disabled={!canManage}>
-						Edit
-					</Button>
-				) : (
-					<Button disabled={!canManage}>
-						<Icon icon={Add} data-icon="inline-start" />
-						Add Product
-					</Button>
-				)}
-			</SheetTrigger>
-			<SheetContent side="right">
+			{trigger ? (
+				<SheetTrigger asChild>{trigger}</SheetTrigger>
+			) : !isControlled ? (
+				<SheetTrigger asChild>
+					{editing ? (
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={!canManage}
+							className="h-8 rounded-xl border-border/80 px-3.5 text-xs font-semibold hover:bg-muted/50"
+						>
+							Edit
+						</Button>
+					) : (
+						<Button
+							disabled={!canManage}
+							className="h-9 gap-1.5 rounded-xl bg-[#5e3da8] px-4 text-xs font-semibold text-white shadow-xs hover:bg-[#4d328a]"
+						>
+							<Icon icon={Add} className="h-3.5 w-3.5" />
+							Add Product
+						</Button>
+					)}
+				</SheetTrigger>
+			) : null}
+
+			<SheetContent side="right" className="flex flex-col sm:max-w-lg">
 				<SheetHeader>
-					<SheetTitle>{editing ? "Edit product" : "Add product"}</SheetTitle>
+					<SheetTitle>{editing ? "Edit Product" : "Add Product"}</SheetTitle>
 					<SheetDescription>
-						Add a new product or service to your CRM.
+						{editing
+							? "Update your product details, category, and display settings."
+							: "Add a new product or service to your CRM catalog."}
 					</SheetDescription>
 				</SheetHeader>
+
 				<form
-					className="flex flex-1 flex-col gap-4 overflow-y-auto px-4"
+					className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-2"
 					onSubmit={(event) => {
 						event.preventDefault();
 						const payload = {
@@ -181,63 +237,72 @@ export function AddProductSheet({
 				>
 					<FieldGroup>
 						<Field>
-							<FieldLabel htmlFor={nameId}>Product name</FieldLabel>
+							<FieldLabel htmlFor={nameId}>Product Name</FieldLabel>
 							<Input
 								id={nameId}
 								value={name}
 								onChange={(event) => setName(event.target.value)}
-								placeholder="Enter product name"
+								placeholder="e.g. Aaptor, Racko, Kanonkode"
+								className="rounded-xl"
 								required
 							/>
 						</Field>
+
 						<Field>
-							<FieldLabel htmlFor={shortId}>Short description</FieldLabel>
+							<FieldLabel htmlFor={shortId}>Short Description</FieldLabel>
 							<Textarea
 								id={shortId}
 								value={shortDescription}
 								onChange={(event) =>
 									setShortDescription(event.target.value.slice(0, 150))
 								}
-								placeholder="Brief description about the product..."
+								placeholder="Brief description about what this product offers..."
+								className="rounded-xl resize-none"
+								rows={2}
 								required
 							/>
 							<FieldDescription>
-								{shortDescription.length}/150
+								{shortDescription.length}/150 characters
 							</FieldDescription>
 						</Field>
-						<Field>
-							<FieldLabel>Category</FieldLabel>
-							<Select value={category} onValueChange={setCategory} required>
-								<SelectTrigger>
-									<SelectValue placeholder="Select category" />
-								</SelectTrigger>
-								<SelectContent>
-									{categories.map((item) => (
-										<SelectItem key={item} value={item}>
-											{item}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</Field>
-						<Field>
-							<FieldLabel>Product type</FieldLabel>
-							<Select value={type} onValueChange={setType} required>
-								<SelectTrigger>
-									<SelectValue placeholder="Select type" />
-								</SelectTrigger>
-								<SelectContent>
-									{types.map((item) => (
-										<SelectItem key={item} value={item}>
-											{item}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</Field>
+
+						<div className="grid grid-cols-2 gap-3">
+							<Field>
+								<FieldLabel>Category</FieldLabel>
+								<Select value={category} onValueChange={setCategory} required>
+									<SelectTrigger className="rounded-xl">
+										<SelectValue placeholder="Select category" />
+									</SelectTrigger>
+									<SelectContent>
+										{categories.map((item) => (
+											<SelectItem key={item} value={item}>
+												{item}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</Field>
+
+							<Field>
+								<FieldLabel>Product Type</FieldLabel>
+								<Select value={type} onValueChange={setType} required>
+									<SelectTrigger className="rounded-xl">
+										<SelectValue placeholder="Select type" />
+									</SelectTrigger>
+									<SelectContent>
+										{types.map((item) => (
+											<SelectItem key={item} value={item}>
+												{item}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</Field>
+						</div>
+
 						<Field>
 							<FieldLabel htmlFor={detailId}>
-								Detailed description (optional)
+								Detailed Description (Optional)
 							</FieldLabel>
 							<Textarea
 								id={detailId}
@@ -245,25 +310,34 @@ export function AddProductSheet({
 								onChange={(event) =>
 									setDetailedDescription(event.target.value.slice(0, 500))
 								}
-								placeholder="Add detailed description, key features, use cases..."
+								placeholder="Add key features, target audience, pricing models..."
+								className="rounded-xl resize-none"
+								rows={3}
 							/>
 							<FieldDescription>
-								{detailedDescription.length}/500
+								{detailedDescription.length}/500 characters
 							</FieldDescription>
 						</Field>
+
 						<Field>
-							<FieldLabel>Product colour</FieldLabel>
-							<div className="flex flex-wrap gap-2">
+							<FieldLabel>Product Theme Colour</FieldLabel>
+							<div className="flex flex-wrap gap-2.5 pt-1">
 								{colors.map((swatch) => (
 									<button
 										key={swatch}
 										type="button"
 										aria-label={`Colour ${swatch}`}
-										className="size-7 rounded-full border-2"
+										className="h-7 w-7 rounded-full border-2 transition-transform hover:scale-110"
 										style={{
 											background: swatch,
 											borderColor:
-												color.toLowerCase() === swatch ? "#1c1a2e" : "transparent",
+												color.toLowerCase() === swatch.toLowerCase()
+													? "#1c1a2e"
+													: "transparent",
+											boxShadow:
+												color.toLowerCase() === swatch.toLowerCase()
+													? "0 0 0 2px rgba(94,61,168,0.4)"
+													: "none",
 										}}
 										onClick={() => setColor(swatch)}
 									/>
@@ -328,47 +402,52 @@ export function AddProductSheet({
 								</FieldDescription>
 							)}
 						</Field>
-						<Field>
-							<FieldLabel>Status</FieldLabel>
-							<Select
-								value={status}
-								onValueChange={(value) => setStatus(value as ProductStatus)}
-							>
-								<SelectTrigger>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value={ProductStatus.ACTIVE}>Active</SelectItem>
-									<SelectItem value={ProductStatus.INACTIVE}>
-										Inactive
-									</SelectItem>
-								</SelectContent>
-							</Select>
-							<FieldDescription>
-								Inactive products won&apos;t be shown when creating leads or
-								deals.
-							</FieldDescription>
-						</Field>
-						<Field>
-							<label className="flex items-center gap-2 text-sm">
-								<input
-									type="checkbox"
-									checked={isCore}
-									onChange={(event) => setIsCore(event.target.checked)}
-								/>
-								Mark as core product
-							</label>
-						</Field>
+
+						<div className="grid grid-cols-2 gap-3 pt-1">
+							<Field>
+								<FieldLabel>Status</FieldLabel>
+								<Select
+									value={status}
+									onValueChange={(value) => setStatus(value as ProductStatus)}
+								>
+									<SelectTrigger className="rounded-xl">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value={ProductStatus.ACTIVE}>Active</SelectItem>
+										<SelectItem value={ProductStatus.INACTIVE}>
+											Inactive
+										</SelectItem>
+									</SelectContent>
+								</Select>
+							</Field>
+
+							<Field className="flex flex-col justify-end">
+								<div className="flex items-center justify-between rounded-xl border border-border/60 p-2.5">
+									<span className="text-xs font-medium">Core Product</span>
+									<Switch
+										checked={isCore}
+										onCheckedChange={setIsCore}
+										className="data-[state=checked]:bg-[#5e3da8]"
+									/>
+								</div>
+							</Field>
+						</div>
 					</FieldGroup>
-					<SheetFooter>
+
+					<SheetFooter className="mt-auto border-t border-border/40 pt-4">
 						<SheetClose asChild>
-							<Button type="button" variant="outline">
+							<Button type="button" variant="outline" className="rounded-xl">
 								Cancel
 							</Button>
 						</SheetClose>
-						<Button type="submit" disabled={pending || !canManage}>
+						<Button
+							type="submit"
+							disabled={pending || !canManage}
+							className="rounded-xl bg-[#5e3da8] text-white hover:bg-[#4d328a]"
+						>
 							{pending ? <Spinner data-icon="inline-start" /> : null}
-							{editing ? "Save product" : "Save product"}
+							{editing ? "Save Changes" : "Create Product"}
 						</Button>
 					</SheetFooter>
 				</form>

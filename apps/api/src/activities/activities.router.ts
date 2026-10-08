@@ -39,8 +39,11 @@ export class ActivitiesRouter {
 		output: activitiesListOutput,
 		meta: restMeta("GET", "/activities/list", ["Activities"]),
 	})
-	async list(@Input() input: z.infer<typeof activitiesListInput>) {
-		return this.activities.list(input);
+	async list(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof activitiesListInput>,
+	) {
+		return this.activities.list(input, ctx?.user?.id);
 	}
 
 	@Query({
