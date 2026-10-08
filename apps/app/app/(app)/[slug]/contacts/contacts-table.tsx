@@ -166,10 +166,7 @@ export function ContactsTable() {
 						type="button"
 						className={`${styles.viewBtn} ${view === "grid" ? styles.viewBtnOn : ""}`}
 						aria-label="Grid view"
-						onClick={() => {
-							setView("grid");
-							toast.message("Grid view is not built yet.");
-						}}
+						onClick={() => setView("grid")}
 					>
 						<Icon icon={Grid} />
 					</button>
@@ -195,6 +192,44 @@ export function ContactsTable() {
 							: contacts.isFetching
 								? "Loading leads…"
 								: "No leads match this view."}
+					</div>
+				) : view === "grid" ? (
+					<div className={styles.cardGrid}>
+						{rows.map((row) => (
+							<button
+								key={row.id}
+								type="button"
+								className={styles.leadCard}
+								onMouseEnter={() =>
+									prefetchRecord({ kind: "contact", id: row.id })
+								}
+								onClick={() => openRecord({ kind: "contact", id: row.id })}
+							>
+								<div className={styles.leadCardTop}>
+									<div className={styles.who}>
+										<span className={styles.av}>{initials(row)}</span>
+										<span className={styles.whoText}>
+											<b>{contactName(row)}</b>
+											<small>{row.company?.name ?? row.email ?? "—"}</small>
+										</span>
+									</div>
+									<span className={styles.pill}>
+										{leadStatusLabel(row.leadStatus)}
+									</span>
+								</div>
+								<div className={styles.leadCardMeta}>
+									<span>{row.product?.name ?? "No product"}</span>
+									<span>
+										{row.owner?.name.split(/\s+/)[0] ?? "Unassigned"}
+									</span>
+									{row.nextFollowUpAt ? (
+										<span>
+											Follow-up <LocalRelativeTime date={row.nextFollowUpAt} />
+										</span>
+									) : null}
+								</div>
+							</button>
+						))}
 					</div>
 				) : (
 					<div className={styles.tableScroll}>
@@ -356,8 +391,7 @@ export function ContactsTable() {
 
 				<div className={styles.footer}>
 					<p className={styles.note}>
-						Manage products in Settings → Products. Grid
-						view are not built yet.
+						Manage products in Settings → Products.
 					</p>
 					<TablePagination
 						page={query.page}

@@ -16,7 +16,6 @@ import { formatMoney } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { useQueryStates } from "nuqs";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { searchParsers } from "@/components/data-table/list-search-params";
@@ -145,10 +144,7 @@ export function DealsTable() {
 						type="button"
 						className={`${styles.viewBtn} ${view === "grid" ? styles.viewBtnOn : ""}`}
 						aria-label="Grid view"
-						onClick={() => {
-							setView("grid");
-							toast.message("Grid view is not built yet.");
-						}}
+						onClick={() => setView("grid")}
 					>
 						<Icon icon={Grid} />
 					</button>
@@ -174,6 +170,42 @@ export function DealsTable() {
 							: deals.isFetching
 								? "Loading deals…"
 								: "No deals match this view."}
+					</div>
+				) : view === "grid" ? (
+					<div className={styles.cardGrid}>
+						{rows.map((row) => {
+							const stage = STAGE_PILL[row.stage];
+							return (
+								<button
+									key={row.id}
+									type="button"
+									className={styles.dealCard}
+									onMouseEnter={() =>
+										prefetchRecord({ kind: "deal", id: row.id })
+									}
+									onClick={() => openRecord({ kind: "deal", id: row.id })}
+								>
+									<div className={styles.dealCardTop}>
+										<span className={styles.dealName}>{row.name}</span>
+										<span className={`${styles.pill} ${stage.className}`}>
+											{stage.label}
+										</span>
+									</div>
+									<div className={styles.dealCardMeta}>
+										<span>{row.company?.name ?? "No company"}</span>
+										<span>{row.product?.name ?? "No product"}</span>
+										<span>
+											{row.amountCents === null
+												? "No value"
+												: formatMoney(row.amountCents, row.currency)}
+										</span>
+										<span>
+											{row.owner?.name.split(/\s+/)[0] ?? "Unassigned"}
+										</span>
+									</div>
+								</button>
+							);
+						})}
 					</div>
 				) : (
 					<div className={styles.tableScroll}>
@@ -322,8 +354,7 @@ export function DealsTable() {
 
 				<div className={styles.footer}>
 					<p className={styles.note}>
-						Manage products in Settings → Products. Export, import, and grid
-						view are not built yet.
+						Manage products in Settings → Products.
 					</p>
 					<TablePagination
 						page={query.page}

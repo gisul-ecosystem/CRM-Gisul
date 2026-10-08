@@ -22,7 +22,7 @@ import {
 	type StampTargets,
 } from "../crm/activity-stamp.service";
 import { type BulkResult, requireOwner, runBulk } from "../crm/bulk";
-import { blankToNull, toCents } from "../crm/values";
+import { blankToNull, normalizeEmail, toCents } from "../crm/values";
 import { ConversionService } from "../currency/conversion.service";
 import { InjectDatabase } from "../database/database.constants";
 import { FieldsService } from "../fields/fields.service";
@@ -38,13 +38,21 @@ import {
 	paginate,
 	resolveOrderBy,
 } from "../trpc/list-input";
+import {
+	companyCsvTemplate,
+	parseCompanyCsv,
+	serializeCompanyCsv,
+} from "./companies-csv";
 import type {
 	CompanyBulkOwnerInput,
 	CompanyCreateInput,
+	CompanyExportInput,
+	CompanyImportInput,
 	CompanyListInput,
 	CompanyRow,
 	CompanyUpdateInput,
 } from "./companies.contracts";
+import { COMPANY_IO } from "./companies-io-config";
 import { normalizeDomain } from "./domain";
 import { FaviconService } from "./favicon.service";
 
@@ -107,6 +115,32 @@ export class CompaniesService {
 					enrichmentStatus: true,
 					source: true,
 					owner: { select: OWNER_SELECT },
+					primaryContact: {
+						select: {
+							id: true,
+							firstName: true,
+							lastName: true,
+							email: true,
+							title: true,
+							product: {
+								select: { id: true, name: true, color: true },
+							},
+						},
+					},
+					deals: {
+						where: {
+							archivedAt: null,
+							stage: { in: [...OPEN_DEAL_STAGES] },
+							productId: { not: null },
+						},
+						orderBy: { updatedAt: "desc" },
+						take: 1,
+						select: {
+							product: {
+								select: { id: true, name: true, color: true },
+							},
+						},
+					},
 					_count: {
 						select: {
 							contacts: true,
@@ -129,27 +163,42 @@ export class CompaniesService {
 		]);
 
 		return {
-			rows: rows.map((row) => ({
-				id: row.id,
-				name: row.name,
-				domain: row.domain,
-				iconUrl: row.iconUrl,
-				iconDarkUrl: row.iconDarkUrl,
-				iconTone: row.iconTone,
-				logoUrl: row.logoUrl,
-				brandColor: row.brandColor,
-				industry: row.industry,
-				enrichmentStatus: row.enrichmentStatus,
-				queued: queued.has(row.id),
-				source: row.source,
-				owner: row.owner,
-				contactCount: row._count.contacts,
-				openDealCount: row._count.deals,
-				lastActivityAt: row.lastActivityAt?.toISOString() ?? null,
-				createdAt: row.createdAt.toISOString(),
-				archivedAt: row.archivedAt?.toISOString() ?? null,
-				fields: tableFields.get(row.id) ?? {},
-			})),
+			rows: rows.map((row) => {
+				const contact = row.primaryContact;
+				const product = contact?.product ?? row.deals[0]?.product ?? null;
+
+				return {
+					id: row.id,
+					name: row.name,
+					domain: row.domain,
+					iconUrl: row.iconUrl,
+					iconDarkUrl: row.iconDarkUrl,
+					iconTone: row.iconTone,
+					logoUrl: row.logoUrl,
+					brandColor: row.brandColor,
+					industry: row.industry,
+					enrichmentStatus: row.enrichmentStatus,
+					queued: queued.has(row.id),
+					source: row.source,
+					owner: row.owner,
+					product,
+					primaryContact: contact
+						? {
+								id: contact.id,
+								firstName: contact.firstName,
+								lastName: contact.lastName,
+								email: contact.email,
+								title: contact.title,
+							}
+						: null,
+					contactCount: row._count.contacts,
+					openDealCount: row._count.deals,
+					lastActivityAt: row.lastActivityAt?.toISOString() ?? null,
+					createdAt: row.createdAt.toISOString(),
+					archivedAt: row.archivedAt?.toISOString() ?? null,
+					fields: tableFields.get(row.id) ?? {},
+				};
+			}),
 			total,
 			facetCounts,
 		};
@@ -600,6 +649,152 @@ export class CompaniesService {
 		return { ok: true as const, queued };
 	}
 
+	async exportCsv(input: CompanyExportInput) {
+		const filterableFields = await this.fields.filterableFieldsFor("COMPANY");
+		const where = this.buildWhere(input, filterableFields);
+
+		const total = await this.db.company.count({ where });
+		if (total > COMPANY_IO.export.maxRows) {
+			throw new BadRequestException(
+				`Export is capped at ${COMPANY_IO.export.maxRows} companies. Narrow the filters first.`,
+			);
+		}
+
+		const rows = await this.db.company.findMany({
+			where,
+			orderBy: resolveOrderBy(input, SORTABLE, { createdAt: "desc" }),
+			take: COMPANY_IO.export.maxRows,
+			select: {
+				name: true,
+				domain: true,
+				industry: true,
+				website: true,
+				phone: true,
+				email: true,
+				owner: { select: { email: true } },
+			},
+		});
+
+		const csv = serializeCompanyCsv(
+			rows.map((row) => ({
+				name: row.name,
+				domain: row.domain ?? "",
+				ownerEmail: row.owner?.email ?? "",
+				industry: row.industry ?? "",
+				website: row.website ?? "",
+				phone: row.phone ?? "",
+				email: row.email ?? "",
+			})),
+		);
+
+		const day = new Date().toISOString().slice(0, 10);
+		return {
+			csv,
+			filename: `companies-${day}.csv`,
+			rowCount: rows.length,
+		};
+	}
+
+	importTemplate() {
+		return {
+			csv: companyCsvTemplate(),
+			filename: "companies-import-template.csv",
+		};
+	}
+
+	async importCsv(input: CompanyImportInput) {
+		const parsed = parseCompanyCsv(input.csv);
+		let created = 0;
+		let updated = 0;
+		const errors: { line: number; message: string }[] = [];
+
+		for (const [index, row] of parsed.entries()) {
+			const line = index + 2;
+			try {
+				const name = row.name.trim();
+				if (!name) {
+					throw new BadRequestException("name is required.");
+				}
+
+				let domain: string | undefined;
+				if (row.domain.trim()) {
+					const normalized = normalizeDomain(row.domain);
+					if (!normalized) {
+						throw new BadRequestException(
+							`"${row.domain}" is not a domain — try something like "stripe.com".`,
+						);
+					}
+					domain = normalized;
+				}
+
+				const ownerId = row.ownerEmail.trim()
+					? await this.resolveOwnerId(row.ownerEmail)
+					: undefined;
+
+				const existing = domain
+					? await this.db.company.findFirst({
+							where: { domain, archivedAt: null },
+							select: { id: true },
+						})
+					: await this.db.company.findFirst({
+							where: {
+								name: { equals: name, mode: "insensitive" },
+								archivedAt: null,
+							},
+							select: { id: true },
+						});
+
+				const extras = {
+					...(row.industry.trim() ? { industry: row.industry } : {}),
+					...(row.website.trim() ? { website: row.website } : {}),
+					...(row.phone.trim() ? { phone: row.phone } : {}),
+					...(row.email.trim() ? { email: row.email } : {}),
+				};
+
+				if (existing) {
+					await this.update(existing.id, {
+						name,
+						...(domain !== undefined ? { domain } : {}),
+						...(ownerId !== undefined ? { ownerId } : {}),
+						...extras,
+					});
+					updated += 1;
+					continue;
+				}
+
+				const company = await this.create({
+					name,
+					domain,
+					ownerId: ownerId ?? null,
+				});
+
+				if (Object.keys(extras).length > 0) {
+					await this.update(company.id, extras);
+				}
+				created += 1;
+			} catch (error) {
+				errors.push({
+					line,
+					message: error instanceof Error ? error.message : "Import failed.",
+				});
+			}
+		}
+
+		this.logger.log({
+			message: "Companies imported",
+			created,
+			updated,
+			failed: errors.length,
+		});
+
+		return {
+			created,
+			updated,
+			failed: errors.length,
+			errors: errors.slice(0, 20),
+		};
+	}
+
 	async setPrimaryContact(companyId: string, contactId: string | null) {
 		if (contactId) {
 			const contact = await this.db.contact.findUnique({
@@ -627,6 +822,19 @@ export class CompaniesService {
 		}
 	}
 
+	private async resolveOwnerId(email: string): Promise<string | null> {
+		const normalized = normalizeEmail(email);
+		if (!normalized) return null;
+		const user = await this.db.user.findFirst({
+			where: { email: { equals: normalized, mode: "insensitive" } },
+			select: { id: true },
+		});
+		if (!user) {
+			throw new BadRequestException(`No owner with email ${normalized}.`);
+		}
+		return user.id;
+	}
+
 	private searchFilter(q: string): Prisma.CompanyWhereInput {
 		const term = q.trim();
 		if (!term) return {};
@@ -651,6 +859,50 @@ export class CompaniesService {
 
 		const owner = ownerFilter<Prisma.CompanyWhereInput>(input.owner);
 		if (owner) and.push(owner);
+
+		if (input.product.length > 0) {
+			const wantsNone = input.product.includes("none");
+			const productIds = input.product.filter((id) => id !== "none");
+			const productOr: Prisma.CompanyWhereInput[] = [];
+			if (productIds.length > 0) {
+				productOr.push({
+					OR: [
+						{ primaryContact: { productId: { in: productIds } } },
+						{
+							deals: {
+								some: {
+									archivedAt: null,
+									stage: { in: [...OPEN_DEAL_STAGES] },
+									productId: { in: productIds },
+								},
+							},
+						},
+					],
+				});
+			}
+			if (wantsNone) {
+				productOr.push({
+					AND: [
+						{
+							OR: [
+								{ primaryContactId: null },
+								{ primaryContact: { productId: null } },
+							],
+						},
+						{
+							deals: {
+								none: {
+									archivedAt: null,
+									stage: { in: [...OPEN_DEAL_STAGES] },
+									productId: { not: null },
+								},
+							},
+						},
+					],
+				});
+			}
+			if (productOr.length > 0) and.push({ OR: productOr });
+		}
 
 		if (input.industry.length > 0)
 			and.push({ industry: { in: input.industry } });

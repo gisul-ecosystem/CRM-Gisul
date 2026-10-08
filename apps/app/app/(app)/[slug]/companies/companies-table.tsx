@@ -1,11 +1,17 @@
 "use client";
 
-import ChevronDown from "@carbon/icons-react/es/ChevronDown";
 import Column from "@carbon/icons-react/es/Column";
 import Filter from "@carbon/icons-react/es/Filter";
 import OverflowMenuHorizontal from "@carbon/icons-react/es/OverflowMenuHorizontal";
 import Search from "@carbon/icons-react/es/Search";
 import { Checkbox } from "@crm/ui/components/checkbox";
+import {
+	DropdownMenu,
+	DropdownMenuCheckboxItem,
+	DropdownMenuContent,
+	DropdownMenuLabel,
+	DropdownMenuTrigger,
+} from "@crm/ui/components/dropdown-menu";
 import { Icon } from "@crm/ui/components/icon";
 import { TablePagination } from "@crm/ui/components/table-pagination";
 import { useSearchInput } from "@crm/ui/hooks/use-search-input";
@@ -13,7 +19,7 @@ import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
 import { useQuery } from "@tanstack/react-query";
 import { useQueryStates } from "nuqs";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
+import { contactName } from "@/components/crm/contact-name";
 import { searchParsers } from "@/components/data-table/list-search-params";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { LocalRelativeTime } from "@/components/local-date-time";
@@ -22,11 +28,27 @@ import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { CompaniesBulkActions } from "./companies-bulk-actions";
+import { CompaniesFilters } from "./companies-filters";
 import { companiesSearchParams } from "./companies-search-params";
 import styles from "./customers-design.module.css";
+import { useColumnVisibility } from "./use-column-visibility";
 
 type CompanyRow = RouterOutputs["companies"]["list"]["rows"][number];
 type Scope = "all" | "mine";
+type ColumnId =
+	| "product"
+	| "primaryContact"
+	| "owner"
+	| "openDeals"
+	| "lastActivity";
+
+const COLUMN_LABELS: Record<ColumnId, string> = {
+	product: "Product",
+	primaryContact: "Primary Contact",
+	owner: "Owner",
+	openDeals: "Open Deals",
+	lastActivity: "Last Activity",
+};
 
 export function CompaniesTable() {
 	const openRecord = useOpenRecord();
@@ -40,6 +62,16 @@ export function CompaniesTable() {
 	);
 	const [scope, setScope] = useState<Scope>("all");
 	const me = useQuery(trpc.users.me.queryOptions());
+	const columns = useColumnVisibility<ColumnId>(
+		"crm.companies.columns.v1",
+		{
+			product: true,
+			primaryContact: true,
+			owner: true,
+			openDeals: true,
+			lastActivity: true,
+		},
+	);
 
 	const listInput =
 		scope === "mine" && me.data?.id
@@ -76,7 +108,7 @@ export function CompaniesTable() {
 					<input
 						value={searchValue}
 						onChange={(event) => setSearchValue(event.target.value)}
-						placeholder="Search leads, customers, deals, activities..."
+						placeholder="Search companies…"
 						autoComplete="off"
 					/>
 				</label>
@@ -97,18 +129,16 @@ export function CompaniesTable() {
 					</button>
 				</div>
 				<div className={styles.filters}>
-					<button type="button" className={styles.filterChip} disabled>
-						All Products <Icon icon={ChevronDown} />
-					</button>
-					<button
-						type="button"
-						className={styles.filterChip}
-						onClick={() =>
-							toast.message("Use My companies for owner scope for now.")
-						}
-					>
-						All Owners <Icon icon={ChevronDown} />
-					</button>
+					<CompaniesFilters
+						selected={{
+							product: input.product ?? [],
+							owner: scope === "mine" ? [] : (input.owner ?? []),
+						}}
+						onChange={(id, next) => {
+							if (id === "owner" && scope === "mine") setScope("all");
+							query.setFilter(id, next);
+						}}
+					/>
 					<button
 						type="button"
 						className={styles.filterChip}
@@ -122,14 +152,27 @@ export function CompaniesTable() {
 						<Icon icon={Filter} />
 						{input.archived ? "Active" : "Archived"}
 					</button>
-					<button
-						type="button"
-						className={styles.filterChip}
-						onClick={() => toast.message("Column picker is not built yet.")}
-					>
-						<Icon icon={Column} />
-						Columns
-					</button>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<button type="button" className={styles.filterChip}>
+								<Icon icon={Column} />
+								Columns
+							</button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" className="min-w-44">
+							<DropdownMenuLabel>Visible columns</DropdownMenuLabel>
+							{(Object.keys(COLUMN_LABELS) as ColumnId[]).map((id) => (
+								<DropdownMenuCheckboxItem
+									key={id}
+									checked={columns.visible[id]}
+									onCheckedChange={() => columns.toggle(id)}
+									onSelect={(event) => event.preventDefault()}
+								>
+									{COLUMN_LABELS[id]}
+								</DropdownMenuCheckboxItem>
+							))}
+						</DropdownMenuContent>
+					</DropdownMenu>
 				</div>
 			</div>
 
@@ -172,26 +215,40 @@ export function CompaniesTable() {
 											Company
 										</button>
 									</th>
-									<th>Product</th>
-									<th>Primary Contact</th>
-									<th>
-										<button type="button" onClick={() => query.toggleSort("owner")}>
-											Owner
-										</button>
-									</th>
-									<th>
-										<button type="button" onClick={() => query.toggleSort("deals")}>
-											Open Deals
-										</button>
-									</th>
-									<th>
-										<button
-											type="button"
-											onClick={() => query.toggleSort("lastActivity")}
-										>
-											Last Activity
-										</button>
-									</th>
+									{columns.visible.product ? <th>Product</th> : null}
+									{columns.visible.primaryContact ? (
+										<th>Primary Contact</th>
+									) : null}
+									{columns.visible.owner ? (
+										<th>
+											<button
+												type="button"
+												onClick={() => query.toggleSort("owner")}
+											>
+												Owner
+											</button>
+										</th>
+									) : null}
+									{columns.visible.openDeals ? (
+										<th>
+											<button
+												type="button"
+												onClick={() => query.toggleSort("deals")}
+											>
+												Open Deals
+											</button>
+										</th>
+									) : null}
+									{columns.visible.lastActivity ? (
+										<th>
+											<button
+												type="button"
+												onClick={() => query.toggleSort("lastActivity")}
+											>
+												Last Activity
+											</button>
+										</th>
+									) : null}
 									<th>Actions</th>
 								</tr>
 							</thead>
@@ -224,40 +281,76 @@ export function CompaniesTable() {
 												</span>
 											</div>
 										</td>
-										<td>
-											<span className={styles.blank}>—</span>
-										</td>
-										<td>
-											<span className={styles.blank}>—</span>
-										</td>
-										<td>
-											{row.owner ? (
-												<span className={styles.owner}>
-													{row.owner.image ? (
-														<img
-															src={row.owner.image}
-															alt=""
-															className={styles.ownerImg}
-														/>
-													) : (
-														<span className={`${styles.av} ${styles.avSm}`}>
-															{personInitials(row.owner.name)}
+										{columns.visible.product ? (
+											<td>
+												{row.product ? (
+													<span className={styles.owner}>
+														<span
+															className={`${styles.av} ${styles.avSm}`}
+															style={{
+																background: row.product.color,
+																color: "#fff",
+															}}
+														>
+															{row.product.name.charAt(0)}
 														</span>
-													)}
-													{row.owner.name}
-												</span>
-											) : (
-												<span className={styles.blank}>—</span>
-											)}
-										</td>
-										<td>{row.openDealCount}</td>
-										<td>
-											{row.lastActivityAt ? (
-												<LocalRelativeTime date={row.lastActivityAt} />
-											) : (
-												<span className={styles.blank}>—</span>
-											)}
-										</td>
+														{row.product.name}
+													</span>
+												) : (
+													<span className={styles.blank}>—</span>
+												)}
+											</td>
+										) : null}
+										{columns.visible.primaryContact ? (
+											<td>
+												{row.primaryContact ? (
+													<span className={styles.entityText}>
+														<b>{contactName(row.primaryContact)}</b>
+														<small>
+															{row.primaryContact.title ||
+																row.primaryContact.email ||
+																"—"}
+														</small>
+													</span>
+												) : (
+													<span className={styles.blank}>—</span>
+												)}
+											</td>
+										) : null}
+										{columns.visible.owner ? (
+											<td>
+												{row.owner ? (
+													<span className={styles.owner}>
+														{row.owner.image ? (
+															<img
+																src={row.owner.image}
+																alt=""
+																className={styles.ownerImg}
+															/>
+														) : (
+															<span className={`${styles.av} ${styles.avSm}`}>
+																{personInitials(row.owner.name)}
+															</span>
+														)}
+														{row.owner.name}
+													</span>
+												) : (
+													<span className={styles.blank}>—</span>
+												)}
+											</td>
+										) : null}
+										{columns.visible.openDeals ? (
+											<td>{row.openDealCount}</td>
+										) : null}
+										{columns.visible.lastActivity ? (
+											<td>
+												{row.lastActivityAt ? (
+													<LocalRelativeTime date={row.lastActivityAt} />
+												) : (
+													<span className={styles.blank}>—</span>
+												)}
+											</td>
+										) : null}
 										<td onClick={(event) => event.stopPropagation()}>
 											<button
 												type="button"
@@ -279,8 +372,7 @@ export function CompaniesTable() {
 
 				<div className={styles.footer}>
 					<p className={styles.note}>
-						Product and primary contact need a backend. Columns stay blank for
-						now.
+						Product comes from the primary contact or an open deal.
 					</p>
 					<TablePagination
 						page={query.page}
@@ -299,13 +391,15 @@ export function CompaniesTable() {
 function companyInitials(name: string): string {
 	const parts = name.trim().split(/\s+/).filter(Boolean);
 	if (parts.length === 0) return "?";
-	if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-	return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+	const first = parts[0]?.charAt(0) ?? "";
+	const second = parts.length > 1 ? (parts[1]?.charAt(0) ?? "") : "";
+	return `${first}${second}`.toUpperCase() || "?";
 }
 
 function personInitials(name: string): string {
 	const parts = name.trim().split(/\s+/).filter(Boolean);
 	if (parts.length === 0) return "?";
-	if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-	return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+	const first = parts[0]?.charAt(0) ?? "";
+	const last = parts.length > 1 ? (parts[parts.length - 1]?.charAt(0) ?? "") : "";
+	return `${first}${last}`.toUpperCase() || "?";
 }

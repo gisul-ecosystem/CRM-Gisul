@@ -35,7 +35,7 @@ function Spinner({
 				className="absolute inset-0 animate-spin rounded-full border-2 border-ring/25 border-t-ring"
 			/>
 			<img
-				src={PRODUCT_BRAND.logoSrc}
+				src={PRODUCT_BRAND.loadingLogoSrc}
 				alt=""
 				className="relative z-10 max-h-[58%] max-w-[58%] object-contain object-center dark:brightness-0 dark:invert"
 			/>

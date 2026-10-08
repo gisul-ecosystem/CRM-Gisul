@@ -20,7 +20,7 @@ import { useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
-import styles from "./leads-design.module.css";
+import styles from "./customers-design.module.css";
 
 function downloadText(filename: string, contents: string) {
 	const blob = new Blob([contents], { type: "text/csv;charset=utf-8" });
@@ -32,11 +32,11 @@ function downloadText(filename: string, contents: string) {
 	URL.revokeObjectURL(url);
 }
 
-export function ImportLeadsSheet({
-	triggerClassName,
+export function ImportCompaniesSheet({
+	triggerClassName = styles.btnOutline,
 }: {
 	triggerClassName?: string;
-} = {}) {
+}) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 	const queryClient = useQueryClient();
@@ -47,16 +47,16 @@ export function ImportLeadsSheet({
 	const [fileName, setFileName] = useState("");
 
 	const template = useQuery({
-		...trpc.contacts.importTemplate.queryOptions(),
+		...trpc.companies.importTemplate.queryOptions(),
 		enabled: open,
 	});
 
 	const importCsv = useMutation(
-		trpc.contacts.importCsv.mutationOptions({
+		trpc.companies.importCsv.mutationOptions({
 			onSuccess: async (result) => {
-				await cache.contact();
+				await cache.company();
 				await queryClient.invalidateQueries({
-					queryKey: trpc.contacts.pathKey(),
+					queryKey: trpc.companies.pathKey(),
 				});
 				const parts = [
 					result.created > 0 ? `${result.created} created` : null,
@@ -89,17 +89,17 @@ export function ImportLeadsSheet({
 			}}
 		>
 			<SheetTrigger asChild>
-				<button type="button" className={triggerClassName ?? styles.btnOutline}>
+				<button type="button" className={triggerClassName}>
 					<Icon icon={Upload} />
 					Import
 				</button>
 			</SheetTrigger>
 			<SheetContent side="right">
 				<SheetHeader>
-					<SheetTitle>Import leads</SheetTitle>
+					<SheetTitle>Import companies</SheetTitle>
 					<SheetDescription>
-						Upload a CSV. Matching emails update existing leads. New emails
-						create leads.
+						Upload a CSV. Matching domain updates existing companies. New rows
+						create companies.
 					</SheetDescription>
 				</SheetHeader>
 
@@ -123,7 +123,7 @@ export function ImportLeadsSheet({
 						<FieldDescription>
 							{fileName
 								? `Selected ${fileName}.`
-								: "Columns: firstName, lastName, email, phone, title, company, ownerEmail, product, leadStatus, leadSource, nextFollowUpAt."}
+								: "Columns: name, domain, ownerEmail, industry, website, phone, email."}
 						</FieldDescription>
 					</Field>
 
@@ -155,7 +155,7 @@ export function ImportLeadsSheet({
 						onClick={() => importCsv.mutate({ csv })}
 					>
 						{importCsv.isPending ? <Spinner data-icon="inline-start" /> : null}
-						Import leads
+						Import companies
 					</Button>
 					<SheetClose asChild>
 						<Button type="button" variant="outline">

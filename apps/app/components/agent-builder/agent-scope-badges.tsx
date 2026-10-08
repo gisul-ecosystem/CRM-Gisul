@@ -10,11 +10,19 @@ type ScopeLogo = ComponentType<{
 	"data-icon"?: string;
 }>;
 
+function CrmMark(props: {
+	className?: string;
+	"aria-hidden"?: boolean | "true" | "false";
+	"data-icon"?: string;
+}) {
+	return <CompLogo variant="mark" {...props} />;
+}
+
 const BRANDS: Array<{
 	match: RegExp;
 	Logo: ScopeLogo;
 }> = [
-	{ match: /\bcrm\b/i, Logo: CompLogo },
+	{ match: /\bcrm\b/i, Logo: CrmMark },
 	{ match: /\bslack\b/i, Logo: SlackLogo },
 	{ match: /\b(gmail|google)\b/i, Logo: GoogleLogo },
 ];

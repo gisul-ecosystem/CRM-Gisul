@@ -352,6 +352,15 @@ function ContactOverview({ contact }: { contact: Contact }) {
 						onSave={(title) => save({ title })}
 						{...agentProps("title")}
 					/>
+					<InlineCompanyField
+						value={contact.company?.id ?? NONE}
+						company={contact.company}
+						saving={isSaving("companyId")}
+						none={{ value: NONE, label: "No company" }}
+						onSave={(companyId) =>
+							save({ companyId: companyId === NONE ? null : companyId })
+						}
+					/>
 					<InlineField
 						label="Email"
 						value={contact.email}
@@ -365,39 +374,6 @@ function ContactOverview({ contact }: { contact: Contact }) {
 						type="tel"
 						saving={isSaving("phone")}
 						onSave={(phone) => save({ phone })}
-					/>
-					<InlineField
-						label="LinkedIn"
-						value={contact.linkedinUrl}
-						type="url"
-						saving={isSaving("linkedinUrl")}
-						onSave={(linkedinUrl) => save({ linkedinUrl })}
-						{...agentProps("linkedinUrl")}
-					/>
-					<InlineField
-						label="X"
-						value={contact.twitterUrl}
-						type="url"
-						saving={isSaving("twitterUrl")}
-						onSave={(twitterUrl) => save({ twitterUrl })}
-						{...agentProps("twitterUrl")}
-					/>
-					<InlineField
-						label="GitHub"
-						value={contact.githubUrl}
-						type="url"
-						saving={isSaving("githubUrl")}
-						onSave={(githubUrl) => save({ githubUrl })}
-						{...agentProps("githubUrl")}
-					/>
-					<InlineCompanyField
-						value={contact.company?.id ?? NONE}
-						company={contact.company}
-						saving={isSaving("companyId")}
-						none={{ value: NONE, label: "No company" }}
-						onSave={(companyId) =>
-							save({ companyId: companyId === NONE ? null : companyId })
-						}
 					/>
 					<InlineSelectField
 						label="Owner"
@@ -475,11 +451,39 @@ function ContactOverview({ contact }: { contact: Contact }) {
 				contactName={contactName(contact)}
 			/>
 
-			{hasContactLinks(contact) ? (
-				<DetailSheetSection title="Links">
-					<ContactSocials contact={contact} />
-				</DetailSheetSection>
-			) : null}
+			<DetailSheetSection title="Profiles">
+				<DetailSheetProperties>
+					<InlineField
+						label="LinkedIn"
+						value={contact.linkedinUrl}
+						type="url"
+						saving={isSaving("linkedinUrl")}
+						onSave={(linkedinUrl) => save({ linkedinUrl })}
+						{...agentProps("linkedinUrl")}
+					/>
+					<InlineField
+						label="X"
+						value={contact.twitterUrl}
+						type="url"
+						saving={isSaving("twitterUrl")}
+						onSave={(twitterUrl) => save({ twitterUrl })}
+						{...agentProps("twitterUrl")}
+					/>
+					<InlineField
+						label="GitHub"
+						value={contact.githubUrl}
+						type="url"
+						saving={isSaving("githubUrl")}
+						onSave={(githubUrl) => save({ githubUrl })}
+						{...agentProps("githubUrl")}
+					/>
+				</DetailSheetProperties>
+				{hasContactLinks(contact) ? (
+					<div className="pt-1">
+						<ContactSocials contact={contact} />
+					</div>
+				) : null}
+			</DetailSheetSection>
 
 			<WebsiteActivity contactId={contact.id} />
 		</DetailSheetBody>
@@ -649,42 +653,46 @@ function ContactDeals({ contact }: { contact: Contact }) {
 
 	if (contact.deals.length === 0) {
 		return (
-			<DetailSheetEmpty
-				icon={Partnership}
-				title="Not on any deals"
-				description={`${contactName(contact)} is not attached to anything being sold yet. Deals are opened on the company, then people are added to them.`}
-			/>
+			<DetailSheetBody>
+				<DetailSheetEmpty
+					icon={Partnership}
+					title="Not on any deals"
+					description={`${contactName(contact)} is not attached to anything being sold yet. Deals are opened on the company, then people are added to them.`}
+				/>
+			</DetailSheetBody>
 		);
 	}
 
 	return (
-		<SimpleTable variant="panel" columns={DEAL_COLUMNS}>
-			{contact.deals.map((deal) => (
-				<SimpleTableRow
-					key={deal.id}
-					clickable
-					onClick={() => openRecord({ kind: "deal", id: deal.id })}
-				>
-					<TableCell className="truncate py-2.5 pr-3 pl-5 font-medium">
-						{deal.name}
-					</TableCell>
-					<TableCell className="truncate px-3 py-2.5 text-muted-foreground">
-						{deal.role ?? <EmptyCellValue />}
-					</TableCell>
-					<TableCell className="px-3 py-2.5">
-						<DealStageMenu dealId={deal.id} stage={deal.stage} />
-					</TableCell>
-					<TableCell className="px-3 py-2.5 text-right">
-						<DealAmount
-							amountCents={deal.amountCents}
-							currency={deal.currency}
-						/>
-					</TableCell>
-					<TableCell className="px-3 py-2.5">
-						<OwnerCell owner={deal.owner} />
-					</TableCell>
-				</SimpleTableRow>
-			))}
-		</SimpleTable>
+		<DetailSheetBody>
+			<SimpleTable variant="panel" columns={DEAL_COLUMNS}>
+				{contact.deals.map((deal) => (
+					<SimpleTableRow
+						key={deal.id}
+						clickable
+						onClick={() => openRecord({ kind: "deal", id: deal.id })}
+					>
+						<TableCell className="truncate py-3 pr-3 pl-5 font-medium">
+							{deal.name}
+						</TableCell>
+						<TableCell className="truncate px-3 py-3 text-muted-foreground">
+							{deal.role ?? <EmptyCellValue />}
+						</TableCell>
+						<TableCell className="px-3 py-3">
+							<DealStageMenu dealId={deal.id} stage={deal.stage} />
+						</TableCell>
+						<TableCell className="px-3 py-3 text-right">
+							<DealAmount
+								amountCents={deal.amountCents}
+								currency={deal.currency}
+							/>
+						</TableCell>
+						<TableCell className="px-3 py-3">
+							<OwnerCell owner={deal.owner} />
+						</TableCell>
+					</SimpleTableRow>
+				))}
+			</SimpleTable>
+		</DetailSheetBody>
 	);
 }

@@ -16,7 +16,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
 						aria-label={`${PRODUCT_BRAND.name} homepage`}
 						className="w-fit"
 					>
-						<Logo className="h-8 w-auto max-w-[140px] shrink-0 dark:brightness-100 dark:invert-0" />
+						<Logo className="h-9 w-auto max-w-[180px] shrink-0" />
 					</Link>
 
 					<div className="flex max-w-xl flex-col gap-4">

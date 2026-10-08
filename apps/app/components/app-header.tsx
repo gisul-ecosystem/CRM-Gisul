@@ -69,9 +69,9 @@ export function AppHeader({ user }: { user: User }) {
 				<Link
 					href={workspaceUrl()}
 					aria-label="Homepage"
-					className="hidden size-8 items-center justify-center text-foreground md:flex"
+					className="hidden h-8 items-center justify-center text-foreground md:flex"
 				>
-					<Logo className="h-5 w-auto max-w-[72px]" />
+					<Logo className="h-5 w-auto max-w-[110px]" />
 				</Link>
 				<Separator orientation="vertical" className="mx-1 h-5 bg-transparent" />
 				<span className="min-w-0 truncate font-medium text-sm">{label}</span>
@@ -99,8 +99,8 @@ export function AppHeaderFallback() {
 			aria-busy="true"
 		>
 			<div className="flex shrink-0 items-center gap-1">
-				<span className="hidden size-8 items-center justify-center text-foreground md:flex">
-					<Logo className="h-5 w-auto max-w-[72px]" />
+				<span className="hidden h-8 items-center justify-center text-foreground md:flex">
+					<Logo className="h-5 w-auto max-w-[110px]" />
 				</span>
 				<Separator orientation="vertical" className="mx-1 h-5 bg-transparent" />
 				<Skeleton className="h-4 w-24" />

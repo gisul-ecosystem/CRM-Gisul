@@ -50,8 +50,8 @@ export function StageStepper({
 							className={cn(
 								"min-w-0 flex-1 border-t-2 pt-2 text-left text-xs transition-colors disabled:pointer-events-none disabled:opacity-50",
 								reached
-									? "border-foreground text-foreground"
-									: "border-border text-muted-foreground hover:border-muted-foreground hover:text-foreground",
+									? "border-[var(--brand,#5b3f9e)] text-[var(--ink,#1c1a2e)]"
+									: "border-[var(--line,#ececf3)] text-[var(--text-muted,#7a7890)] hover:border-[var(--brand,#5b3f9e)] hover:text-[var(--ink,#1c1a2e)]",
 								current && "font-medium",
 							)}
 						>
@@ -69,7 +69,7 @@ export function StageStepper({
 
 			{exited ? (
 				<li className="flex min-w-0 flex-1">
-					<div className="min-w-0 flex-1 border-foreground border-t-2 pt-2">
+					<div className="min-w-0 flex-1 border-t-2 border-[var(--brand,#5b3f9e)] pt-2">
 						<DealStageIndicator stage={stage} className="text-xs" />
 					</div>
 				</li>

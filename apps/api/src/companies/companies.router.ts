@@ -19,7 +19,12 @@ import {
 	companyCreateInput,
 	companyDetailOutput,
 	companyEnrichOutput,
+	companyExportInput,
+	companyExportOutput,
 	companyIdInput,
+	companyImportInput,
+	companyImportOutput,
+	companyImportTemplateOutput,
 	companyListInput,
 	companyListOutput,
 	companyOptionOutput,
@@ -46,6 +51,32 @@ export class CompaniesRouter {
 	})
 	async list(@Input() input: z.infer<typeof companyListInput>) {
 		return this.companies.list(input);
+	}
+
+	@Query({
+		input: companyExportInput,
+		output: companyExportOutput,
+		meta: restMeta("POST", "/companies/export", ["Companies"]),
+	})
+	async exportCsv(@Input() input: z.infer<typeof companyExportInput>) {
+		return this.companies.exportCsv(input);
+	}
+
+	@Query({
+		output: companyImportTemplateOutput,
+		meta: restMeta("GET", "/companies/import-template", ["Companies"]),
+	})
+	importTemplate() {
+		return this.companies.importTemplate();
+	}
+
+	@Mutation({
+		input: companyImportInput,
+		output: companyImportOutput,
+		meta: restMeta("POST", "/companies/import", ["Companies"]),
+	})
+	async importCsv(@Input() input: z.infer<typeof companyImportInput>) {
+		return this.companies.importCsv(input);
 	}
 
 	@Query({
