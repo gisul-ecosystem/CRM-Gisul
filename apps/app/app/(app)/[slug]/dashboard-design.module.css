@@ -771,14 +771,13 @@
 }
 
 .sel {
-	font-size: 7.5px;
+	font-size: 11px;
 	color: #4a4860;
 	border: 1px solid var(--line);
 	border-radius: 4px;
-	padding: 3px 5px;
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
+	padding: 4px 8px;
+	background: #fff;
+	cursor: pointer;
 }
 
 .chart {
@@ -981,6 +980,18 @@
 	margin-right: 8px;
 }
 
+.productMark {
+	display: inline-grid;
+	width: 16px;
+	height: 16px;
+	margin-right: 8px;
+	border-radius: 4px;
+	place-items: center;
+	vertical-align: middle;
+	font-size: 9px;
+	font-weight: 700;
+}
+
 .act {
 	padding: 16px 20px 20px;
 	width: 100%;
@@ -1112,6 +1123,18 @@
 	text-transform: none;
 	letter-spacing: 1.5px;
 	overflow-wrap: anywhere;
+}
+
+.greetLead {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.greetIcon {
+	width: 0.85em;
+	height: 0.85em;
+	flex: none;
 }
 
 .greetSub {

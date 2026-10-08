@@ -17,6 +17,7 @@ import { useState, type CSSProperties } from "react";
 import { toast } from "sonner";
 import { contactsSearchParams } from "@/app/(app)/[slug]/contacts/contacts-search-params";
 import { contactName } from "@/components/crm/contact-name";
+import { ProductMark } from "@/components/crm/product-mark";
 import { LocalRelativeTime } from "@/components/local-date-time";
 import { activityIcon, activityLabel } from "@/lib/activity-presentation";
 import { LEAD_SOURCE_OPTIONS, leadSourceLabel } from "@/lib/lead-fields";
@@ -30,6 +31,7 @@ import {
 	chartTopCents,
 	chartYLabels,
 } from "./dashboard-chart";
+import { DASHBOARD } from "./dashboard-config";
 import styles from "./dashboard-design.module.css";
 import { DUMMY_ACTIVITIES } from "./dashboard-dummy";
 import { overviewParsers } from "./overview-search-params";
@@ -39,6 +41,8 @@ type Task = RouterOutputs["activities"]["myTasks"][number];
 type ContactRow = RouterOutputs["contacts"]["list"]["rows"][number];
 type DashboardSummaryData = RouterOutputs["dashboard"]["summary"];
 type PriorityTab = "today" | "overdue" | "upcoming";
+type PerformanceMetric = (typeof DASHBOARD.performance.metrics)[number]["id"];
+type PerformanceRange = (typeof DASHBOARD.performance.ranges)[number]["months"];
 
 const SOURCE_BAR_COLORS = [
 	"#5f3fa3",
@@ -62,6 +66,8 @@ export function DashboardSummary() {
 	const cache = useCrmCache();
 	const workspaceUrl = useWorkspaceUrl();
 	const [tab, setTab] = useState<PriorityTab>("today");
+	const [metric, setMetric] = useState<PerformanceMetric>("won");
+	const [rangeMonths, setRangeMonths] = useState<PerformanceRange>(6);
 	const [scope] = useQueryState(
 		SEARCH_PARAM.overview.scope,
 		overviewParsers[SEARCH_PARAM.overview.scope],
@@ -100,10 +106,13 @@ export function DashboardSummary() {
 
 	const grouped = groupTasks(tasksQuery.data ?? []);
 	const visible = grouped[tab].slice(0, 5);
-	const trend = summary.trend;
-	const maxWon = trend.reduce((m, p) => Math.max(m, p.won), 0);
-	const chartTop = chartTopCents(maxWon);
-	const yLabels = chartYLabels(maxWon, summary.reportingCurrency);
+	const trend = summary.trend.slice(-rangeMonths);
+	const series = trend.map((point) =>
+		metric === "won" ? point.won : point.created,
+	);
+	const maxValue = series.reduce((max, value) => Math.max(max, value), 0);
+	const chartTop = chartTopCents(maxValue);
+	const yLabels = chartYLabels(maxValue, summary.reportingCurrency);
 	const lastIdx = Math.max(trend.length - 1, 0);
 
 	return (
@@ -256,8 +265,34 @@ export function DashboardSummary() {
 						<h2 className={styles.p3Title}>Deal Performance</h2>
 					</div>
 					<div className={styles.sels}>
-						<span className={styles.sel}>Won revenue</span>
-						<span className={styles.sel}>Last 6 months</span>
+						<select
+							className={styles.sel}
+							aria-label="Chart metric"
+							value={metric}
+							onChange={(event) =>
+								setMetric(event.target.value as PerformanceMetric)
+							}
+						>
+							{DASHBOARD.performance.metrics.map((option) => (
+								<option key={option.id} value={option.id}>
+									{option.label}
+								</option>
+							))}
+						</select>
+						<select
+							className={styles.sel}
+							aria-label="Chart range"
+							value={rangeMonths}
+							onChange={(event) =>
+								setRangeMonths(Number(event.target.value) as PerformanceRange)
+							}
+						>
+							{DASHBOARD.performance.ranges.map((option) => (
+								<option key={option.months} value={option.months}>
+									{option.label}
+								</option>
+							))}
+						</select>
 					</div>
 					<div className={styles.chart}>
 						<div className={styles.yl}>
@@ -267,7 +302,8 @@ export function DashboardSummary() {
 						</div>
 						<div className={styles.bars}>
 							{trend.map((point, index) => {
-								const h = chartBarPercent(point.won, chartTop);
+								const value = series[index] ?? 0;
+								const h = chartBarPercent(value, chartTop);
 								const on = index === lastIdx;
 								return (
 									<div
@@ -287,7 +323,7 @@ export function DashboardSummary() {
 											<div className={styles.tip}>
 												<b>
 													{formatMoneyCompact(
-														point.won,
+														value,
 														summary.reportingCurrency,
 													)}
 												</b>
@@ -367,10 +403,19 @@ export function DashboardSummary() {
 									{summary.productPerformance.map((row) => (
 										<tr key={row.id}>
 											<td>
-												<span
-													className={styles.dot}
-													style={{ background: row.color }}
-												/>
+												{row.iconUrl ? (
+													<ProductMark
+														name={row.name}
+														color={row.color}
+														iconUrl={row.iconUrl}
+														className={styles.productMark}
+													/>
+												) : (
+													<span
+														className={styles.dot}
+														style={{ background: row.color }}
+													/>
+												)}
 												<b>{row.name}</b>
 											</td>
 											<td>{row.leads}</td>

@@ -26,6 +26,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
+import { ProductMark } from "@/components/crm/product-mark";
 import { AddProductSheet } from "./add-product-sheet";
 
 type Display = RouterOutputs["products"]["display"];
@@ -93,12 +94,12 @@ export function ProductsSettings() {
 						<Card key={row.id}>
 							<CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
 								<div className="flex min-w-0 items-start gap-3">
-									<span
-										className="grid size-10 shrink-0 place-items-center rounded-lg text-sm font-semibold text-white"
-										style={{ background: row.color }}
-									>
-										{row.name.charAt(0).toUpperCase()}
-									</span>
+									<ProductMark
+										name={row.name}
+										color={row.color}
+										iconUrl={row.iconUrl}
+										className="grid size-10 shrink-0 place-items-center rounded-lg text-sm font-semibold"
+									/>
 									<div className="min-w-0">
 										<CardTitle className="truncate text-base">
 											{row.name}

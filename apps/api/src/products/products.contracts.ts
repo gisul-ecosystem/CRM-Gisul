@@ -28,6 +28,17 @@ const productColor = z
 		"Pick a colour from the palette.",
 	);
 
+const productLogoInput = z.object({
+	contentType: z.enum([
+		"image/png",
+		"image/jpeg",
+		"image/webp",
+		"image/gif",
+		"image/svg+xml",
+	]),
+	dataBase64: z.string().trim().min(1).max(700_000),
+});
+
 export const productCreateInput = z.object({
 	name: z.string().trim().min(1, "A product needs a name.").max(80),
 	shortDescription: z
@@ -41,12 +52,14 @@ export const productCreateInput = z.object({
 	color: productColor,
 	status: productStatusEnum.default(ProductStatus.ACTIVE),
 	isCore: z.boolean().default(false),
+	logo: productLogoInput.optional(),
 });
 
 export type ProductCreateInput = z.infer<typeof productCreateInput>;
 
 export const productUpdateInput = productCreateInput.partial().extend({
 	id: z.string().min(1),
+	logo: productLogoInput.nullable().optional(),
 });
 
 export type ProductUpdateInput = z.infer<typeof productUpdateInput>;
@@ -94,6 +107,7 @@ export const productOptionOutput = z.object({
 	id: z.string(),
 	name: z.string(),
 	color: z.string(),
+	iconUrl: z.string().nullable(),
 	status: productStatusEnum,
 });
 

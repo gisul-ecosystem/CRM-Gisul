@@ -83,6 +83,7 @@ const PRODUCT_SELECT = {
 	id: true,
 	name: true,
 	color: true,
+	iconUrl: true,
 } as const;
 
 const NO_COMPANY = "none";

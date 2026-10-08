@@ -16,6 +16,7 @@ import { formatMoney } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { useQueryStates } from "nuqs";
 import { useMemo, useState } from "react";
+import { ProductMark } from "@/components/crm/product-mark";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { searchParsers } from "@/components/data-table/list-search-params";
@@ -272,15 +273,12 @@ export function DealsTable() {
 											<td>
 												{row.product ? (
 													<span className={styles.company}>
-														<span
+														<ProductMark
+															name={row.product.name}
+															color={row.product.color}
+															iconUrl={row.product.iconUrl}
 															className={styles.companyIcon}
-															style={{
-																background: row.product.color,
-																color: "#fff",
-															}}
-														>
-															{row.product.name.charAt(0)}
-														</span>
+														/>
 														{row.product.name}
 													</span>
 												) : (

@@ -118,6 +118,7 @@ const companyRowProductOutput = z.object({
 	id: z.string(),
 	name: z.string(),
 	color: z.string(),
+	iconUrl: z.string().nullable(),
 });
 
 const companyRowPrimaryContactOutput = z.object({

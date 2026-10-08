@@ -20,6 +20,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useQueryStates } from "nuqs";
 import { useMemo, useState } from "react";
 import { contactName } from "@/components/crm/contact-name";
+import { ProductMark } from "@/components/crm/product-mark";
 import { searchParsers } from "@/components/data-table/list-search-params";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { LocalRelativeTime } from "@/components/local-date-time";
@@ -285,15 +286,12 @@ export function CompaniesTable() {
 											<td>
 												{row.product ? (
 													<span className={styles.owner}>
-														<span
+														<ProductMark
+															name={row.product.name}
+															color={row.product.color}
+															iconUrl={row.product.iconUrl}
 															className={`${styles.av} ${styles.avSm}`}
-															style={{
-																background: row.product.color,
-																color: "#fff",
-															}}
-														>
-															{row.product.name.charAt(0)}
-														</span>
+														/>
 														{row.product.name}
 													</span>
 												) : (

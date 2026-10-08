@@ -111,6 +111,7 @@ const productPerformanceOutput = z.object({
 	id: z.string(),
 	name: z.string(),
 	color: z.string(),
+	iconUrl: z.string().nullable(),
 	leads: z.number(),
 	deals: z.number(),
 	won: z.number(),

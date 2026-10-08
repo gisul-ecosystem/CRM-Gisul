@@ -230,7 +230,7 @@ export class DashboardService {
 			this.db.product.findMany({
 				where: { archivedAt: null },
 				orderBy: [{ position: "asc" }, { name: "asc" }],
-				select: { id: true, name: true, color: true },
+				select: { id: true, name: true, color: true, iconUrl: true },
 			}),
 			this.db.contact.groupBy({
 				by: ["productId"],
@@ -418,6 +418,7 @@ export class DashboardService {
 				id: product.id,
 				name: product.name,
 				color: product.color,
+				iconUrl: product.iconUrl,
 				leads:
 					leadByProduct.find((row) => row.productId === product.id)?._count
 						._all ?? 0,

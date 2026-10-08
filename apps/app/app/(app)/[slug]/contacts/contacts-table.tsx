@@ -18,6 +18,7 @@ import { useQueryStates } from "nuqs";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { contactName } from "@/components/crm/contact-name";
+import { ProductMark } from "@/components/crm/product-mark";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { searchParsers } from "@/components/data-table/list-search-params";
@@ -294,15 +295,12 @@ export function ContactsTable() {
 										<td>
 											{row.product ? (
 												<span className={styles.companyCell}>
-													<span
+													<ProductMark
+														name={row.product.name}
+														color={row.product.color}
+														iconUrl={row.product.iconUrl}
 														className={styles.av}
-														style={{
-															background: row.product.color,
-															color: "#fff",
-														}}
-													>
-														{row.product.name.charAt(0)}
-													</span>
+													/>
 													{row.product.name}
 												</span>
 											) : (

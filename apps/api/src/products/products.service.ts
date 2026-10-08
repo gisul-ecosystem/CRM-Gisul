@@ -18,6 +18,7 @@ import type {
 	ProductListInput,
 	ProductUpdateInput,
 } from "./products.contracts";
+import { storeProductLogo } from "./product-logo";
 import { PRODUCT_META } from "./products.contracts";
 
 @Injectable()
@@ -117,7 +118,13 @@ export class ProductsService {
 			this.db.product.findMany({
 				where: { archivedAt: null, status: ProductStatus.ACTIVE },
 				orderBy: [{ position: "asc" }, { name: "asc" }],
-				select: { id: true, name: true, color: true, status: true },
+				select: {
+					id: true,
+					name: true,
+					color: true,
+					iconUrl: true,
+					status: true,
+				},
 			}),
 		]);
 
@@ -172,6 +179,7 @@ export class ProductsService {
 				category: input.category.trim(),
 				type: input.type.trim(),
 				color: input.color.toLowerCase(),
+				iconUrl: input.logo ? await storeProductLogo(input.logo) : null,
 				status: input.status,
 				isCore: input.isCore,
 				position,
@@ -202,6 +210,10 @@ export class ProductsService {
 		if (input.category !== undefined) data.category = input.category.trim();
 		if (input.type !== undefined) data.type = input.type.trim();
 		if (input.color !== undefined) data.color = input.color.toLowerCase();
+		if (input.logo !== undefined) {
+			data.iconUrl =
+				input.logo === null ? null : await storeProductLogo(input.logo);
+		}
 		if (input.status !== undefined) data.status = input.status;
 		if (input.isCore !== undefined) data.isCore = input.isCore;
 

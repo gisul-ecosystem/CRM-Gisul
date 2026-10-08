@@ -1,5 +1,5 @@
 export const DEALS = {
 	trend: {
-		months: 6,
+		months: 12,
 	},
 } as const;

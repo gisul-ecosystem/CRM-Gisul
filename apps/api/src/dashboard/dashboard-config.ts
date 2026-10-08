@@ -4,7 +4,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const DASHBOARD = {
 	summary: {
-		trendMonths: 6,
+		trendMonths: 12,
 		rateWindowDays: 90,
 		dayMs: DAY_MS,
 	},

@@ -123,7 +123,7 @@ export class CompaniesService {
 							email: true,
 							title: true,
 							product: {
-								select: { id: true, name: true, color: true },
+								select: { id: true, name: true, color: true, iconUrl: true },
 							},
 						},
 					},
@@ -137,7 +137,7 @@ export class CompaniesService {
 						take: 1,
 						select: {
 							product: {
-								select: { id: true, name: true, color: true },
+								select: { id: true, name: true, color: true, iconUrl: true },
 							},
 						},
 					},
