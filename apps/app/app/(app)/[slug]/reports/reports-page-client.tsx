@@ -368,7 +368,8 @@ export function ReportsPageClient() {
 									data={data.dealsByStage.map((stage, index) => [
 										stage.label,
 										stage.count,
-										REPORTS.stageColors[index % REPORTS.stageColors.length],
+										REPORTS.stageColors[index % REPORTS.stageColors.length] ??
+											"#6b52a3",
 									])}
 									onTip={(next) =>
 										setTip(next ? { host: "stage", ...next } : null)
@@ -470,7 +471,7 @@ export function ReportsPageClient() {
 													textAnchor="middle"
 													style={{ font: "600 14px Poppins, sans-serif" }}
 												>
-													{sourceRows[donutHover].count}
+													{sourceRows[donutHover]?.count ?? 0}
 												</text>
 												<text
 													x="75"
@@ -481,7 +482,7 @@ export function ReportsPageClient() {
 														fill: "#7a7890",
 													}}
 												>
-													{sourceRows[donutHover].label}
+													{sourceRows[donutHover]?.label ?? ""}
 												</text>
 											</>
 										)}
@@ -690,14 +691,16 @@ function TrendChart({
 				data.forEach((_, i) => {
 					if (Math.abs(X(i) - sx) < Math.abs(X(best) - sx)) best = i;
 				});
+				const target = data[best];
+				if (!target) return;
 				onTip({
 					content: (
 						<>
-							{data[best][0]}: <b>{data[best][1]}</b> leads
+							{target[0]}: <b>{target[1]}</b> leads
 						</>
 					),
 					x: (X(best) * r.width) / W,
-					y: (Y(data[best][1]) * r.height) / H - 4,
+					y: (Y(target[1]) * r.height) / H - 4,
 				});
 			}}
 			onMouseLeave={() => onTip(null)}

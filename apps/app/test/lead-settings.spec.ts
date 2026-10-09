@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 
 describe("Lead Settings Frontend Logic", () => {
 	it("correctly categorizes online vs offline lead sources", () => {

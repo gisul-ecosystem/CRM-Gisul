@@ -70,7 +70,7 @@ export function LeadsAnalytics({
 						id: NO_PRODUCT,
 						name: "No product",
 						color: "#5a5a66",
-						icon: "—",
+						iconUrl: null,
 						count: productCounts[NO_PRODUCT] ?? 0,
 					},
 				]

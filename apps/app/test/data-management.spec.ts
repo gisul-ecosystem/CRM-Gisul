@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 
 describe("Data Management Frontend Logic", () => {
 	it("formats summary metric records count correctly", () => {

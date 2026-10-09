@@ -516,11 +516,11 @@ function initials(contact: ContactRow): string {
 }
 
 function toneFor(type: Task["type"]): string {
-	if (type === "CALL") return styles.tPurple;
-	if (type === "EMAIL") return styles.tRed;
-	if (type === "MEETING") return styles.tBlue;
-	if (type === "TASK") return styles.tYellow;
-	return styles.tGreen;
+	if (type === "CALL") return styles.tPurple ?? "";
+	if (type === "EMAIL") return styles.tRed ?? "";
+	if (type === "MEETING") return styles.tBlue ?? "";
+	if (type === "TASK") return styles.tYellow ?? "";
+	return styles.tGreen ?? "";
 }
 
 function taskAction(

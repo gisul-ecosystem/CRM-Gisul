@@ -39,7 +39,7 @@ export function isClosedStage(stage: DealStage): boolean {
 }
 
 export function dealStageColor(stage: DealStage): string {
-	const index = OPEN_STAGES.indexOf(stage);
+	const index = (OPEN_STAGES as readonly DealStage[]).indexOf(stage);
 	return OPEN_STAGE_COLORS[index] ?? "var(--chart-5)";
 }
 

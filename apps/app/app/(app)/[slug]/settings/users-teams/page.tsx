@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 
+export const instant = false;
+
 export default async function UsersTeamsRedirect({
 	params,
 }: PageProps<"/[slug]/settings/users-teams">) {
