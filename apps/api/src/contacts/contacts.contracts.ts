@@ -151,6 +151,7 @@ const contactProductOutput = z.object({
 	id: z.string(),
 	name: z.string(),
 	color: z.string(),
+	iconUrl: z.string().nullable(),
 });
 
 export const contactRowOutput = z.object({

@@ -1,29 +1,29 @@
 "use client";
 
 import Analytics from "@carbon/icons-react/es/Analytics";
+import Apps from "@carbon/icons-react/es/Apps";
 import CalendarSettings from "@carbon/icons-react/es/CalendarSettings";
 import CloudUpload from "@carbon/icons-react/es/CloudUpload";
-import Connect from "@carbon/icons-react/es/Connect";
 import Currency from "@carbon/icons-react/es/Currency";
 import Filter from "@carbon/icons-react/es/Filter";
-import Password from "@carbon/icons-react/es/Password";
+import Key from "@carbon/icons-react/es/Key";
 import Product from "@carbon/icons-react/es/Product";
 import Security from "@carbon/icons-react/es/Security";
-import SettingsAdjust from "@carbon/icons-react/es/SettingsAdjust";
+import Settings from "@carbon/icons-react/es/Settings";
 import UserFollow from "@carbon/icons-react/es/UserFollow";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
-import { Icon } from "@crm/ui/components/icon";
-import { cn } from "@crm/ui/lib/utils";
+import type { CarbonIcon } from "@crm/ui/components/icon";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { type ComponentType, useMemo } from "react";
+import { useMemo } from "react";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
+import styles from "./settings-design.module.css";
 
 type SettingsNavItem = {
 	title: string;
 	description: string;
 	href: string;
-	icon: ComponentType<{ className?: string }>;
+	icon: CarbonIcon;
 };
 
 const ROOT = "/settings";
@@ -33,7 +33,7 @@ const ITEMS: SettingsNavItem[] = [
 		title: "General",
 		description: "Company and basic settings",
 		href: ROOT,
-		icon: SettingsAdjust,
+		icon: Settings,
 	},
 	{
 		title: "Users & Teams",
@@ -69,7 +69,7 @@ const ITEMS: SettingsNavItem[] = [
 		title: "Integrations",
 		description: "Connect with other tools",
 		href: `${ROOT}/connections`,
-		icon: Connect,
+		icon: Apps,
 	},
 	{
 		title: "Data Management",
@@ -78,28 +78,28 @@ const ITEMS: SettingsNavItem[] = [
 		icon: CloudUpload,
 	},
 	{
+		title: "Tracking",
+		description: "Analytics script and domains",
+		href: `${ROOT}/tracking`,
+		icon: Analytics,
+	},
+	{
 		title: "Currencies",
-		description: "Reporting and exchange rates",
+		description: "Base currency and exchange rates",
 		href: `${ROOT}/currencies`,
 		icon: Currency,
 	},
 	{
 		title: "API Keys",
-		description: "API tokens and credentials",
+		description: "Keys for external access",
 		href: `${ROOT}/api-keys`,
-		icon: Password,
+		icon: Key,
 	},
 	{
 		title: "SSO",
 		description: "Single sign-on providers",
 		href: `${ROOT}/sso`,
 		icon: Security,
-	},
-	{
-		title: "Tracking & Analytics",
-		description: "Visitor and domain analytics",
-		href: `${ROOT}/tracking`,
-		icon: Analytics,
 	},
 ];
 
@@ -110,13 +110,13 @@ function isActive(href: string, root: string, pathname: string): boolean {
 function NavLink({
 	item,
 	active,
-	className,
+	compact = false,
 }: {
 	item: SettingsNavItem;
 	active: boolean;
-	className?: string;
+	compact?: boolean;
 }) {
-	const ItemIcon = item.icon;
+	const Icon = item.icon;
 
 	return (
 		<Link
@@ -124,78 +124,73 @@ function NavLink({
 			prefetch
 			aria-current={active ? "page" : undefined}
 			transitionTypes={["nav-lateral"]}
-			className={cn(
-				"group flex items-center gap-2.5 rounded-xl px-2.5 py-2 transition-all duration-150 select-none",
-				active
-					? "bg-[#5e3da8] text-white shadow-xs"
-					: "text-[#626875] hover:bg-[#f4f6fa] hover:text-[#181a20] dark:text-[#9aa0ae] dark:hover:bg-[#1d1f25] dark:hover:text-white",
-				className,
-			)}
+			className={`${styles.navItem}${active ? ` ${styles.navItemOn}` : ""}${compact ? ` ${styles.navItemCompact}` : ""}`}
 		>
-			{/* Compact icon box */}
-			<div
-				className={cn(
-					"flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
-					active
-						? "bg-white/20 text-white"
-						: "bg-[#eff1f5] text-[#555d6e] group-hover:bg-[#e4e8f0] group-hover:text-[#181a20] dark:bg-[#1e2027] dark:text-[#a0a6b5] dark:group-hover:bg-[#282b34]",
+			<span className={styles.navIcon} aria-hidden="true">
+				<Icon size={18} />
+			</span>
+			<span className={styles.navText}>
+				<span className={styles.navTitle}>{item.title}</span>
+				{compact ? null : (
+					<span className={styles.navDesc}>{item.description}</span>
 				)}
-			>
-				<Icon icon={ItemIcon} className="h-4 w-4" />
-			</div>
-
-			{/* Label & Description */}
-			<div className="flex min-w-0 flex-1 flex-col justify-center">
-				<span
-					className={cn(
-						"truncate text-xs font-semibold leading-tight tracking-tight",
-						active ? "text-white" : "text-[#181a20] dark:text-[#f0f2f5]",
-					)}
-				>
-					{item.title}
-				</span>
-				<span
-					className={cn(
-						"truncate text-[10px] leading-tight",
-						active
-							? "text-[#e2d8fa]"
-							: "text-[#878d9b] dark:text-[#888e9d]",
-					)}
-				>
-					{item.description}
-				</span>
-			</div>
+			</span>
 		</Link>
+	);
+}
+
+function NavSkeleton({
+	item,
+	compact = false,
+}: {
+	item: SettingsNavItem;
+	compact?: boolean;
+}) {
+	const Icon = item.icon;
+
+	return (
+		<span
+			className={`${styles.navItem}${compact ? ` ${styles.navItemCompact}` : ""}`}
+			aria-disabled="true"
+		>
+			<span className={styles.navIcon} aria-hidden="true">
+				<Icon size={18} />
+			</span>
+			<span className={styles.navText}>
+				<span className={styles.navTitle}>{item.title}</span>
+				{compact ? null : (
+					<span className={styles.navDesc}>{item.description}</span>
+				)}
+			</span>
+		</span>
 	);
 }
 
 export function SettingsSidebarFallback() {
 	return (
-		<aside className="hidden w-64 shrink-0 border-r border-[#eaecf2] bg-white p-3 md:flex md:flex-col h-full overflow-y-auto dark:border-[#202228] dark:bg-[#101114] [view-transition-name:settings-sidebar]">
-			{/* Top Sidebar Heading matching Figma */}
-			<div className="px-2 pt-2 pb-4 select-none">
-				<h2 className="text-sm font-black tracking-wider text-[#181a20] uppercase dark:text-[#f0f2f5]">
-					SETTINGS
-				</h2>
-				<p className="text-[11px] text-[#878d9b] mt-0.5 leading-tight dark:text-[#9aa0ae]">
-					Manage your account, team and CRM preferences.
-				</p>
-			</div>
-			<nav aria-label="Workspace settings" aria-busy="true" className="flex flex-col gap-1">
+		<>
+			<aside className={styles.sidebar}>
+				<nav
+					aria-label="Workspace settings"
+					aria-busy="true"
+					className={styles.sidebarNav}
+				>
+					{ITEMS.map((item) => (
+						<NavSkeleton key={item.href} item={item} />
+					))}
+				</nav>
+			</aside>
+
+			<nav
+				aria-label="Workspace settings"
+				aria-busy="true"
+				className={styles.mobileNav}
+			>
 				{ITEMS.map((item) => (
-					<div
-						key={item.href}
-						className="flex items-center gap-2.5 rounded-xl p-2 opacity-60"
-					>
-						<div className="h-7 w-7 shrink-0 rounded-lg bg-muted" />
-						<div className="flex flex-col gap-1">
-							<div className="h-3 w-20 rounded bg-muted" />
-							<div className="h-2 w-28 rounded bg-muted/60" />
-						</div>
-					</div>
+					<NavSkeleton key={item.href} item={item} compact />
 				))}
 			</nav>
-		</aside>
+		</>
 	);
 }
 
@@ -211,22 +206,8 @@ export function SettingsSidebar() {
 
 	return (
 		<>
-			{/* Compact Desktop Sidebar */}
-			<aside className="hidden w-64 shrink-0 border-r border-[#eaecf2] bg-white p-3 md:flex md:flex-col h-full overflow-y-auto dark:border-[#202228] dark:bg-[#101114] [view-transition-name:settings-sidebar]">
-				{/* Top Sidebar Heading matching Figma */}
-				<div className="px-2 pt-2 pb-4 select-none">
-					<h2 className="text-sm font-black tracking-wider text-[#181a20] uppercase dark:text-[#f0f2f5]">
-						SETTINGS
-					</h2>
-					<p className="text-[11px] text-[#878d9b] mt-0.5 leading-tight dark:text-[#9aa0ae]">
-						Manage your account, team and CRM preferences.
-					</p>
-				</div>
-
-				<nav
-					aria-label="Workspace settings"
-					className="flex flex-col gap-0.5"
-				>
+			<aside className={styles.sidebar}>
+				<nav aria-label="Workspace settings" className={styles.sidebarNav}>
 					{items.map((item) => (
 						<NavLink
 							key={item.href}
@@ -237,32 +218,15 @@ export function SettingsSidebar() {
 				</nav>
 			</aside>
 
-			{/* Mobile Scrollable Tabs */}
-			<nav
-				aria-label="Workspace settings"
-				className="flex gap-1.5 overflow-x-auto border-b border-[#eaecf2] bg-white p-2 md:hidden dark:border-[#202228] dark:bg-[#101114] [view-transition-name:settings-sidebar]"
-			>
-				{items.map((item) => {
-					const ItemIcon = item.icon;
-					const active = isActive(item.href, root, pathname);
-					return (
-						<Link
-							key={item.href}
-							href={item.href}
-							prefetch
-							aria-current={active ? "page" : undefined}
-							className={cn(
-								"flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors",
-								active
-									? "bg-[#5e3da8] text-white shadow-xs"
-									: "bg-[#f1f3f7] text-[#555d6e] hover:bg-[#e4e8f0] hover:text-[#181a20] dark:bg-[#1c1e24] dark:text-[#a0a6b5]",
-							)}
-						>
-							<Icon icon={ItemIcon} className="h-3.5 w-3.5" />
-							<span>{item.title}</span>
-						</Link>
-					);
-				})}
+			<nav aria-label="Workspace settings" className={styles.mobileNav}>
+				{items.map((item) => (
+					<NavLink
+						key={item.href}
+						item={item}
+						active={isActive(item.href, root, pathname)}
+						compact
+					/>
+				))}
 			</nav>
 		</>
 	);

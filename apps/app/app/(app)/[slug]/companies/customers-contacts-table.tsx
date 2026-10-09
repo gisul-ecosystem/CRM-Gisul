@@ -1,11 +1,17 @@
 "use client";
 
-import ChevronDown from "@carbon/icons-react/es/ChevronDown";
 import Column from "@carbon/icons-react/es/Column";
 import Filter from "@carbon/icons-react/es/Filter";
 import OverflowMenuHorizontal from "@carbon/icons-react/es/OverflowMenuHorizontal";
 import Search from "@carbon/icons-react/es/Search";
 import { Checkbox } from "@crm/ui/components/checkbox";
+import {
+	DropdownMenu,
+	DropdownMenuCheckboxItem,
+	DropdownMenuContent,
+	DropdownMenuLabel,
+	DropdownMenuTrigger,
+} from "@crm/ui/components/dropdown-menu";
 import { Icon } from "@crm/ui/components/icon";
 import { TablePagination } from "@crm/ui/components/table-pagination";
 import { useSearchInput } from "@crm/ui/hooks/use-search-input";
@@ -13,17 +19,19 @@ import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
 import { useQuery } from "@tanstack/react-query";
 import { useQueryStates } from "nuqs";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 import { contactName } from "@/components/crm/contact-name";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { searchParsers } from "@/components/data-table/list-search-params";
 import { useTableQuery } from "@/components/data-table/use-table-query";
+import { LocalRelativeTime } from "@/components/local-date-time";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { ContactsBulkActions } from "../contacts/contacts-bulk-actions";
 import { contactsSearchParams } from "../contacts/contacts-search-params";
+import { LeadsFilters } from "../contacts/leads-filters";
 import styles from "./customers-design.module.css";
+import { useColumnVisibility } from "./use-column-visibility";
 
 type ContactRow = RouterOutputs["contacts"]["list"]["rows"][number];
 type Scope = "all" | "mine";
@@ -40,6 +48,10 @@ export function CustomersContactsTable() {
 	);
 	const [scope, setScope] = useState<Scope>("all");
 	const me = useQuery(trpc.users.me.queryOptions());
+	const columns = useColumnVisibility<"email" | "owner" | "nextFollowUp">(
+		"crm.customer-contacts.columns.v1",
+		{ email: true, owner: true, nextFollowUp: true },
+	);
 
 	const listInput =
 		scope === "mine" && me.data?.id
@@ -97,18 +109,19 @@ export function CustomersContactsTable() {
 					</button>
 				</div>
 				<div className={styles.filters}>
-					<button type="button" className={styles.filterChip} disabled>
-						All Products <Icon icon={ChevronDown} />
-					</button>
-					<button
-						type="button"
-						className={styles.filterChip}
-						onClick={() =>
-							toast.message("Use My companies for owner scope for now.")
-						}
-					>
-						All Owners <Icon icon={ChevronDown} />
-					</button>
+					<LeadsFilters
+						selected={{
+							product: input.product,
+							leadStatus: input.leadStatus,
+							leadSource: input.leadSource,
+							owner: scope === "mine" ? [] : input.owner,
+						}}
+						onChange={(id, next) => {
+							if (id === "owner" && scope === "mine") setScope("all");
+							selection.clear();
+							query.setFilter(id, next);
+						}}
+					/>
 					<button
 						type="button"
 						className={styles.filterChip}
@@ -122,14 +135,38 @@ export function CustomersContactsTable() {
 						<Icon icon={Filter} />
 						{input.archived ? "Active" : "Archived"}
 					</button>
-					<button
-						type="button"
-						className={styles.filterChip}
-						onClick={() => toast.message("Column picker is not built yet.")}
-					>
-						<Icon icon={Column} />
-						Columns
-					</button>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<button type="button" className={styles.filterChip}>
+								<Icon icon={Column} />
+								Columns
+							</button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" className="min-w-44">
+							<DropdownMenuLabel>Visible columns</DropdownMenuLabel>
+							<DropdownMenuCheckboxItem
+								checked={columns.visible.email}
+								onCheckedChange={() => columns.toggle("email")}
+								onSelect={(event) => event.preventDefault()}
+							>
+								Email
+							</DropdownMenuCheckboxItem>
+							<DropdownMenuCheckboxItem
+								checked={columns.visible.owner}
+								onCheckedChange={() => columns.toggle("owner")}
+								onSelect={(event) => event.preventDefault()}
+							>
+								Owner
+							</DropdownMenuCheckboxItem>
+							<DropdownMenuCheckboxItem
+								checked={columns.visible.nextFollowUp}
+								onCheckedChange={() => columns.toggle("nextFollowUp")}
+								onSelect={(event) => event.preventDefault()}
+							>
+								Next follow-up
+							</DropdownMenuCheckboxItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
 				</div>
 			</div>
 
@@ -180,17 +217,29 @@ export function CustomersContactsTable() {
 											Company
 										</button>
 									</th>
-									<th>
-										<button type="button" onClick={() => query.toggleSort("email")}>
-											Email
-										</button>
-									</th>
-									<th>
-										<button type="button" onClick={() => query.toggleSort("owner")}>
-											Owner
-										</button>
-									</th>
-									<th>Next follow-up</th>
+									{columns.visible.email ? (
+										<th>
+											<button
+												type="button"
+												onClick={() => query.toggleSort("email")}
+											>
+												Email
+											</button>
+										</th>
+									) : null}
+									{columns.visible.owner ? (
+										<th>
+											<button
+												type="button"
+												onClick={() => query.toggleSort("owner")}
+											>
+												Owner
+											</button>
+										</th>
+									) : null}
+									{columns.visible.nextFollowUp ? (
+										<th>Next follow-up</th>
+									) : null}
 									<th>Actions</th>
 								</tr>
 							</thead>
@@ -229,30 +278,42 @@ export function CustomersContactsTable() {
 												<small>{row.company?.domain ?? "—"}</small>
 											</div>
 										</td>
-										<td>{row.email ?? <span className={styles.blank}>—</span>}</td>
-										<td>
-											{row.owner ? (
-												<span className={styles.owner}>
-													{row.owner.image ? (
-														<img
-															src={row.owner.image}
-															alt=""
-															className={styles.ownerImg}
-														/>
-													) : (
-														<span className={`${styles.av} ${styles.avSm}`}>
-															{personInitials(row.owner.name)}
-														</span>
-													)}
-													{row.owner.name}
-												</span>
-											) : (
-												<span className={styles.blank}>—</span>
-											)}
-										</td>
-										<td>
-											<span className={styles.blank}>Not scheduled</span>
-										</td>
+										{columns.visible.email ? (
+											<td>
+												{row.email ?? <span className={styles.blank}>—</span>}
+											</td>
+										) : null}
+										{columns.visible.owner ? (
+											<td>
+												{row.owner ? (
+													<span className={styles.owner}>
+														{row.owner.image ? (
+															<img
+																src={row.owner.image}
+																alt=""
+																className={styles.ownerImg}
+															/>
+														) : (
+															<span className={`${styles.av} ${styles.avSm}`}>
+																{personInitials(row.owner.name)}
+															</span>
+														)}
+														{row.owner.name}
+													</span>
+												) : (
+													<span className={styles.blank}>—</span>
+												)}
+											</td>
+										) : null}
+										{columns.visible.nextFollowUp ? (
+											<td>
+												{row.nextFollowUpAt ? (
+													<LocalRelativeTime date={row.nextFollowUpAt} />
+												) : (
+													<span className={styles.blank}>Not scheduled</span>
+												)}
+											</td>
+										) : null}
 										<td onClick={(event) => event.stopPropagation()}>
 											<button
 												type="button"
@@ -274,7 +335,7 @@ export function CustomersContactsTable() {
 
 				<div className={styles.footer}>
 					<p className={styles.note}>
-						Next follow-up needs a backend. Column stays blank for now.
+						Follow-up dates come from each contact record.
 					</p>
 					<TablePagination
 						page={query.page}

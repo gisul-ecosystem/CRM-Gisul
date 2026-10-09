@@ -18,6 +18,7 @@ import { useQueryStates } from "nuqs";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { contactName } from "@/components/crm/contact-name";
+import { ProductMark } from "@/components/crm/product-mark";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { searchParsers } from "@/components/data-table/list-search-params";
@@ -166,10 +167,7 @@ export function ContactsTable() {
 						type="button"
 						className={`${styles.viewBtn} ${view === "grid" ? styles.viewBtnOn : ""}`}
 						aria-label="Grid view"
-						onClick={() => {
-							setView("grid");
-							toast.message("Grid view is not built yet.");
-						}}
+						onClick={() => setView("grid")}
 					>
 						<Icon icon={Grid} />
 					</button>
@@ -195,6 +193,44 @@ export function ContactsTable() {
 							: contacts.isFetching
 								? "Loading leads…"
 								: "No leads match this view."}
+					</div>
+				) : view === "grid" ? (
+					<div className={styles.cardGrid}>
+						{rows.map((row) => (
+							<button
+								key={row.id}
+								type="button"
+								className={styles.leadCard}
+								onMouseEnter={() =>
+									prefetchRecord({ kind: "contact", id: row.id })
+								}
+								onClick={() => openRecord({ kind: "contact", id: row.id })}
+							>
+								<div className={styles.leadCardTop}>
+									<div className={styles.who}>
+										<span className={styles.av}>{initials(row)}</span>
+										<span className={styles.whoText}>
+											<b>{contactName(row)}</b>
+											<small>{row.company?.name ?? row.email ?? "—"}</small>
+										</span>
+									</div>
+									<span className={styles.pill}>
+										{leadStatusLabel(row.leadStatus)}
+									</span>
+								</div>
+								<div className={styles.leadCardMeta}>
+									<span>{row.product?.name ?? "No product"}</span>
+									<span>
+										{row.owner?.name.split(/\s+/)[0] ?? "Unassigned"}
+									</span>
+									{row.nextFollowUpAt ? (
+										<span>
+											Follow-up <LocalRelativeTime date={row.nextFollowUpAt} />
+										</span>
+									) : null}
+								</div>
+							</button>
+						))}
 					</div>
 				) : (
 					<div className={styles.tableScroll}>
@@ -259,15 +295,12 @@ export function ContactsTable() {
 										<td>
 											{row.product ? (
 												<span className={styles.companyCell}>
-													<span
+													<ProductMark
+														name={row.product.name}
+														color={row.product.color}
+														iconUrl={row.product.iconUrl}
 														className={styles.av}
-														style={{
-															background: row.product.color,
-															color: "#fff",
-														}}
-													>
-														{row.product.name.charAt(0)}
-													</span>
+													/>
 													{row.product.name}
 												</span>
 											) : (
@@ -356,8 +389,7 @@ export function ContactsTable() {
 
 				<div className={styles.footer}>
 					<p className={styles.note}>
-						Manage products in Settings → Products. Grid
-						view are not built yet.
+						Manage products in Settings → Products.
 					</p>
 					<TablePagination
 						page={query.page}

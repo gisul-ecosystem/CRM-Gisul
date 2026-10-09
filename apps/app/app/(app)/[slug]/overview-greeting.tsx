@@ -1,5 +1,8 @@
 "use client";
 
+import Moon from "@carbon/icons-react/es/Moon";
+import Sun from "@carbon/icons-react/es/Sun";
+import { Icon } from "@crm/ui/components/icon";
 import styles from "./dashboard-design.module.css";
 
 export function OverviewGreetingFallback() {
@@ -15,10 +18,17 @@ export function OverviewGreetingFallback() {
 
 export function OverviewGreeting({ name }: { name: string }) {
 	const first = name.trim().split(/\s+/)[0] ?? name;
+	const hour = new Date().getHours();
 	return (
 		<div>
 			<h1 className={styles.greetTitle} suppressHydrationWarning>
-				{dayPart()}, {first} 👋
+				<span className={styles.greetLead}>
+					<Icon
+						icon={hour < 17 ? Sun : Moon}
+						className={styles.greetIcon}
+					/>
+					{dayPart()}, {first}
+				</span>
 			</h1>
 			<p className={styles.greetSub}>
 				Here&apos;s what&apos;s happening across your sales pipeline today.

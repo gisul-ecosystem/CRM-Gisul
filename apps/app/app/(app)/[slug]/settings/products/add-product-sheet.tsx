@@ -52,6 +52,7 @@ export function AddProductSheet({
 		category: string;
 		type: string;
 		color: string;
+		iconUrl: string | null;
 		status: ProductStatus;
 		isCore: boolean;
 	};
@@ -80,6 +81,7 @@ export function AddProductSheet({
 	const nameId = useId();
 	const shortId = useId();
 	const detailId = useId();
+	const logoId = useId();
 
 	const editing = Boolean(product);
 	const [name, setName] = useState(product?.name ?? "");
@@ -98,6 +100,9 @@ export function AddProductSheet({
 		product?.status ?? ProductStatus.ACTIVE,
 	);
 	const [isCore, setIsCore] = useState(product?.isCore ?? false);
+	const [logo, setLogo] = useState<ProductLogo | null>(null);
+	const [clearLogo, setClearLogo] = useState(false);
+	const [preview, setPreview] = useState<string | null>(product?.iconUrl ?? null);
 
 	const reset = () => {
 		setName(product?.name ?? "");
@@ -108,6 +113,9 @@ export function AddProductSheet({
 		setColor(product?.color ?? "#5e3da8");
 		setStatus(product?.status ?? ProductStatus.ACTIVE);
 		setIsCore(product?.isCore ?? false);
+		setLogo(null);
+		setClearLogo(false);
+		setPreview(product?.iconUrl ?? null);
 	};
 
 	const create = useMutation(
@@ -217,9 +225,13 @@ export function AddProductSheet({
 							isCore,
 						};
 						if (editing && product) {
-							update.mutate({ id: product.id, ...payload });
+							update.mutate({
+								id: product.id,
+								...payload,
+								...(logo ? { logo } : clearLogo ? { logo: null } : {}),
+							});
 						} else {
-							create.mutate(payload);
+							create.mutate(logo ? { ...payload, logo } : payload);
 						}
 					}}
 				>
@@ -332,6 +344,64 @@ export function AddProductSheet({
 								))}
 							</div>
 						</Field>
+						<Field>
+							<FieldLabel htmlFor={logoId}>Logo</FieldLabel>
+							<div className="flex items-center gap-3">
+								<span
+									className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg text-sm font-semibold text-white"
+									style={{ background: color }}
+								>
+									{preview ? (
+										<img
+											src={preview}
+											alt=""
+											className="size-full object-cover"
+										/>
+									) : (
+										(name.trim().charAt(0) || "P").toUpperCase()
+									)}
+								</span>
+								<Input
+									id={logoId}
+									type="file"
+									accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+									onChange={(event) => {
+										const file = event.target.files?.[0];
+										event.target.value = "";
+										if (!file) return;
+										void readProductLogo(file).then((next) => {
+											if (!next) {
+												toast.error(
+													"Use a PNG, JPEG, WebP, GIF, or SVG under 512 KB.",
+												);
+												return;
+											}
+											setLogo(next.logo);
+											setPreview(next.preview);
+											setClearLogo(false);
+										});
+									}}
+								/>
+							</div>
+							{preview ? (
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									onClick={() => {
+										setLogo(null);
+										setPreview(null);
+										setClearLogo(true);
+									}}
+								>
+									Remove logo
+								</Button>
+							) : (
+								<FieldDescription>
+									PNG, JPEG, WebP, GIF, or SVG. 512 KB maximum.
+								</FieldDescription>
+							)}
+						</Field>
 
 						<div className="grid grid-cols-2 gap-3 pt-1">
 							<Field>
@@ -384,4 +454,64 @@ export function AddProductSheet({
 			</SheetContent>
 		</Sheet>
 	);
+}
+
+const LOGO_TYPES = new Set([
+	"image/png",
+	"image/jpeg",
+	"image/webp",
+	"image/gif",
+	"image/svg+xml",
+]);
+
+const LOGO_MAX_BYTES = 512 * 1024;
+
+type ProductLogo = {
+	contentType:
+		| "image/png"
+		| "image/jpeg"
+		| "image/webp"
+		| "image/gif"
+		| "image/svg+xml";
+	dataBase64: string;
+};
+
+function logoContentType(file: File): ProductLogo["contentType"] | null {
+	if (LOGO_TYPES.has(file.type)) {
+		return file.type as ProductLogo["contentType"];
+	}
+	const name = file.name.toLowerCase();
+	if (name.endsWith(".png")) return "image/png";
+	if (name.endsWith(".jpg") || name.endsWith(".jpeg")) return "image/jpeg";
+	if (name.endsWith(".webp")) return "image/webp";
+	if (name.endsWith(".gif")) return "image/gif";
+	if (name.endsWith(".svg")) return "image/svg+xml";
+	return null;
+}
+
+function readProductLogo(
+	file: File,
+): Promise<{ logo: ProductLogo; preview: string } | null> {
+	const contentType = logoContentType(file);
+	if (!contentType || file.size > LOGO_MAX_BYTES) {
+		return Promise.resolve(null);
+	}
+
+	return new Promise((resolve) => {
+		const reader = new FileReader();
+		reader.onload = () => {
+			const preview = typeof reader.result === "string" ? reader.result : "";
+			const dataBase64 = preview.split(",")[1] ?? "";
+			if (!dataBase64) {
+				resolve(null);
+				return;
+			}
+			resolve({
+				logo: { contentType, dataBase64 },
+				preview,
+			});
+		};
+		reader.onerror = () => resolve(null);
+		reader.readAsDataURL(file);
+	});
 }

@@ -201,6 +201,7 @@ const dealProductOutput = z.object({
 	id: z.string(),
 	name: z.string(),
 	color: z.string(),
+	iconUrl: z.string().nullable(),
 });
 
 const dealListRowOutput = z.object({
@@ -328,6 +329,7 @@ export const dealPipelineProductOutput = z.object({
 	id: z.string().nullable(),
 	name: z.string(),
 	color: z.string(),
+	iconUrl: z.string().nullable(),
 	deals: z.number(),
 	pipelineCents: z.number(),
 });

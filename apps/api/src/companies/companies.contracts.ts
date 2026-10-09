@@ -7,6 +7,7 @@ import { activityFacetInput, listInput } from "../trpc/list-input";
 
 export const companyListInput = listInput.extend({
 	owner: z.array(z.string()).default([]),
+	product: z.array(z.string()).default([]),
 	industry: z.array(z.string()).default([]),
 	enrichment: z.array(z.string()).default([]),
 	source: z.array(z.string()).default([]),
@@ -113,6 +114,21 @@ const companyRecordFieldOutput = z.object({
 	value: z.union([z.string(), z.number(), z.boolean(), z.null()]),
 });
 
+const companyRowProductOutput = z.object({
+	id: z.string(),
+	name: z.string(),
+	color: z.string(),
+	iconUrl: z.string().nullable(),
+});
+
+const companyRowPrimaryContactOutput = z.object({
+	id: z.string(),
+	firstName: z.string(),
+	lastName: z.string().nullable(),
+	email: z.string().nullable(),
+	title: z.string().nullable(),
+});
+
 export const companyRowOutput = z.object({
 	id: z.string(),
 	name: z.string(),
@@ -127,6 +143,8 @@ export const companyRowOutput = z.object({
 	queued: z.boolean(),
 	source: companyRecordSource,
 	owner: ownerSummaryOutput.nullable(),
+	product: companyRowProductOutput.nullable(),
+	primaryContact: companyRowPrimaryContactOutput.nullable(),
 	contactCount: z.number(),
 	openDealCount: z.number(),
 	lastActivityAt: z.string().nullable(),
@@ -254,4 +272,37 @@ export const companyResearchOutput = z.object({
 export const companySetPrimaryContactOutput = z.object({
 	id: z.string(),
 	primaryContactId: z.string().nullable(),
+});
+
+export const companyExportInput = companyListInput;
+
+export type CompanyExportInput = z.infer<typeof companyExportInput>;
+
+export const companyExportOutput = z.object({
+	csv: z.string(),
+	filename: z.string(),
+	rowCount: z.number(),
+});
+
+export const companyImportInput = z.object({
+	csv: z.string().min(1, "Paste or upload a CSV."),
+});
+
+export type CompanyImportInput = z.infer<typeof companyImportInput>;
+
+export const companyImportOutput = z.object({
+	created: z.number(),
+	updated: z.number(),
+	failed: z.number(),
+	errors: z.array(
+		z.object({
+			line: z.number(),
+			message: z.string(),
+		}),
+	),
+});
+
+export const companyImportTemplateOutput = z.object({
+	csv: z.string(),
+	filename: z.string(),
 });

@@ -636,6 +636,9 @@
 }
 
 .tagS {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
 	background: #eeeef4;
 	color: var(--muted);
 	padding: 3px 7px;

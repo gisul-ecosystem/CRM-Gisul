@@ -49,6 +49,7 @@ import {
 	DetailSheetStats,
 	type DetailSheetTab,
 } from "@/components/detail-sheet";
+import sheetStyles from "./record-sheet-design.module.css";
 import {
 	LocalDateTime,
 	LocalDay,
@@ -177,7 +178,7 @@ export function DealSheet({ dealId }: { dealId: string }) {
 					<button
 						type="button"
 						onClick={() => openRecord({ kind: "company", id: deal.company.id })}
-						className="text-foreground underline-offset-2 hover:underline"
+						className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
 					>
 						{deal.company.name}
 					</button>
@@ -357,13 +358,15 @@ function DealOverview({ deal }: { deal: Deal }) {
 			</DetailSheetSection>
 
 			<DetailSheetSection title="Description">
-				<InlineTextArea
-					label="Description"
-					value={deal.description}
-					placeholder={`What ${deal.company.name} is buying, why now, and what stands in the way.`}
-					saving={isSaving("description")}
-					onSave={(description) => save({ description })}
-				/>
+				<div className={sheetStyles.prose}>
+					<InlineTextArea
+						label="Description"
+						value={deal.description}
+						placeholder={`What ${deal.company.name} is buying, why now, and what stands in the way.`}
+						saving={isSaving("description")}
+						onSave={(description) => save({ description })}
+					/>
+				</div>
 			</DetailSheetSection>
 
 			<WhereItStands deal={deal} />
@@ -403,7 +406,7 @@ function WhereItStands({ deal }: { deal: Deal }) {
 							Nobody from {deal.company.name} is attached yet.
 						</span>
 					) : (
-						<span className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+						<span className="flex flex-wrap items-center gap-x-4 gap-y-1">
 							{deal.contacts.map((contact) => {
 								const aside = contact.role ?? contact.title;
 								return (
@@ -417,7 +420,7 @@ function WhereItStands({ deal }: { deal: Deal }) {
 									>
 										{contactName(contact)}
 										{aside ? (
-											<span className="text-muted-foreground"> ({aside})</span>
+											<span className="text-muted-foreground"> · {aside}</span>
 										) : null}
 									</button>
 								);
@@ -469,7 +472,7 @@ function DealContacts({
 
 	if (deal.contacts.length === 0) {
 		return (
-			<>
+			<DetailSheetBody>
 				{form}
 				{adding ? null : (
 					<DetailSheetEmpty
@@ -484,12 +487,12 @@ function DealContacts({
 						}
 					/>
 				)}
-			</>
+			</DetailSheetBody>
 		);
 	}
 
 	return (
-		<>
+		<DetailSheetBody>
 			{form}
 			<SimpleTable variant="panel" columns={CONTACT_COLUMNS}>
 				{deal.contacts.map((contact) => (
@@ -498,8 +501,8 @@ function DealContacts({
 						clickable
 						onClick={() => openRecord({ kind: "contact", id: contact.id })}
 					>
-						<TableCell className="truncate py-2.5 pr-3 pl-5 font-medium">
-							<span className="flex min-w-0 items-center gap-2">
+						<TableCell className="truncate py-3 pr-3 pl-5 font-medium">
+							<span className="flex min-w-0 items-center gap-2.5">
 								<PersonAvatar
 									src={contact.imageUrl}
 									name={contactName(contact)}
@@ -509,7 +512,7 @@ function DealContacts({
 								<span className="truncate">{contactName(contact)}</span>
 							</span>
 						</TableCell>
-						<TableCell className="truncate px-1 py-2.5">
+						<TableCell className="truncate px-1 py-3">
 							<InlineTextCell
 								label={`Role on this deal for ${contactName(contact)}`}
 								value={contact.role}
@@ -527,13 +530,13 @@ function DealContacts({
 								}
 							/>
 						</TableCell>
-						<TableCell className="truncate px-3 py-2.5 text-muted-foreground">
+						<TableCell className="truncate px-3 py-3 text-muted-foreground">
 							{contact.title ?? <EmptyCellValue />}
 						</TableCell>
-						<TableCell className="truncate px-3 py-2.5 text-muted-foreground">
+						<TableCell className="truncate px-3 py-3 text-muted-foreground">
 							{contact.email ?? <EmptyCellValue />}
 						</TableCell>
-						<TableCell className="px-3 py-2.5">
+						<TableCell className="px-3 py-3">
 							<Tooltip>
 								<TooltipTrigger asChild>
 									<Button
@@ -566,6 +569,6 @@ function DealContacts({
 					onClick={onAdd}
 				/>
 			</SimpleTable>
-		</>
+		</DetailSheetBody>
 	);
 }

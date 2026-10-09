@@ -5,6 +5,7 @@ import {
 	LEAD_SOURCE_OPTIONS,
 	LEAD_STATUS_OPTIONS,
 } from "@/lib/lead-fields";
+import { ProductMark } from "@/components/crm/product-mark";
 import { useTRPC } from "@/lib/trpc/client";
 import styles from "./leads-design.module.css";
 
@@ -47,7 +48,7 @@ export function LeadsAnalytics({
 				id: product.id,
 				name: product.name,
 				color: product.color,
-				icon: product.name.charAt(0).toUpperCase() || "?",
+				iconUrl: product.iconUrl,
 				count: productCounts[product.id] ?? 0,
 			}))
 			.filter((row) => row.count > 0),
@@ -60,7 +61,7 @@ export function LeadsAnalytics({
 				id,
 				name: "Archived product",
 				color: "#5a5a66",
-				icon: "?",
+				iconUrl: null,
 				count,
 			})),
 		...(productCounts[NO_PRODUCT]
@@ -145,12 +146,12 @@ export function LeadsAnalytics({
 					<div className={styles.bars}>
 						{productRows.map((row) => (
 							<div key={row.id} className={styles.productRow}>
-								<span
+								<ProductMark
+									name={row.name}
+									color={row.color}
+									iconUrl={row.iconUrl}
 									className={styles.productIcon}
-									style={{ background: row.color }}
-								>
-									{row.icon}
-								</span>
+								/>
 								<span className={styles.productBar}>
 									<span
 										className={styles.productFill}

@@ -203,7 +203,7 @@ function AgentEmptyState({ compact }: { compact?: boolean }) {
 			<div className="flex max-w-xl flex-col items-center gap-2">
 				<span className="flex shrink-0 items-center justify-center pb-2">
 					<span className="flex size-8 shrink-0 items-center justify-center bg-foreground">
-						<Logo className="h-4 w-auto max-w-[56px] shrink-0" />
+						<Logo className="h-4 w-auto max-w-[90px] shrink-0" />
 					</span>
 				</span>
 				<p className="text-center font-medium text-sm/5">

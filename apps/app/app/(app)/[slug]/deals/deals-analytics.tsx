@@ -3,6 +3,8 @@
 import { DEAL_STAGE_CATALOG } from "@crm/db/deal-stage";
 import { formatMoneyCompact } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { ProductMark } from "@/components/crm/product-mark";
 import { useTRPC } from "@/lib/trpc/client";
 import styles from "./deals-design.module.css";
 import { STAGE_COLORS } from "./deals-dummy";
@@ -17,7 +19,8 @@ export function DealsAnalytics({
 	const trpc = useTRPC();
 	const trendQuery = useQuery(trpc.deals.trend.queryOptions());
 	const pipelineQuery = useQuery(trpc.deals.pipelineByProduct.queryOptions());
-	const trend = trendQuery.data?.points ?? [];
+	const [rangeMonths, setRangeMonths] = useState<TrendMonths>(6);
+	const trend = (trendQuery.data?.points ?? []).slice(-rangeMonths);
 	const pipelineProducts = pipelineQuery.data?.products ?? [];
 	const reportingCurrency = pipelineQuery.data?.reportingCurrency ?? "usd";
 	const maxPipeline = Math.max(
@@ -95,13 +98,12 @@ export function DealsAnalytics({
 									: 0;
 							return (
 								<div key={row.id ?? "none"} className={styles.barRow}>
-									<span
+									<ProductMark
+										name={row.name}
+										color={row.color}
+										iconUrl={row.iconUrl}
 										className={styles.productIcon}
-										style={{ background: row.color }}
-										title={row.name}
-									>
-										{productInitial(row.name)}
-									</span>
+									/>
 									<span className={styles.barTrack}>
 										<span
 											className={styles.barFill}
@@ -121,7 +123,20 @@ export function DealsAnalytics({
 			<div className={`${styles.card} ${styles.analytic}`}>
 				<div className={styles.trendHead}>
 					<div className={styles.analyticTitle}>Deal Trend</div>
-					<span className={styles.sel}>Last 6 months</span>
+					<select
+						className={styles.sel}
+						aria-label="Trend range"
+						value={rangeMonths}
+						onChange={(event) =>
+							setRangeMonths(Number(event.target.value) as TrendMonths)
+						}
+					>
+						{TREND_RANGES.map((option) => (
+							<option key={option.months} value={option.months}>
+								{option.label}
+							</option>
+						))}
+					</select>
 				</div>
 				<div className={styles.trendChart}>
 					{trend.length > 0 ? (
@@ -171,10 +186,13 @@ export function DealsAnalytics({
 	);
 }
 
-function productInitial(name: string): string {
-	const letter = name.trim().charAt(0);
-	return letter ? letter.toUpperCase() : "?";
-}
+const TREND_RANGES = [
+	{ months: 3, label: "Last 3 months" },
+	{ months: 6, label: "Last 6 months" },
+	{ months: 12, label: "Last 12 months" },
+] as const;
+
+type TrendMonths = (typeof TREND_RANGES)[number]["months"];
 
 function conicGradient(
 	rows: ReadonlyArray<{ color: string; count: number }>,

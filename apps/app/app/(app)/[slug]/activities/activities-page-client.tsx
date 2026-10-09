@@ -660,7 +660,14 @@ export function ActivitiesPageClient() {
 											<span
 												className={`${styles.tag} ${styles.tagS} ${status === "overdue" ? styles.tagOd : ""}`}
 											>
-												{status === "completed" ? "✓ Done" : "Overdue"}
+												{status === "completed" ? (
+													<>
+														<Icon icon={Checkmark} className="size-2.5" />
+														Done
+													</>
+												) : (
+													"Overdue"
+												)}
 											</span>
 										) : null}
 									</div>

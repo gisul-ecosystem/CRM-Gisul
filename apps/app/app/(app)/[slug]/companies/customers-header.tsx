@@ -1,13 +1,12 @@
 "use client";
 
-import DocumentImport from "@carbon/icons-react/es/DocumentImport";
-import { Icon } from "@crm/ui/components/icon";
 import { useQuery } from "@tanstack/react-query";
 import { useQueryState } from "nuqs";
-import { toast } from "sonner";
 import { SEARCH_PARAM } from "@/lib/search-param-keys";
 import { useTRPC } from "@/lib/trpc/client";
+import { ImportLeadsSheet } from "../contacts/import-leads-sheet";
 import { contactsSearchParams } from "../contacts/contacts-search-params";
+import { CompaniesHeaderActions } from "./companies-header-actions";
 import { companiesSearchParams } from "./companies-search-params";
 import { CreateCompanySheet } from "./create-company-sheet";
 import styles from "./customers-design.module.css";
@@ -18,6 +17,11 @@ import {
 } from "./customers-search-params";
 
 export function CustomersHeader() {
+	const [view] = useQueryState(
+		SEARCH_PARAM.customers.view,
+		customersParsers[SEARCH_PARAM.customers.view],
+	);
+
 	return (
 		<header className={styles.top}>
 			<div className={styles.topText}>
@@ -27,18 +31,14 @@ export function CustomersHeader() {
 				</p>
 			</div>
 			<div className={styles.actions}>
+				{view === "companies" ? <CompaniesHeaderActions /> : null}
+				{view === "contacts" ? (
+					<ImportLeadsSheet triggerClassName={styles.btnOutline} />
+				) : null}
 				<CreateCompanySheet
 					triggerLabel="Add Company"
 					triggerClassName={styles.btnPrimary}
 				/>
-				<button
-					type="button"
-					className={styles.btnOutline}
-					onClick={() => toast.message("Imports need a backend.")}
-				>
-					<Icon icon={DocumentImport} />
-					Imports
-				</button>
 			</div>
 		</header>
 	);

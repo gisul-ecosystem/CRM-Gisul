@@ -4,6 +4,7 @@ export const PRODUCT_BRAND = {
 	websiteUrl: "https://gisul.co.in",
 	slackAppName: "Gisul",
 	logoSrc: "/gisul-logo.png",
+	loadingLogoSrc: "/gisul-loading-logo.png",
 } as const;
 
 export function slackInviteCommand(): string {

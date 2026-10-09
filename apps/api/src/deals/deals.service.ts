@@ -133,6 +133,7 @@ const PRODUCT_SELECT = {
 	id: true,
 	name: true,
 	color: true,
+	iconUrl: true,
 } as const;
 
 const NO_PRODUCT = "none";
@@ -429,7 +430,7 @@ export class DealsService {
 			this.db.product.findMany({
 				where: { archivedAt: null },
 				orderBy: [{ position: "asc" }, { name: "asc" }],
-				select: { id: true, name: true, color: true },
+				select: { id: true, name: true, color: true, iconUrl: true },
 			}),
 			this.db.deal.groupBy({
 				by: ["productId"],
@@ -457,12 +458,14 @@ export class DealsService {
 			id: string | null;
 			name: string;
 			color: string;
+			iconUrl: string | null;
 			deals: number;
 			pipelineCents: number;
 		}> = products.map((product) => ({
 			id: product.id,
 			name: product.name,
 			color: product.color,
+			iconUrl: product.iconUrl,
 			deals: countByProduct.get(product.id) ?? 0,
 			pipelineCents: valueByProduct.get(product.id) ?? 0,
 		}));
@@ -474,6 +477,7 @@ export class DealsService {
 				id: null,
 				name: "No product",
 				color: NO_PRODUCT_COLOR,
+				iconUrl: null,
 				deals: unassignedDeals,
 				pipelineCents: unassignedCents,
 			});

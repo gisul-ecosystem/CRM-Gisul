@@ -32,6 +32,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
+import { ProductMark } from "@/components/crm/product-mark";
 import { AddProductSheet } from "./add-product-sheet";
 
 type Display = RouterOutputs["products"]["display"];
@@ -261,15 +262,12 @@ function ProductCard({
 			<div className="flex items-start justify-between gap-4">
 				<div className="flex min-w-0 items-start gap-3.5">
 					{/* Product Icon Box */}
-					<div
-						className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-base font-bold shadow-xs transition-transform group-hover:scale-105"
-						style={{
-							backgroundColor: product.color || "#5e3da8",
-							color: "#ffffff",
-						}}
-					>
-						{product.name.charAt(0).toUpperCase()}
-					</div>
+					<ProductMark
+						name={product.name}
+						color={product.color || "#5e3da8"}
+						iconUrl={product.iconUrl}
+						className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl text-base font-bold shadow-xs transition-transform group-hover:scale-105"
+					/>
 
 					{/* Product Info */}
 					<div className="min-w-0 flex-1">
