@@ -273,8 +273,10 @@ export function ActivitiesPageClient() {
 
 	function heading(k: string) {
 		const d = parseDateKey(k);
-		const base = `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-		return k === todayKey ? `Today, ${base}` : `${DAYS[d.getDay()]}, ${base}`;
+		const base = `${d.getDate()} ${MONTHS[d.getMonth()] ?? ""} ${d.getFullYear()}`;
+		return k === todayKey
+			? `Today, ${base}`
+			: `${DAYS[d.getDay()] ?? ""}, ${base}`;
 	}
 
 	function openModal() {
@@ -288,7 +290,7 @@ export function ActivitiesPageClient() {
 	function onSave(form: HTMLFormElement) {
 		const data = new FormData(form);
 		const type = data.get("type") as ActivityTypeKey;
-		const [h, m] = String(data.get("time")).split(":").map(Number);
+		const [h = 0, m = 0] = String(data.get("time")).split(":").map(Number);
 		const date = String(data.get("date"));
 		const item: ActivityItem = {
 			id: nextId,
@@ -358,7 +360,8 @@ export function ActivitiesPageClient() {
 					>
 						<Icon icon={Calendar} />
 						<span>
-							{sel.getDate()} {MONTHS[sel.getMonth()].slice(0, 3)}{" "}
+							{sel.getDate()}{" "}
+							{(MONTHS[sel.getMonth()] ?? "").slice(0, 3)}{" "}
 							{sel.getFullYear()}
 						</span>
 						<input
@@ -380,28 +383,28 @@ export function ActivitiesPageClient() {
 
 			<section className={styles.kpis}>
 				<Kpi
-					iconClass={styles.k1}
+					iconClass={styles.k1 ?? ""}
 					icon={Calendar}
 					n={todayActs.length}
 					label="Today"
 					delta={ACTIVITIES.kpiDeltas.today}
 				/>
 				<Kpi
-					iconClass={styles.k2}
+					iconClass={styles.k2 ?? ""}
 					icon={Checkmark}
 					n={todayDone}
 					label="Completed"
 					delta={ACTIVITIES.kpiDeltas.completed}
 				/>
 				<Kpi
-					iconClass={styles.k3}
+					iconClass={styles.k3 ?? ""}
 					icon={Time}
 					n={todayActs.length - todayDone}
 					label="Pending"
 					delta={ACTIVITIES.kpiDeltas.pending}
 				/>
 				<Kpi
-					iconClass={styles.k4}
+					iconClass={styles.k4 ?? ""}
 					icon={Calendar}
 					n={overdueCount}
 					label="Overdue"
@@ -682,7 +685,7 @@ export function ActivitiesPageClient() {
 											<small>
 												{a.date === todayKey
 													? "Today"
-													: `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`}
+													: `${d.getDate()} ${(MONTHS[d.getMonth()] ?? "").slice(0, 3)}`}
 											</small>
 										</div>
 									</div>

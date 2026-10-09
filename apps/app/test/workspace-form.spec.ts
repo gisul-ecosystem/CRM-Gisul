@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 
 describe("Workspace Settings Form & Preferences", () => {
 	it("validates description character limits up to 500 characters", () => {

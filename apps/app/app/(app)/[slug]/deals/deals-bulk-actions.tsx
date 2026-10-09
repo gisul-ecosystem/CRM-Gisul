@@ -172,7 +172,11 @@ export function DealsBulkActions({
 								<DropdownMenuItem
 									key={option.value}
 									onSelect={() => {
-										if (LOSING_STAGES.includes(option.value)) {
+										if (
+											(LOSING_STAGES as readonly DealStage[]).includes(
+												option.value,
+											)
+										) {
 											setClosing(option.value);
 											return;
 										}

@@ -43,7 +43,9 @@ export default function ContactsPage({
 							Manage and convert potential customers across all products.
 						</p>
 					</div>
-					<LeadsHeaderActions />
+					<Suspense fallback={null}>
+						<LeadsHeaderActions />
+					</Suspense>
 				</header>
 
 				<PageShellContent className="min-h-0 gap-0">
