@@ -177,40 +177,6 @@ export class GraphClient {
 		);
 	}
 
-	async listTodoLists(
-		accessToken: string,
-	): Promise<MailboxResult<{ value: { id: string; displayName: string }[] }>> {
-		return this.api.get<{ value: { id: string; displayName: string }[] }>(
-			`${BASE}/todo/lists`,
-			accessToken,
-		);
-	}
-
-	async listTodoTasks(
-		accessToken: string,
-		listId: string,
-	): Promise<
-		MailboxResult<{
-			value: {
-				id: string;
-				title?: string | null;
-				status?: string;
-				importance?: string;
-				dueDateTime?: { dateTime?: string; timeZone?: string };
-				completedDateTime?: { dateTime?: string; timeZone?: string };
-				createdDateTime?: string;
-				body?: { content?: string };
-			}[];
-		}>
-	> {
-		return this.api.get(
-			`${BASE}/todo/lists/${listId}/tasks`,
-			accessToken,
-			{ $top: 100 },
-			{ Prefer: 'outlook.timezone="UTC"' },
-		);
-	}
-
 	async nextPage<T = MessagePage>(
 		accessToken: string,
 		nextLink: string,

@@ -78,6 +78,6 @@ export {
 export {
 	hasSignInAllowList,
 	isWorkspaceEmail,
-	primaryWorkspaceDomain,
+	soleWorkspaceDomain,
 	workspaceDomains,
 } from "./workspace";

@@ -197,18 +197,12 @@ export class OutlookCalendarSyncService {
 			currentPage = nextResult.data;
 		}
 
-		const tasksWritten = await this.syncTodoTasks(
-			token.accessToken,
-			row.userId,
-		);
-		written += tasksWritten;
-
 		await this.state.settle(row.id, {
 			status: GoogleSyncStatus.RUNNING,
 		});
 
 		this.logger.log({
-			message: "Outlook calendar, tasks & Teams sync complete",
+			message: "Outlook calendar & Teams sync complete",
 			userId: row.userId,
 			eventsWritten: written,
 			eventsRemoved: removed,
@@ -221,95 +215,6 @@ export class OutlookCalendarSyncService {
 			eventsWritten: written,
 			eventsRemoved: removed,
 		};
-	}
-
-	private async syncTodoTasks(
-		accessToken: string,
-		userId: string,
-	): Promise<number> {
-		try {
-			const listsRes = await this.graph.listTodoLists(accessToken);
-			if (listsRes.outcome !== "ok" || !listsRes.data.value) return 0;
-
-			let tasksWritten = 0;
-			for (const list of listsRes.data.value) {
-				const tasksRes = await this.graph.listTodoTasks(accessToken, list.id);
-				if (tasksRes.outcome !== "ok" || !tasksRes.data.value) continue;
-
-				for (const task of tasksRes.data.value) {
-					if (!task.id || !task.title) continue;
-
-					const dueAt = parseGraphEventDate(
-						task.dueDateTime?.dateTime,
-						task.dueDateTime?.timeZone,
-					);
-					const completedAt =
-						task.status === "completed"
-							? (parseGraphEventDate(
-									task.completedDateTime?.dateTime,
-									task.completedDateTime?.timeZone,
-								) ?? new Date())
-							: null;
-					const occurredAt =
-						dueAt ?? parseGraphEventDate(task.createdDateTime) ?? new Date();
-
-					const existing = await this.db.activity.findFirst({
-						where: {
-							createdById: userId,
-							type: ActivityType.TASK,
-							OR: [
-								{ meta: { path: ["todoTaskId"], equals: task.id } },
-								{ subject: task.title, dueAt: dueAt ?? undefined },
-							],
-						},
-						select: { id: true },
-					});
-
-					if (existing) {
-						await this.db.activity.update({
-							where: { id: existing.id },
-							data: {
-								subject: task.title,
-								body: task.body?.content || null,
-								dueAt,
-								occurredAt,
-								completedAt,
-								meta: {
-									synced: true,
-									source: "outlook-todo",
-									todoTaskId: task.id,
-								},
-							},
-						});
-					} else {
-						await this.db.activity.create({
-							data: {
-								type: ActivityType.TASK,
-								subject: task.title,
-								body: task.body?.content || null,
-								dueAt,
-								occurredAt,
-								completedAt,
-								createdById: userId,
-								meta: {
-									synced: true,
-									source: "outlook-todo",
-									todoTaskId: task.id,
-								},
-							},
-						});
-					}
-					tasksWritten += 1;
-				}
-			}
-			return tasksWritten;
-		} catch (error) {
-			this.logger.warn({
-				message: "Microsoft To-Do sync skipped or unsupported on this account",
-				error: error instanceof Error ? error.message : String(error),
-			});
-			return 0;
-		}
 	}
 
 	private async apply(
@@ -381,6 +286,8 @@ export class OutlookCalendarSyncService {
 
 		const companyId = match?.companyId ?? null;
 		const contactId = match?.contactId ?? null;
+
+		if (!companyId && !contactId) return "ignored";
 
 		const organizer =
 			event.organizer?.emailAddress?.address?.toLowerCase() ?? null;

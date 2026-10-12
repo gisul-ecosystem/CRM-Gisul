@@ -51,8 +51,11 @@ export class ActivitiesRouter {
 		output: timelineOutput,
 		meta: restMeta("GET", "/activities", ["Activities"]),
 	})
-	async timeline(@Input() input: z.infer<typeof timelineInput>) {
-		return this.activities.timeline(input);
+	async timeline(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof timelineInput>,
+	) {
+		return this.activities.timeline(input, ctx.user.id);
 	}
 
 	@Query({
@@ -60,8 +63,11 @@ export class ActivitiesRouter {
 		output: timelineCountsOutput,
 		meta: restMeta("GET", "/activities/counts", ["Activities"]),
 	})
-	async timelineCounts(@Input() input: z.infer<typeof timelineCountsInput>) {
-		return this.activities.timelineCounts(input);
+	async timelineCounts(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof timelineCountsInput>,
+	) {
+		return this.activities.timelineCounts(input, ctx.user.id);
 	}
 
 	@Query({

@@ -36,7 +36,10 @@ export class DashboardRouter {
 		output: dashboardReportOutput,
 		meta: restMeta("GET", "/dashboard/report", ["Dashboard"]),
 	})
-	async report(@Input() input: z.infer<typeof dashboardReportInput>) {
-		return this.dashboard.report(input);
+	async report(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof dashboardReportInput>,
+	) {
+		return this.dashboard.report(ctx.user.id, input);
 	}
 }

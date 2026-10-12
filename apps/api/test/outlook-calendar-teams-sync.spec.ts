@@ -79,12 +79,6 @@ describe("Outlook & Teams Calendar Sync Service", () => {
 					value: options.events ?? [],
 				});
 			},
-			async listTodoLists() {
-				return ok({ value: [] });
-			},
-			async listTodoTasks() {
-				return ok({ value: [] });
-			},
 			async nextPage() {
 				return ok({ value: [] });
 			},
@@ -108,8 +102,14 @@ describe("Outlook & Teams Calendar Sync Service", () => {
 			},
 			async resolve() {
 				return {
-					companyId: options.matchedCompanyId ?? "company-101",
-					contactId: options.matchedContactId ?? "contact-202",
+					companyId:
+						options.matchedCompanyId === undefined
+							? "company-101"
+							: options.matchedCompanyId,
+					contactId:
+						options.matchedContactId === undefined
+							? "contact-202"
+							: options.matchedContactId,
 				};
 			},
 		} as unknown as MailboxMatchService;
@@ -239,6 +239,39 @@ describe("Outlook & Teams Calendar Sync Service", () => {
 		expect(createdAct.subject).toBe("Contract Review Lunch");
 		expect(createdAct.body).toContain("Location: Boardroom A");
 		expect(createdAct.meta.source).toBe("outlook");
+	});
+
+	it("skips a meeting with nobody from the CRM on it", async () => {
+		const stranger: GraphEvent = {
+			id: "outlook-event-stranger",
+			iCalUId: "ical-outlook-stranger",
+			subject: "Reel review",
+			start: { dateTime: "2026-10-10T09:00:00.000Z", timeZone: "UTC" },
+			end: { dateTime: "2026-10-10T09:30:00.000Z", timeZone: "UTC" },
+			isOnlineMeeting: false,
+			organizer: {
+				emailAddress: { address: "rep@trycomp.ai", name: "Sales Rep" },
+			},
+			attendees: [
+				{
+					emailAddress: { address: "someone@unknown.org", name: "Someone" },
+					type: "required",
+				},
+			],
+		};
+
+		const harness = createHarness({
+			events: [stranger],
+			matchedCompanyId: null,
+			matchedContactId: null,
+		});
+
+		const result = await harness.service.sync(syncRow);
+
+		expect(result.status).toBe("synced");
+		expect(result.eventsWritten).toBe(0);
+		expect(harness.calendarEventsUpserted.length).toBe(0);
+		expect(harness.activitiesUpserted.length).toBe(0);
 	});
 
 	it("gracefully handles disconnected or reconnect-needed Microsoft tokens", async () => {

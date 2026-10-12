@@ -27,7 +27,7 @@ import { queueSlackInventorySync } from "./slack-sync";
 import {
 	hasSignInAllowList,
 	isWorkspaceEmail,
-	primaryWorkspaceDomain,
+	soleWorkspaceDomain,
 } from "./workspace";
 
 const socialProviders: NonNullable<BetterAuthOptions["socialProviders"]> = {};
@@ -46,7 +46,7 @@ if (env.google) {
 		accessType: "offline",
 	};
 
-	const hostedDomain = primaryWorkspaceDomain();
+	const hostedDomain = soleWorkspaceDomain();
 	if (hostedDomain) google.hd = hostedDomain;
 
 	socialProviders.google = google;
@@ -287,7 +287,7 @@ export const auth = betterAuth({
 					}
 
 					if (!isWorkspaceEmail(user.email)) {
-						const domain = primaryWorkspaceDomain();
+						const domain = soleWorkspaceDomain();
 						throw new APIError("FORBIDDEN", {
 							message: domain
 								? `This CRM is private. Sign in with your @${domain} account.`
