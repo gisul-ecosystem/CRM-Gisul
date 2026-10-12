@@ -1,3 +1,4 @@
+import { isWorkspaceAdmin, workspaceRoleOf } from "@crm/auth";
 import {
 	ActivityType,
 	type Db,
@@ -9,13 +10,16 @@ import { isCurrencyCode, normalizeCurrency } from "@crm/db/currency";
 import {
 	CLOSED_DEAL_STAGES,
 	DEAL_STAGE_CATALOG,
+	dealStageDefinition,
 	isClosedStage,
 	LOSING_DEAL_STAGES,
 	OPEN_DEAL_STAGES,
 } from "@crm/db/deal-stage";
 import type { FieldDefinitionWithOptions } from "@crm/db/fields";
+import { SETTINGS_ID } from "@crm/db/settings";
 import {
 	BadRequestException,
+	ForbiddenException,
 	Injectable,
 	Logger,
 	NotFoundException,
@@ -48,17 +52,6 @@ import {
 	resolveOrderBy,
 	splitSentinel,
 } from "../trpc/list-input";
-import { DEALS } from "./deals-config";
-import {
-	dealCsvTemplate,
-	formatAmount,
-	formatDealStage,
-	parseAmountCents,
-	parseDealCsv,
-	parseDealStage,
-	serializeDealCsv,
-} from "./deals-csv";
-import { DEAL_IO } from "./deals-io-config";
 import type {
 	ClosingWindow,
 	DealAttachContactInput,
@@ -79,10 +72,20 @@ import type {
 	PipelineStageItemOutput,
 	SetStageInput,
 	UpdatePipelineSettingsInput,
-	CreatePipelineStageInput,
 	UpdatePipelineStageInput,
 } from "./deals.contracts";
 import { CLOSING_WINDOWS } from "./deals.contracts";
+import { DEALS } from "./deals-config";
+import {
+	dealCsvTemplate,
+	formatAmount,
+	formatDealStage,
+	parseAmountCents,
+	parseDealCsv,
+	parseDealStage,
+	serializeDealCsv,
+} from "./deals-csv";
+import { DEAL_IO } from "./deals-io-config";
 
 const NO_PRODUCT_COLOR = "#9aa0b4";
 
@@ -163,127 +166,29 @@ export class DealsService {
 		private readonly fields: FieldsService,
 	) {}
 
-	private pipelineSettingsState = {
-		enableProbabilityTracking: true,
-		requireStageUpdateNotes: true,
-		autoAssignDeals: false,
-		defaultStage: "DEMO_BOOKED",
-		applyToAllProducts: true,
-		allowSkippingStages: false,
-	};
-
-	private customStages: Array<{
-		id: string;
-		stage: string;
-		name: string;
-		probability: number;
-		color: string;
-		kind: "open" | "won" | "lost";
-		status: "active" | "won" | "lost" | "inactive";
-		position: number;
-	}> = [
-		{
-			id: "stage-1",
-			stage: "DEMO_BOOKED",
-			name: "Qualification",
-			probability: 10,
-			color: "#6C5CE7",
-			kind: "open",
-			status: "active",
-			position: 1,
-		},
-		{
-			id: "stage-2",
-			stage: "QUALIFIED_TO_BUY",
-			name: "Needs Analysis",
-			probability: 30,
-			color: "#3B82F6",
-			kind: "open",
-			status: "active",
-			position: 2,
-		},
-		{
-			id: "stage-3",
-			stage: "DECISION_MAKER_BOUGHT_IN",
-			name: "Proposal",
-			probability: 50,
-			color: "#F59E0B",
-			kind: "open",
-			status: "active",
-			position: 3,
-		},
-		{
-			id: "stage-4",
-			stage: "CONTRACT_SENT",
-			name: "Negotiation",
-			probability: 80,
-			color: "#F97316",
-			kind: "open",
-			status: "active",
-			position: 4,
-		},
-		{
-			id: "stage-5",
-			stage: "CLOSED_WON",
-			name: "Closed Won",
-			probability: 100,
-			color: "#10B981",
-			kind: "won",
-			status: "won",
-			position: 5,
-		},
-		{
-			id: "stage-6",
-			stage: "CLOSED_LOST",
-			name: "Closed Lost",
-			probability: 0,
-			color: "#EF4444",
-			kind: "lost",
-			status: "lost",
-			position: 6,
-		},
-	];
-
 	async pipelineOverview(userId: string): Promise<PipelineOverviewOutput> {
-		const currency = await this.conversion.reportingCurrency();
-
-		const stageDeals = await this.db.deal.groupBy({
-			by: ["stage"],
-			where: { archivedAt: null },
-			_count: { _all: true },
-			_sum: { baseAmount: true },
-		}).catch(() => []);
-
-		const countMap = new Map<string, number>();
-		const valueMap = new Map<string, number>();
-		for (const row of stageDeals) {
-			countMap.set(row.stage, row._count._all);
-			valueMap.set(row.stage, toCents(row._sum.baseAmount ?? null) ?? 0);
-		}
-
-		const stages = this.customStages.map((s) => ({
-			...s,
-			dealCount: countMap.get(s.stage) ?? 0,
-			totalValueCents: valueMap.get(s.stage) ?? 0,
-		}));
+		const [currency, stages, settings, role] = await Promise.all([
+			this.conversion.reportingCurrency(),
+			this.pipelineStages(),
+			this.readPipelineSettings(),
+			workspaceRoleOf(userId, this.db),
+		]);
 
 		const activeStages = stages.filter(
-			(s) => s.kind === "open" && s.status === "active",
+			(stage) => stage.kind === "open" && stage.status === "active",
 		).length;
-		const closedWon = stages.filter((s) => s.kind === "won").length;
-		const closedLost = stages.filter((s) => s.kind === "lost").length;
 
 		return {
 			stages,
 			stats: {
 				totalStages: stages.length,
 				activeStages,
-				closedWon,
-				closedLost,
+				closedWon: stages.filter((stage) => stage.kind === "won").length,
+				closedLost: stages.filter((stage) => stage.kind === "lost").length,
 			},
 			currency,
-			settings: this.pipelineSettingsState,
-			canManage: true,
+			settings,
+			canManage: isWorkspaceAdmin(role),
 		};
 	}
 
@@ -291,73 +196,136 @@ export class DealsService {
 		userId: string,
 		input: UpdatePipelineSettingsInput,
 	): Promise<PipelineSettingsOutput> {
-		this.pipelineSettingsState = {
-			...this.pipelineSettingsState,
-			...input,
-		};
-		return this.pipelineSettingsState;
-	}
+		await this.requirePipelineManager(userId);
 
-	async createPipelineStage(
-		userId: string,
-		input: CreatePipelineStageInput,
-	): Promise<PipelineStageItemOutput> {
-		const newId = `stage-${Date.now()}`;
-		const stageSlug = input.name.toUpperCase().replace(/\s+/g, "_");
-		const position = this.customStages.length + 1;
-
-		const newStage = {
-			id: newId,
-			stage: stageSlug,
-			name: input.name,
-			probability: input.probability,
-			color: input.color,
-			kind: input.kind,
-			status: input.status,
-			position,
+		const data = {
+			pipelineProbabilityTracking: input.enableProbabilityTracking,
+			pipelineRequireStageNotes: input.requireStageUpdateNotes,
+			pipelineAutoAssignDeals: input.autoAssignDeals,
+			pipelineDefaultStage: input.defaultStage,
+			pipelineApplyToAllProducts: input.applyToAllProducts,
+			pipelineAllowSkippingStages: input.allowSkippingStages,
 		};
 
-		this.customStages.push(newStage);
+		await this.db.appSetting.upsert({
+			where: { id: SETTINGS_ID },
+			create: { id: SETTINGS_ID, ...data },
+			update: data,
+		});
 
-		return {
-			...newStage,
-			dealCount: 0,
-			totalValueCents: 0,
-		};
+		this.logger.log({ message: "Pipeline settings updated", userId });
+
+		return this.readPipelineSettings();
 	}
 
 	async updatePipelineStage(
 		userId: string,
 		input: UpdatePipelineStageInput,
 	): Promise<PipelineStageItemOutput> {
-		const stage = this.customStages.find((s) => s.id === input.id);
-		if (!stage) throw new NotFoundException("Stage not found");
+		await this.requirePipelineManager(userId);
 
-		if (input.name !== undefined) stage.name = input.name;
-		if (input.probability !== undefined) stage.probability = input.probability;
-		if (input.color !== undefined) stage.color = input.color;
-		if (input.status !== undefined) stage.status = input.status;
-		if (input.position !== undefined) stage.position = input.position;
+		const definition = dealStageDefinition(input.id);
+		const position =
+			DEAL_STAGE_CATALOG.findIndex((entry) => entry.stage === input.id) + 1;
 
-		const count = await this.db.deal
-			.count({
-				where: { stage: stage.stage as any, archivedAt: null },
-			})
-			.catch(() => 0);
+		await this.db.pipelineStage.upsert({
+			where: { stage: input.id },
+			create: {
+				stage: input.id,
+				name: input.name ?? definition.label,
+				probability: input.probability ?? 0,
+				color: input.color ?? NO_PRODUCT_COLOR,
+				position,
+				active: input.active ?? true,
+			},
+			update: {
+				name: input.name,
+				probability: input.probability,
+				color: input.color,
+				active: input.active,
+			},
+		});
+
+		this.logger.log({
+			message: "Pipeline stage updated",
+			userId,
+			stage: input.id,
+		});
+
+		const stages = await this.pipelineStages();
+		const updated = stages.find((stage) => stage.stage === input.id);
+
+		if (!updated) throw new NotFoundException("Stage not found");
+
+		return updated;
+	}
+
+	private async pipelineStages(): Promise<PipelineStageItemOutput[]> {
+		const [rows, totals] = await Promise.all([
+			this.db.pipelineStage.findMany(),
+			this.db.deal.groupBy({
+				by: ["stage"],
+				where: { archivedAt: null },
+				_count: { _all: true },
+				_sum: { baseAmount: true },
+			}),
+		]);
+
+		const stored = new Map(rows.map((row) => [row.stage, row]));
+		const byStage = new Map(totals.map((row) => [row.stage, row]));
+
+		return DEAL_STAGE_CATALOG.map((entry, index): PipelineStageItemOutput => {
+			const row = stored.get(entry.stage);
+			const total = byStage.get(entry.stage);
+			const active = row?.active ?? true;
+
+			return {
+				id: entry.stage,
+				stage: entry.stage,
+				name: row?.name ?? entry.label,
+				probability: row?.probability ?? 0,
+				color: row?.color ?? NO_PRODUCT_COLOR,
+				kind: entry.kind,
+				status:
+					entry.kind === "open" ? (active ? "active" : "inactive") : entry.kind,
+				position: row?.position ?? index + 1,
+				dealCount: total?._count._all ?? 0,
+				totalValueCents: toCents(total?._sum.baseAmount ?? null) ?? 0,
+			};
+		}).sort((a, b) => a.position - b.position);
+	}
+
+	private async readPipelineSettings(): Promise<PipelineSettingsOutput> {
+		const row = await this.db.appSetting.findUnique({
+			where: { id: SETTINGS_ID },
+			select: {
+				pipelineProbabilityTracking: true,
+				pipelineRequireStageNotes: true,
+				pipelineAutoAssignDeals: true,
+				pipelineDefaultStage: true,
+				pipelineApplyToAllProducts: true,
+				pipelineAllowSkippingStages: true,
+			},
+		});
 
 		return {
-			...stage,
-			dealCount: count,
-			totalValueCents: 0,
+			enableProbabilityTracking: row?.pipelineProbabilityTracking ?? true,
+			requireStageUpdateNotes: row?.pipelineRequireStageNotes ?? true,
+			autoAssignDeals: row?.pipelineAutoAssignDeals ?? false,
+			defaultStage: row?.pipelineDefaultStage ?? DealStage.DEMO_BOOKED,
+			applyToAllProducts: row?.pipelineApplyToAllProducts ?? true,
+			allowSkippingStages: row?.pipelineAllowSkippingStages ?? false,
 		};
 	}
 
-	async deletePipelineStage(
-		userId: string,
-		id: string,
-	): Promise<{ id: string }> {
-		this.customStages = this.customStages.filter((s) => s.id !== id);
-		return { id };
+	private async requirePipelineManager(userId: string): Promise<void> {
+		const role = await workspaceRoleOf(userId, this.db);
+
+		if (!isWorkspaceAdmin(role)) {
+			throw new ForbiddenException(
+				"Only an owner or an admin can change the pipeline.",
+			);
+		}
 	}
 
 	stages(): DealStageCatalogOutput {
@@ -424,7 +392,10 @@ export class DealsService {
 	async pipelineByProduct(): Promise<DealPipelineByProductOutput> {
 		const base = await this.conversion.reportingCurrency();
 		const counted = this.conversion.countedWhere(base);
-		const openStage = { stage: { in: [...OPEN_DEAL_STAGES] }, archivedAt: null };
+		const openStage = {
+			stage: { in: [...OPEN_DEAL_STAGES] },
+			archivedAt: null,
+		};
 
 		const [products, openCounts, openValues] = await Promise.all([
 			this.db.product.findMany({
@@ -718,7 +689,9 @@ export class DealsService {
 					throw new BadRequestException("company is required for new deals.");
 				}
 				if (!ownerId) {
-					throw new BadRequestException("ownerEmail is required for new deals.");
+					throw new BadRequestException(
+						"ownerEmail is required for new deals.",
+					);
 				}
 
 				await this.create({

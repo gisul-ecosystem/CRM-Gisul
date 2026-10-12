@@ -197,7 +197,10 @@ export class OutlookCalendarSyncService {
 			currentPage = nextResult.data;
 		}
 
-		const tasksWritten = await this.syncTodoTasks(token.accessToken, row.userId);
+		const tasksWritten = await this.syncTodoTasks(
+			token.accessToken,
+			row.userId,
+		);
 		written += tasksWritten;
 
 		await this.state.settle(row.id, {
@@ -220,7 +223,10 @@ export class OutlookCalendarSyncService {
 		};
 	}
 
-	private async syncTodoTasks(accessToken: string, userId: string): Promise<number> {
+	private async syncTodoTasks(
+		accessToken: string,
+		userId: string,
+	): Promise<number> {
 		try {
 			const listsRes = await this.graph.listTodoLists(accessToken);
 			if (listsRes.outcome !== "ok" || !listsRes.data.value) return 0;
@@ -239,10 +245,10 @@ export class OutlookCalendarSyncService {
 					);
 					const completedAt =
 						task.status === "completed"
-							? parseGraphEventDate(
+							? (parseGraphEventDate(
 									task.completedDateTime?.dateTime,
 									task.completedDateTime?.timeZone,
-								) ?? new Date()
+								) ?? new Date())
 							: null;
 					const occurredAt =
 						dueAt ?? parseGraphEventDate(task.createdDateTime) ?? new Date();
@@ -268,7 +274,11 @@ export class OutlookCalendarSyncService {
 								dueAt,
 								occurredAt,
 								completedAt,
-								meta: { synced: true, source: "outlook-todo", todoTaskId: task.id },
+								meta: {
+									synced: true,
+									source: "outlook-todo",
+									todoTaskId: task.id,
+								},
 							},
 						});
 					} else {
@@ -281,7 +291,11 @@ export class OutlookCalendarSyncService {
 								occurredAt,
 								completedAt,
 								createdById: userId,
-								meta: { synced: true, source: "outlook-todo", todoTaskId: task.id },
+								meta: {
+									synced: true,
+									source: "outlook-todo",
+									todoTaskId: task.id,
+								},
 							},
 						});
 					}
@@ -306,7 +320,10 @@ export class OutlookCalendarSyncService {
 		const iCalUid = event.iCalUId ?? event.id;
 		if (!iCalUid) return "ignored";
 
-		const start = parseGraphEventDate(event.start?.dateTime, event.start?.timeZone);
+		const start = parseGraphEventDate(
+			event.start?.dateTime,
+			event.start?.timeZone,
+		);
 		const end = parseGraphEventDate(event.end?.dateTime, event.end?.timeZone);
 		if (!start || !end) {
 			return "ignored";
@@ -365,9 +382,13 @@ export class OutlookCalendarSyncService {
 		const companyId = match?.companyId ?? null;
 		const contactId = match?.contactId ?? null;
 
-		const organizer = event.organizer?.emailAddress?.address?.toLowerCase() ?? null;
+		const organizer =
+			event.organizer?.emailAddress?.address?.toLowerCase() ?? null;
 		const conferenceUrl =
-			event.onlineMeeting?.joinUrl ?? event.onlineMeetingUrl ?? event.webLink ?? null;
+			event.onlineMeeting?.joinUrl ??
+			event.onlineMeetingUrl ??
+			event.webLink ??
+			null;
 		const location = event.location?.displayName ?? null;
 		const isTeams =
 			event.isOnlineMeeting ||
@@ -409,12 +430,9 @@ export class OutlookCalendarSyncService {
 			select: { id: true },
 		});
 
-		const myEmail = row.mailbox?.toLowerCase();
-		const hasNoExternalAttendees =
-			(event.attendees ?? []).length === 0 ||
-			(event.attendees ?? []).every(
-				(a) => a.emailAddress?.address?.toLowerCase() === myEmail,
-			);
+		const hasNoExternalAttendees = (event.attendees ?? []).every(
+			(a) => !a.emailAddress?.address,
+		);
 		const titleLower = (event.subject ?? "").toLowerCase();
 		const isTask =
 			!isTeams &&
@@ -425,7 +443,9 @@ export class OutlookCalendarSyncService {
 
 		await this.syncAttendees(record.id, event.attendees ?? []);
 		await this.project(record.id, row.userId, {
-			title: event.subject ?? (isTeams ? "Teams Meeting" : isTask ? "Task" : "Meeting"),
+			title:
+				event.subject ??
+				(isTeams ? "Teams Meeting" : isTask ? "Task" : "Meeting"),
 			startsAt: start,
 			companyId,
 			contactId,

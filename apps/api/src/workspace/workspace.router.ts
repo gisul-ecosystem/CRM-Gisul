@@ -11,46 +11,45 @@ import { z } from "zod";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { restMeta } from "../trpc/openapi";
+import { DataManagementService } from "./data-management.service";
 import {
 	activityAssignmentRuleOutput,
 	activitySettingsOverviewOutput,
 	activityTypeItemOutput,
 	archiveInactiveRecordsInput,
+	archiveInactiveRecordsOutput,
+	backupDownloadOutput,
+	backupIdInput,
 	backupItemOutput,
 	clearDeletedDataInput,
+	clearDeletedDataOutput,
 	completionBehaviorOutput,
 	createActivityAssignmentRuleInput,
 	createActivityTypeInput,
 	createBackupInput,
 	createLeadAssignmentRuleInput,
 	createLeadFieldInput,
-	createLeadSourceInput,
-	createLeadStatusInput,
-	createRoleInput,
 	createTeamInput,
 	dataManagementOverviewOutput,
-	dataRetentionSettingsOutput,
 	defaultActivitySettingsOutput,
 	defaultLeadOwnerOutput,
-	deleteAccountInput,
 	deleteActivityAssignmentRuleInput,
 	deleteActivityTypeInput,
-	deleteBackupInput,
 	deleteLeadAssignmentRuleInput,
 	deleteLeadFieldInput,
-	deleteLeadSourceInput,
-	deleteLeadStatusInput,
-	exportDataInput,
+	duplicateEntityInput,
+	duplicateGroupsOutput,
+	entityInput,
+	exportDataOutput,
 	importDataInput,
+	importDataOutput,
+	importTemplateOutput,
 	integrationItemOutput,
 	integrationsOverviewOutput,
 	invitationSettingsOutput,
-	inviteUserInput,
 	leadAssignmentRuleOutput,
 	leadFieldOutput,
 	leadSettingsOutput,
-	leadSourceOutput,
-	leadStatusOutput,
 	memberListInput,
 	memberListOutput,
 	reminderRulesOutput,
@@ -61,15 +60,10 @@ import {
 	updateActivityAssignmentRuleInput,
 	updateActivityTypeInput,
 	updateCompletionBehaviorInput,
-	updateDataRetentionInput,
 	updateDefaultActivitySettingsInput,
 	updateDefaultLeadOwnerInput,
-	updateInvitationSettingsInput,
 	updateLeadAssignmentRuleInput,
 	updateLeadFieldInput,
-	updateLeadSourceInput,
-	updateLeadStatusInput,
-	updateMemberStatusInput,
 	updateMemberTeamInput,
 	updateReminderRulesInput,
 	updateWorkspaceInput,
@@ -83,6 +77,8 @@ import { WorkspaceService } from "./workspace.service";
 export class WorkspaceRouter {
 	constructor(
 		@Inject(WorkspaceService) private readonly workspace: WorkspaceService,
+		@Inject(DataManagementService)
+		private readonly data: DataManagementService,
 	) {}
 
 	@Query({
@@ -109,24 +105,24 @@ export class WorkspaceRouter {
 		output: z.array(teamItemOutput),
 		meta: restMeta("GET", "/workspace/teams", ["Workspace"]),
 	})
-	async teams(@Ctx() ctx: AuthedTrpcContext) {
-		return this.workspace.teams(ctx.user.id);
+	async teams() {
+		return this.workspace.teams();
 	}
 
 	@Query({
 		output: z.array(roleItemOutput),
 		meta: restMeta("GET", "/workspace/roles", ["Workspace"]),
 	})
-	async roles(@Ctx() ctx: AuthedTrpcContext) {
-		return this.workspace.roles(ctx.user.id);
+	async roles() {
+		return this.workspace.roles();
 	}
 
 	@Query({
 		output: invitationSettingsOutput,
 		meta: restMeta("GET", "/workspace/invitation-settings", ["Workspace"]),
 	})
-	async invitationSettings(@Ctx() ctx: AuthedTrpcContext) {
-		return this.workspace.invitationSettings(ctx.user.id);
+	invitationSettings() {
+		return this.workspace.invitationSettings();
 	}
 
 	@Mutation({
@@ -170,20 +166,6 @@ export class WorkspaceRouter {
 	}
 
 	@Mutation({
-		input: updateMemberStatusInput,
-		output: workspaceMemberOutput,
-		meta: restMeta("PATCH", "/workspace/members/{memberId}/status", [
-			"Workspace",
-		]),
-	})
-	async updateMemberStatus(
-		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof updateMemberStatusInput>,
-	) {
-		return this.workspace.updateMemberStatus(ctx.user.id, input);
-	}
-
-	@Mutation({
 		input: createTeamInput,
 		output: teamItemOutput,
 		meta: restMeta("POST", "/workspace/teams", ["Workspace"]),
@@ -195,84 +177,12 @@ export class WorkspaceRouter {
 		return this.workspace.createTeam(ctx.user.id, input);
 	}
 
-	@Mutation({
-		input: createRoleInput,
-		output: roleItemOutput,
-		meta: restMeta("POST", "/workspace/roles", ["Workspace"]),
-	})
-	async createRole(
-		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof createRoleInput>,
-	) {
-		return this.workspace.createRole(ctx.user.id, input);
-	}
-
-	@Mutation({
-		input: updateInvitationSettingsInput,
-		output: invitationSettingsOutput,
-		meta: restMeta("PATCH", "/workspace/invitation-settings", ["Workspace"]),
-	})
-	async updateInvitationSettings(
-		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof updateInvitationSettingsInput>,
-	) {
-		return this.workspace.updateInvitationSettings(ctx.user.id, input);
-	}
-
-	@Mutation({
-		input: inviteUserInput,
-		output: z.object({ success: z.boolean(), email: z.string() }),
-		meta: restMeta("POST", "/workspace/invite", ["Workspace"]),
-	})
-	async inviteUser(
-		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof inviteUserInput>,
-	) {
-		return this.workspace.inviteUser(ctx.user.id, input);
-	}
-
 	@Query({
 		output: leadSettingsOutput,
 		meta: restMeta("GET", "/workspace/lead-settings", ["Workspace"]),
 	})
 	async leadSettings(@Ctx() ctx: AuthedTrpcContext) {
 		return this.workspace.leadSettings(ctx.user.id);
-	}
-
-	@Mutation({
-		input: createLeadSourceInput,
-		output: leadSourceOutput,
-		meta: restMeta("POST", "/workspace/lead-settings/sources", ["Workspace"]),
-	})
-	async createLeadSource(
-		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof createLeadSourceInput>,
-	) {
-		return this.workspace.createLeadSource(ctx.user.id, input);
-	}
-
-	@Mutation({
-		input: updateLeadSourceInput,
-		output: leadSourceOutput,
-		meta: restMeta("PATCH", "/workspace/lead-settings/sources", ["Workspace"]),
-	})
-	async updateLeadSource(
-		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof updateLeadSourceInput>,
-	) {
-		return this.workspace.updateLeadSource(ctx.user.id, input);
-	}
-
-	@Mutation({
-		input: deleteLeadSourceInput,
-		output: z.object({ success: z.boolean() }),
-		meta: restMeta("DELETE", "/workspace/lead-settings/sources", ["Workspace"]),
-	})
-	async deleteLeadSource(
-		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof deleteLeadSourceInput>,
-	) {
-		return this.workspace.deleteLeadSource(ctx.user.id, input);
 	}
 
 	@Mutation({
@@ -309,42 +219,6 @@ export class WorkspaceRouter {
 		@Input() input: z.infer<typeof deleteLeadFieldInput>,
 	) {
 		return this.workspace.deleteLeadField(ctx.user.id, input);
-	}
-
-	@Mutation({
-		input: createLeadStatusInput,
-		output: leadStatusOutput,
-		meta: restMeta("POST", "/workspace/lead-settings/statuses", ["Workspace"]),
-	})
-	async createLeadStatus(
-		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof createLeadStatusInput>,
-	) {
-		return this.workspace.createLeadStatus(ctx.user.id, input);
-	}
-
-	@Mutation({
-		input: updateLeadStatusInput,
-		output: leadStatusOutput,
-		meta: restMeta("PATCH", "/workspace/lead-settings/statuses", ["Workspace"]),
-	})
-	async updateLeadStatus(
-		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof updateLeadStatusInput>,
-	) {
-		return this.workspace.updateLeadStatus(ctx.user.id, input);
-	}
-
-	@Mutation({
-		input: deleteLeadStatusInput,
-		output: z.object({ success: z.boolean() }),
-		meta: restMeta("DELETE", "/workspace/lead-settings/statuses", ["Workspace"]),
-	})
-	async deleteLeadStatus(
-		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof deleteLeadStatusInput>,
-	) {
-		return this.workspace.deleteLeadStatus(ctx.user.id, input);
 	}
 
 	@Mutation({
@@ -386,7 +260,9 @@ export class WorkspaceRouter {
 	@Mutation({
 		input: updateDefaultLeadOwnerInput,
 		output: defaultLeadOwnerOutput,
-		meta: restMeta("PATCH", "/workspace/lead-settings/default-owner", ["Workspace"]),
+		meta: restMeta("PATCH", "/workspace/lead-settings/default-owner", [
+			"Workspace",
+		]),
 	})
 	async updateDefaultLeadOwner(
 		@Ctx() ctx: AuthedTrpcContext,
@@ -426,7 +302,9 @@ export class WorkspaceRouter {
 	@Mutation({
 		input: updateDefaultActivitySettingsInput,
 		output: defaultActivitySettingsOutput,
-		meta: restMeta("PATCH", "/workspace/activity-settings/defaults", ["Workspace"]),
+		meta: restMeta("PATCH", "/workspace/activity-settings/defaults", [
+			"Workspace",
+		]),
 	})
 	async updateDefaultActivitySettings(
 		@Ctx() ctx: AuthedTrpcContext,
@@ -438,7 +316,9 @@ export class WorkspaceRouter {
 	@Mutation({
 		input: updateReminderRulesInput,
 		output: reminderRulesOutput,
-		meta: restMeta("PATCH", "/workspace/activity-settings/reminders", ["Workspace"]),
+		meta: restMeta("PATCH", "/workspace/activity-settings/reminders", [
+			"Workspace",
+		]),
 	})
 	async updateReminderRules(
 		@Ctx() ctx: AuthedTrpcContext,
@@ -450,7 +330,11 @@ export class WorkspaceRouter {
 	@Mutation({
 		input: updateCompletionBehaviorInput,
 		output: completionBehaviorOutput,
-		meta: restMeta("PATCH", "/workspace/activity-settings/completion-behavior", ["Workspace"]),
+		meta: restMeta(
+			"PATCH",
+			"/workspace/activity-settings/completion-behavior",
+			["Workspace"],
+		),
 	})
 	async updateCompletionBehavior(
 		@Ctx() ctx: AuthedTrpcContext,
@@ -474,7 +358,9 @@ export class WorkspaceRouter {
 	@Mutation({
 		input: updateActivityTypeInput,
 		output: activityTypeItemOutput,
-		meta: restMeta("PATCH", "/workspace/activity-settings/types", ["Workspace"]),
+		meta: restMeta("PATCH", "/workspace/activity-settings/types", [
+			"Workspace",
+		]),
 	})
 	async updateActivityType(
 		@Ctx() ctx: AuthedTrpcContext,
@@ -486,7 +372,9 @@ export class WorkspaceRouter {
 	@Mutation({
 		input: deleteActivityTypeInput,
 		output: z.object({ success: z.boolean() }),
-		meta: restMeta("DELETE", "/workspace/activity-settings/types", ["Workspace"]),
+		meta: restMeta("DELETE", "/workspace/activity-settings/types", [
+			"Workspace",
+		]),
 	})
 	async deleteActivityType(
 		@Ctx() ctx: AuthedTrpcContext,
@@ -498,7 +386,9 @@ export class WorkspaceRouter {
 	@Mutation({
 		input: createActivityAssignmentRuleInput,
 		output: activityAssignmentRuleOutput,
-		meta: restMeta("POST", "/workspace/activity-settings/assignment-rules", ["Workspace"]),
+		meta: restMeta("POST", "/workspace/activity-settings/assignment-rules", [
+			"Workspace",
+		]),
 	})
 	async createActivityAssignmentRule(
 		@Ctx() ctx: AuthedTrpcContext,
@@ -510,7 +400,9 @@ export class WorkspaceRouter {
 	@Mutation({
 		input: updateActivityAssignmentRuleInput,
 		output: activityAssignmentRuleOutput,
-		meta: restMeta("PATCH", "/workspace/activity-settings/assignment-rules", ["Workspace"]),
+		meta: restMeta("PATCH", "/workspace/activity-settings/assignment-rules", [
+			"Workspace",
+		]),
 	})
 	async updateActivityAssignmentRule(
 		@Ctx() ctx: AuthedTrpcContext,
@@ -522,7 +414,9 @@ export class WorkspaceRouter {
 	@Mutation({
 		input: deleteActivityAssignmentRuleInput,
 		output: z.object({ success: z.boolean() }),
-		meta: restMeta("DELETE", "/workspace/activity-settings/assignment-rules", ["Workspace"]),
+		meta: restMeta("DELETE", "/workspace/activity-settings/assignment-rules", [
+			"Workspace",
+		]),
 	})
 	async deleteActivityAssignmentRule(
 		@Ctx() ctx: AuthedTrpcContext,
@@ -536,102 +430,108 @@ export class WorkspaceRouter {
 		meta: restMeta("GET", "/workspace/data-management", ["Workspace"]),
 	})
 	async dataManagement(@Ctx() ctx: AuthedTrpcContext) {
-		return this.workspace.dataManagement(ctx.user.id);
+		return this.data.overview(ctx.user.id);
 	}
 
 	@Mutation({
 		input: createBackupInput,
 		output: backupItemOutput,
-		meta: restMeta("POST", "/workspace/data-management/backups", ["Workspace"]),
+		meta: restMeta("POST", "/workspace/backups", ["Workspace"]),
 	})
 	async createBackup(
 		@Ctx() ctx: AuthedTrpcContext,
 		@Input() input: z.infer<typeof createBackupInput>,
 	) {
-		return this.workspace.createBackup(ctx.user.id, input);
+		return this.data.createBackup(ctx.user.id, input);
 	}
 
 	@Mutation({
-		input: deleteBackupInput,
-		output: z.object({ success: z.boolean() }),
-		meta: restMeta("DELETE", "/workspace/data-management/backups", ["Workspace"]),
+		input: backupIdInput,
+		output: backupDownloadOutput,
+		meta: restMeta("POST", "/workspace/backups/{id}/download", ["Workspace"]),
+	})
+	async downloadBackup(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof backupIdInput>,
+	) {
+		return this.data.downloadBackup(ctx.user.id, input);
+	}
+
+	@Mutation({
+		input: backupIdInput,
+		output: backupIdInput,
+		meta: restMeta("DELETE", "/workspace/backups/{id}", ["Workspace"]),
 	})
 	async deleteBackup(
 		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof deleteBackupInput>,
+		@Input() input: z.infer<typeof backupIdInput>,
 	) {
-		return this.workspace.deleteBackup(ctx.user.id, input);
-	}
-
-	@Mutation({
-		input: updateDataRetentionInput,
-		output: dataRetentionSettingsOutput,
-		meta: restMeta("PATCH", "/workspace/data-management/retention", ["Workspace"]),
-	})
-	async updateDataRetention(
-		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof updateDataRetentionInput>,
-	) {
-		return this.workspace.updateDataRetention(ctx.user.id, input);
+		return this.data.deleteBackup(ctx.user.id, input);
 	}
 
 	@Mutation({
 		input: clearDeletedDataInput,
-		output: z.object({ clearedCount: z.number() }),
-		meta: restMeta("POST", "/workspace/data-management/clear-deleted", ["Workspace"]),
+		output: clearDeletedDataOutput,
+		meta: restMeta("POST", "/workspace/data/clear-archived", ["Workspace"]),
 	})
 	async clearDeletedData(
 		@Ctx() ctx: AuthedTrpcContext,
 		@Input() input: z.infer<typeof clearDeletedDataInput>,
 	) {
-		return this.workspace.clearDeletedData(ctx.user.id, input);
+		return this.data.clearDeletedData(ctx.user.id, input);
 	}
 
 	@Mutation({
 		input: archiveInactiveRecordsInput,
-		output: z.object({ archivedCount: z.number() }),
-		meta: restMeta("POST", "/workspace/data-management/archive-inactive", ["Workspace"]),
+		output: archiveInactiveRecordsOutput,
+		meta: restMeta("POST", "/workspace/data/archive-inactive", ["Workspace"]),
 	})
 	async archiveInactiveRecords(
 		@Ctx() ctx: AuthedTrpcContext,
 		@Input() input: z.infer<typeof archiveInactiveRecordsInput>,
 	) {
-		return this.workspace.archiveInactiveRecords(ctx.user.id, input);
+		return this.data.archiveInactiveRecords(ctx.user.id, input);
 	}
 
 	@Mutation({
-		input: exportDataInput,
-		output: z.object({ downloadUrl: z.string(), rowCount: z.number() }),
-		meta: restMeta("POST", "/workspace/data-management/export", ["Workspace"]),
+		input: entityInput,
+		output: exportDataOutput,
+		meta: restMeta("POST", "/workspace/data/export", ["Workspace"]),
 	})
 	async exportData(
 		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof exportDataInput>,
+		@Input() input: z.infer<typeof entityInput>,
 	) {
-		return this.workspace.exportData(ctx.user.id, input);
+		return this.data.exportData(ctx.user.id, input);
 	}
 
 	@Mutation({
 		input: importDataInput,
-		output: z.object({ success: z.boolean(), importedCount: z.number() }),
-		meta: restMeta("POST", "/workspace/data-management/import", ["Workspace"]),
+		output: importDataOutput,
+		meta: restMeta("POST", "/workspace/data/import", ["Workspace"]),
 	})
 	async importData(
 		@Ctx() ctx: AuthedTrpcContext,
 		@Input() input: z.infer<typeof importDataInput>,
 	) {
-		return this.workspace.importData(ctx.user.id, input);
+		return this.data.importData(ctx.user.id, input);
 	}
 
-	@Mutation({
-		input: deleteAccountInput,
-		output: z.object({ success: z.boolean() }),
-		meta: restMeta("POST", "/workspace/data-management/delete-account", ["Workspace"]),
+	@Query({
+		input: entityInput,
+		output: importTemplateOutput,
+		meta: restMeta("POST", "/workspace/data/import-template", ["Workspace"]),
 	})
-	async deleteAccount(
-		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof deleteAccountInput>,
-	) {
-		return this.workspace.deleteAccount(ctx.user.id, input);
+	importTemplate(@Input() input: z.infer<typeof entityInput>) {
+		return this.data.importTemplate(input);
+	}
+
+	@Query({
+		input: duplicateEntityInput,
+		output: duplicateGroupsOutput,
+		meta: restMeta("POST", "/workspace/data/duplicates", ["Workspace"]),
+	})
+	async findDuplicates(@Input() input: z.infer<typeof duplicateEntityInput>) {
+		return this.data.findDuplicates(input);
 	}
 }

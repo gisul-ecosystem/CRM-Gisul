@@ -388,14 +388,21 @@ export const dealImportTemplateOutput = z.object({
 	filename: z.string(),
 });
 
+export const PIPELINE_STAGE_STATUSES = [
+	"active",
+	"inactive",
+	"won",
+	"lost",
+] as const;
+
 export const pipelineStageItemOutput = z.object({
-	id: z.string(),
-	stage: z.string(),
+	id: stageEnum,
+	stage: stageEnum,
 	name: z.string(),
 	probability: z.number(),
 	color: z.string(),
 	kind: z.enum(["open", "won", "lost"]),
-	status: z.enum(["active", "won", "lost", "inactive"]),
+	status: z.enum(PIPELINE_STAGE_STATUSES),
 	position: z.number(),
 	dealCount: z.number(),
 	totalValueCents: z.number(),
@@ -414,7 +421,7 @@ export const pipelineSettingsOutput = z.object({
 	enableProbabilityTracking: z.boolean(),
 	requireStageUpdateNotes: z.boolean(),
 	autoAssignDeals: z.boolean(),
-	defaultStage: z.string(),
+	defaultStage: stageEnum,
 	applyToAllProducts: z.boolean(),
 	allowSkippingStages: z.boolean(),
 });
@@ -431,40 +438,21 @@ export const pipelineOverviewOutput = z.object({
 
 export type PipelineOverviewOutput = z.infer<typeof pipelineOverviewOutput>;
 
-export const updatePipelineSettingsInput = z.object({
-	enableProbabilityTracking: z.boolean().optional(),
-	requireStageUpdateNotes: z.boolean().optional(),
-	autoAssignDeals: z.boolean().optional(),
-	defaultStage: z.string().optional(),
-	applyToAllProducts: z.boolean().optional(),
-	allowSkippingStages: z.boolean().optional(),
-});
+export const updatePipelineSettingsInput = pipelineSettingsOutput.partial();
 
 export type UpdatePipelineSettingsInput = z.infer<
 	typeof updatePipelineSettingsInput
 >;
 
-export const createPipelineStageInput = z.object({
-	name: z.string().trim().min(1, "Stage name is required"),
-	probability: z.number().min(0).max(100),
-	color: z.string().min(1),
-	kind: z.enum(["open", "won", "lost"]).default("open"),
-	status: z.enum(["active", "won", "lost", "inactive"]).default("active"),
-});
-
-export type CreatePipelineStageInput = z.infer<
-	typeof createPipelineStageInput
->;
-
 export const updatePipelineStageInput = z.object({
-	id: z.string().min(1),
-	name: z.string().trim().min(1).optional(),
-	probability: z.number().min(0).max(100).optional(),
-	color: z.string().optional(),
-	status: z.enum(["active", "won", "lost", "inactive"]).optional(),
-	position: z.number().optional(),
+	id: stageEnum,
+	name: z.string().trim().min(1).max(60).optional(),
+	probability: z.number().int().min(0).max(100).optional(),
+	color: z
+		.string()
+		.regex(/^#[0-9a-fA-F]{6}$/, "Use a hex colour like #1a9b6a.")
+		.optional(),
+	active: z.boolean().optional(),
 });
 
-export type UpdatePipelineStageInput = z.infer<
-	typeof updatePipelineStageInput
->;
+export type UpdatePipelineStageInput = z.infer<typeof updatePipelineStageInput>;

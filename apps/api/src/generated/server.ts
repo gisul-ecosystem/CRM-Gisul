@@ -21,7 +21,7 @@ import { contactListInput, contactListOutput, contactExportInput, contactExportO
 import { conversationListInput, conversationListOutput, builderListOutput, builderResourceSearchInput, builderResourcesOutput, conversationIdInput, builderConversationDetailOutput, conversationEventsInput, conversationEventsOutput, conversationSaveInput, conversationIdOutput, builderConversationCreateInput, builderConversationSubmitInput, builderQuestionResponseInput, builderResponseRatingInput, builderResponseRatingOutput, conversationShareStatusOutput, conversationShareTokenOutput, sharedConversationInput, sharedConversationOutput } from "../conversations/conversations.contracts";
 import { currencySettingsOutput, setReportingCurrencyInput, setManualRateInput, removeManualRateInput } from "../currency/currency.contracts";
 import { dashboardSummaryInput, dashboardSummaryOutput, dashboardReportInput, dashboardReportOutput } from "../dashboard/dashboard.contracts";
-import { dealListInput, dealListOutput, dealExportInput, dealExportOutput, dealImportTemplateOutput, dealImportInput, dealImportOutput, dealStageCatalogOutput, pipelineOverviewOutput, updatePipelineSettingsInput, pipelineSettingsOutput, createPipelineStageInput, pipelineStageItemOutput, updatePipelineStageInput, dealIdInput, dealTrendOutput, dealPipelineByProductOutput, dealDetailOutput, dealCreateInput, dealCreateOutput, dealUpdateArgs, dealMutateOutput, setStageInput, dealSetStageOutput, dealContactsInput, dealContactOptionsOutput, dealAttachContactInput, dealContactLinkOutput, dealDetachContactInput, dealContactRoleInput, dealContactRoleOutput, dealBulkOwnerInput, dealBulkResultOutput, dealBulkStageInput, dealBulkInput } from "../deals/deals.contracts";
+import { dealListInput, dealListOutput, dealExportInput, dealExportOutput, dealImportTemplateOutput, dealImportInput, dealImportOutput, dealStageCatalogOutput, pipelineOverviewOutput, updatePipelineSettingsInput, pipelineSettingsOutput, updatePipelineStageInput, pipelineStageItemOutput, dealTrendOutput, dealPipelineByProductOutput, dealIdInput, dealDetailOutput, dealCreateInput, dealCreateOutput, dealUpdateArgs, dealMutateOutput, setStageInput, dealSetStageOutput, dealContactsInput, dealContactOptionsOutput, dealAttachContactInput, dealContactLinkOutput, dealDetachContactInput, dealContactRoleInput, dealContactRoleOutput, dealBulkOwnerInput, dealBulkResultOutput, dealBulkStageInput, dealBulkInput } from "../deals/deals.contracts";
 import { enrichmentQueueInput } from "@crm/validation/enrichment-queue";
 import { fieldListInput, fieldListOutput, fieldByKeyInput, serializedFieldOutput, fieldEntityInput, fieldFiltersOutput, fieldIdInput, fieldCoverageOutput, fieldCreateInput, fieldUpdateArgs, fieldReorderInput, fieldReorderOutput, fieldDeleteOutput, fieldBackfillOutput } from "../fields/fields.contracts";
 import { googleConnectionStatusOutput, setAutoCreateInput, suppressDomainInput, suppressDomainOutput, threadInput, emailThreadOutput, calendarEventInput, calendarEventOutput } from "../google/google.contracts";
@@ -32,7 +32,7 @@ import { agentModelOutput, modelCatalogOutput, setAgentModelInput, researchKeyOu
 import { slackStatusOutput, slackMatchesOutput, slackChannelsInput, slackChannelsOutput, slackJoinChannelInput, slackJoinChannelOutput, slackRefreshPeopleOutput, slackCreateChannelInput, slackCreateChannelOutput, slackDisconnectOutput } from "../slack/slack.contracts";
 import { ssoSignInOptionsOutput, ssoSettingsOutput, ssoProviderListInput, ssoProviderListOutput, registerSsoProviderInput, ssoProviderOutput, deleteSsoProviderInput, deleteSsoProviderOutput } from "../sso/sso.contracts";
 import { trackingSettingsOutput, trackingFlagInput, cookieLifetimeInput, addDomainInput, trackedDomainOutput, removeDomainInput, rotateSiteIdOutput, verifyInput, verifyOutput, sourcesOutput, companyActivityInput, websiteActivityOutput, contactActivityInput } from "../tracking/tracking.contracts";
-import { workspaceOutput, memberListInput, memberListOutput, teamItemOutput, roleItemOutput, invitationSettingsOutput, updateWorkspaceInput, setMemberRoleInput, workspaceMemberOutput, updateMemberTeamInput, updateMemberStatusInput, createTeamInput, createRoleInput, updateInvitationSettingsInput, inviteUserInput, leadSettingsOutput, createLeadSourceInput, leadSourceOutput, updateLeadSourceInput, deleteLeadSourceInput, createLeadFieldInput, leadFieldOutput, updateLeadFieldInput, deleteLeadFieldInput, createLeadStatusInput, leadStatusOutput, updateLeadStatusInput, deleteLeadStatusInput, createLeadAssignmentRuleInput, leadAssignmentRuleOutput, updateLeadAssignmentRuleInput, deleteLeadAssignmentRuleInput, updateDefaultLeadOwnerInput, defaultLeadOwnerOutput, integrationsOverviewOutput, toggleIntegrationInput, integrationItemOutput, activitySettingsOverviewOutput, updateDefaultActivitySettingsInput, defaultActivitySettingsOutput, updateReminderRulesInput, reminderRulesOutput, updateCompletionBehaviorInput, completionBehaviorOutput, createActivityTypeInput, activityTypeItemOutput, updateActivityTypeInput, deleteActivityTypeInput, createActivityAssignmentRuleInput, activityAssignmentRuleOutput, updateActivityAssignmentRuleInput, deleteActivityAssignmentRuleInput, dataManagementOverviewOutput, createBackupInput, backupItemOutput, deleteBackupInput, updateDataRetentionInput, dataRetentionSettingsOutput, clearDeletedDataInput, archiveInactiveRecordsInput, exportDataInput, importDataInput, deleteAccountInput } from "../workspace/workspace.contracts";
+import { workspaceOutput, memberListInput, memberListOutput, teamItemOutput, roleItemOutput, invitationSettingsOutput, updateWorkspaceInput, setMemberRoleInput, workspaceMemberOutput, updateMemberTeamInput, createTeamInput, leadSettingsOutput, createLeadFieldInput, leadFieldOutput, updateLeadFieldInput, deleteLeadFieldInput, createLeadAssignmentRuleInput, leadAssignmentRuleOutput, updateLeadAssignmentRuleInput, deleteLeadAssignmentRuleInput, updateDefaultLeadOwnerInput, defaultLeadOwnerOutput, integrationsOverviewOutput, toggleIntegrationInput, integrationItemOutput, activitySettingsOverviewOutput, updateDefaultActivitySettingsInput, defaultActivitySettingsOutput, updateReminderRulesInput, reminderRulesOutput, updateCompletionBehaviorInput, completionBehaviorOutput, createActivityTypeInput, activityTypeItemOutput, updateActivityTypeInput, deleteActivityTypeInput, createActivityAssignmentRuleInput, activityAssignmentRuleOutput, updateActivityAssignmentRuleInput, deleteActivityAssignmentRuleInput, dataManagementOverviewOutput, createBackupInput, backupItemOutput, backupIdInput, backupDownloadOutput, clearDeletedDataInput, clearDeletedDataOutput, archiveInactiveRecordsInput, archiveInactiveRecordsOutput, entityInput, exportDataOutput, importDataInput, importDataOutput, importTemplateOutput, duplicateEntityInput, duplicateGroupsOutput } from "../workspace/workspace.contracts";
 import type { UsersRouter } from "../users/users.router";
 
 const appRouter = t.router({
@@ -416,17 +416,9 @@ const appRouter = t.router({
       .input(updatePipelineSettingsInput)
       .output(pipelineSettingsOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    createPipelineStage: publicProcedure
-      .input(createPipelineStageInput)
-      .output(pipelineStageItemOutput)
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     updatePipelineStage: publicProcedure
       .input(updatePipelineStageInput)
       .output(pipelineStageItemOutput)
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    deletePipelineStage: publicProcedure
-      .input(dealIdInput)
-      .output(dealIdInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     trend: publicProcedure
       .output(dealTrendOutput)
@@ -864,41 +856,13 @@ const appRouter = t.router({
       .input(updateMemberTeamInput)
       .output(workspaceMemberOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    updateMemberStatus: publicProcedure
-      .input(updateMemberStatusInput)
-      .output(workspaceMemberOutput)
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     createTeam: publicProcedure
       .input(createTeamInput)
       .output(teamItemOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    createRole: publicProcedure
-      .input(createRoleInput)
-      .output(roleItemOutput)
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    updateInvitationSettings: publicProcedure
-      .input(updateInvitationSettingsInput)
-      .output(invitationSettingsOutput)
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    inviteUser: publicProcedure
-      .input(inviteUserInput)
-      .output(z.object({ success: z.boolean(), email: z.string() }))
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     leadSettings: publicProcedure
       .output(leadSettingsOutput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    createLeadSource: publicProcedure
-      .input(createLeadSourceInput)
-      .output(leadSourceOutput)
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    updateLeadSource: publicProcedure
-      .input(updateLeadSourceInput)
-      .output(leadSourceOutput)
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    deleteLeadSource: publicProcedure
-      .input(deleteLeadSourceInput)
-      .output(z.object({ success: z.boolean() }))
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     createLeadField: publicProcedure
       .input(createLeadFieldInput)
       .output(leadFieldOutput)
@@ -909,18 +873,6 @@ const appRouter = t.router({
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     deleteLeadField: publicProcedure
       .input(deleteLeadFieldInput)
-      .output(z.object({ success: z.boolean() }))
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    createLeadStatus: publicProcedure
-      .input(createLeadStatusInput)
-      .output(leadStatusOutput)
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    updateLeadStatus: publicProcedure
-      .input(updateLeadStatusInput)
-      .output(leadStatusOutput)
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    deleteLeadStatus: publicProcedure
-      .input(deleteLeadStatusInput)
       .output(z.object({ success: z.boolean() }))
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     createLeadAssignmentRule: publicProcedure
@@ -992,34 +944,38 @@ const appRouter = t.router({
       .input(createBackupInput)
       .output(backupItemOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    deleteBackup: publicProcedure
-      .input(deleteBackupInput)
-      .output(z.object({ success: z.boolean() }))
+    downloadBackup: publicProcedure
+      .input(backupIdInput)
+      .output(backupDownloadOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    updateDataRetention: publicProcedure
-      .input(updateDataRetentionInput)
-      .output(dataRetentionSettingsOutput)
+    deleteBackup: publicProcedure
+      .input(backupIdInput)
+      .output(backupIdInput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     clearDeletedData: publicProcedure
       .input(clearDeletedDataInput)
-      .output(z.object({ clearedCount: z.number() }))
+      .output(clearDeletedDataOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     archiveInactiveRecords: publicProcedure
       .input(archiveInactiveRecordsInput)
-      .output(z.object({ archivedCount: z.number() }))
+      .output(archiveInactiveRecordsOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     exportData: publicProcedure
-      .input(exportDataInput)
-      .output(z.object({ downloadUrl: z.string(), rowCount: z.number() }))
+      .input(entityInput)
+      .output(exportDataOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     importData: publicProcedure
       .input(importDataInput)
-      .output(z.object({ success: z.boolean(), importedCount: z.number() }))
+      .output(importDataOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    deleteAccount: publicProcedure
-      .input(deleteAccountInput)
-      .output(z.object({ success: z.boolean() }))
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
+    importTemplate: publicProcedure
+      .input(entityInput)
+      .output(importTemplateOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    findDuplicates: publicProcedure
+      .input(duplicateEntityInput)
+      .output(duplicateGroupsOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
     })
 });
 

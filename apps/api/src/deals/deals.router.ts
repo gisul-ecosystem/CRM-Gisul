@@ -12,7 +12,6 @@ import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { restMeta } from "../trpc/openapi";
 import {
-	createPipelineStageInput,
 	dealAttachContactInput,
 	dealBulkInput,
 	dealBulkOwnerInput,
@@ -122,18 +121,6 @@ export class DealsRouter {
 	}
 
 	@Mutation({
-		input: createPipelineStageInput,
-		output: pipelineStageItemOutput,
-		meta: restMeta("POST", "/deals/pipeline-stages", ["Deals"]),
-	})
-	async createPipelineStage(
-		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof createPipelineStageInput>,
-	) {
-		return this.deals.createPipelineStage(ctx.user.id, input);
-	}
-
-	@Mutation({
 		input: updatePipelineStageInput,
 		output: pipelineStageItemOutput,
 		meta: restMeta("PATCH", "/deals/pipeline-stages/{id}", ["Deals"]),
@@ -143,18 +130,6 @@ export class DealsRouter {
 		@Input() input: z.infer<typeof updatePipelineStageInput>,
 	) {
 		return this.deals.updatePipelineStage(ctx.user.id, input);
-	}
-
-	@Mutation({
-		input: dealIdInput,
-		output: dealIdInput,
-		meta: restMeta("DELETE", "/deals/pipeline-stages/{id}", ["Deals"]),
-	})
-	async deletePipelineStage(
-		@Ctx() ctx: AuthedTrpcContext,
-		@Input() input: z.infer<typeof dealIdInput>,
-	) {
-		return this.deals.deletePipelineStage(ctx.user.id, input.id);
 	}
 
 	@Query({

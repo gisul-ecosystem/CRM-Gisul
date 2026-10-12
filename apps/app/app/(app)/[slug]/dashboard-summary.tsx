@@ -8,19 +8,23 @@ import View from "@carbon/icons-react/es/View";
 import { Checkbox } from "@crm/ui/components/checkbox";
 import type { CarbonIcon } from "@crm/ui/components/icon";
 import { Icon } from "@crm/ui/components/icon";
-import { formatMoneyCompact } from "@crm/ui/lib/format";
 import { Spinner } from "@crm/ui/components/spinner";
+import { formatMoneyCompact } from "@crm/ui/lib/format";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useQueryState } from "nuqs";
-import { useState, type CSSProperties } from "react";
+import { type CSSProperties, useState } from "react";
 import { toast } from "sonner";
 import { contactsSearchParams } from "@/app/(app)/[slug]/contacts/contacts-search-params";
 import { contactName } from "@/components/crm/contact-name";
 import { ProductMark } from "@/components/crm/product-mark";
 import { LocalRelativeTime } from "@/components/local-date-time";
 import { activityIcon, activityLabel } from "@/lib/activity-presentation";
-import { LEAD_SOURCE_OPTIONS, leadSourceLabel } from "@/lib/lead-fields";
+import {
+	LEAD_SOURCE_OPTIONS,
+	leadSourceLabel,
+	leadStatusLabel,
+} from "@/lib/lead-fields";
 import { SEARCH_PARAM } from "@/lib/search-param-keys";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
@@ -83,7 +87,9 @@ export function DashboardSummary() {
 		}),
 		placeholderData: (previous) => previous,
 	});
-	const leadsQuery = useQuery(trpc.contacts.list.queryOptions(RECENT_LEADS_INPUT));
+	const leadsQuery = useQuery(
+		trpc.contacts.list.queryOptions(RECENT_LEADS_INPUT),
+	);
 	const tasksQuery = useQuery(
 		trpc.activities.myTasks.queryOptions({ window: "all", limit: 50 }),
 	);
@@ -234,15 +240,13 @@ export function DashboardSummary() {
 													href={workspaceUrl(`/contacts/${lead.id}`)}
 													className={styles.who}
 												>
-													<span className={styles.av}>
-														{initials(lead)}
-													</span>
+													<span className={styles.av}>{initials(lead)}</span>
 													{contactName(lead)}
 												</Link>
 											</td>
 											<td>{lead.company?.name ?? "—"}</td>
-											<td>—</td>
-											<td>—</td>
+											<td>{lead.product?.name ?? "—"}</td>
+											<td>{leadStatusLabel(lead.leadStatus)}</td>
 											<td>
 												<LocalRelativeTime date={lead.createdAt} />
 											</td>
@@ -252,9 +256,6 @@ export function DashboardSummary() {
 							</table>
 						</div>
 					)}
-					<p className={styles.note}>
-						Product and status need a backend. Columns stay blank for now.
-					</p>
 				</div>
 			</section>
 
@@ -321,10 +322,7 @@ export function DashboardSummary() {
 										{on ? (
 											<div className={styles.tip}>
 												<b>
-													{formatMoneyCompact(
-														value,
-														summary.reportingCurrency,
-													)}
+													{formatMoneyCompact(value, summary.reportingCurrency)}
 												</b>
 												<small>{point.month}</small>
 											</div>

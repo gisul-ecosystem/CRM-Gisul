@@ -1,7 +1,13 @@
 import { WORKSPACE_ROLES } from "@crm/auth";
+import { LeadSource, LeadStatus } from "@crm/db/enums";
 import { MAX_SLUG } from "@crm/db/workspace";
 import { z } from "zod";
 import { listInput } from "../trpc/list-input";
+import { DATA_MANAGEMENT } from "./workspace-config";
+
+export const MEMBER_ACTIVITY_STATUSES = ["active", "inactive"] as const;
+
+export type MemberActivityStatus = (typeof MEMBER_ACTIVITY_STATUSES)[number];
 
 export const memberListInput = listInput.extend({
 	role: z.array(z.string()).default([]),
@@ -43,51 +49,22 @@ export const updateWorkspaceInput = z.object({
 
 export const setMemberRoleInput = z.object({
 	memberId: z.string().min(1),
-	role: z.string().min(1),
+	role: z.enum(WORKSPACE_ROLES),
 });
 
 export const updateMemberTeamInput = z.object({
 	memberId: z.string().min(1),
-	team: z.string().nullable(),
-});
-
-export const updateMemberStatusInput = z.object({
-	memberId: z.string().min(1),
-	status: z.enum(["active", "pending", "inactive"]),
+	teamId: z.string().min(1).nullable(),
 });
 
 export const createTeamInput = z.object({
 	name: z.string().trim().min(1).max(50),
-	icon: z.string().optional(),
-});
-
-export const createRoleInput = z.object({
-	name: z.string().trim().min(1).max(50),
-	description: z.string().trim().max(255),
-	permissions: z.string().optional(),
-});
-
-export const updateInvitationSettingsInput = z.object({
-	allowUserInvitations: z.boolean().optional(),
-	defaultRole: z.string().optional(),
-});
-
-export const inviteUserInput = z.object({
-	email: z.string().trim().email(),
-	role: z.string().min(1),
-	team: z.string().optional(),
 });
 
 export type UpdateWorkspaceInput = z.infer<typeof updateWorkspaceInput>;
 export type SetMemberRoleInput = z.infer<typeof setMemberRoleInput>;
 export type UpdateMemberTeamInput = z.infer<typeof updateMemberTeamInput>;
-export type UpdateMemberStatusInput = z.infer<typeof updateMemberStatusInput>;
 export type CreateTeamInput = z.infer<typeof createTeamInput>;
-export type CreateRoleInput = z.infer<typeof createRoleInput>;
-export type UpdateInvitationSettingsInput = z.infer<
-	typeof updateInvitationSettingsInput
->;
-export type InviteUserInput = z.infer<typeof inviteUserInput>;
 
 export const workspaceOutput = z.object({
 	id: z.string(),
@@ -121,10 +98,11 @@ export const workspaceMemberOutput = z.object({
 	name: z.string(),
 	email: z.string(),
 	image: z.string().nullable(),
-	role: z.string(),
-	team: z.string().nullable().optional(),
-	status: z.enum(["active", "pending", "inactive"]).default("active"),
-	lastActive: z.string().nullable().optional(),
+	role: z.enum(WORKSPACE_ROLES),
+	teamId: z.string().nullable(),
+	team: z.string().nullable(),
+	status: z.enum(MEMBER_ACTIVITY_STATUSES),
+	lastActive: z.string().nullable(),
 	joinedAt: z.string(),
 	isViewer: z.boolean(),
 });
@@ -141,45 +119,43 @@ export const teamItemOutput = z.object({
 	id: z.string(),
 	name: z.string(),
 	memberCount: z.number(),
-	icon: z.string().optional(),
 });
 
 export type TeamItem = z.infer<typeof teamItemOutput>;
 
 export const roleItemOutput = z.object({
-	id: z.string(),
-	name: z.string(),
-	description: z.string(),
+	id: z.enum(WORKSPACE_ROLES),
 	userCount: z.number(),
-	permissions: z.string().optional(),
 });
 
 export type RoleItem = z.infer<typeof roleItemOutput>;
 
 export const invitationSettingsOutput = z.object({
-	allowUserInvitations: z.boolean(),
-	defaultRole: z.string(),
-	inviteLink: z.string(),
+	signInUrl: z.string(),
+	allowedDomains: z.array(z.string()),
+	defaultRole: z.enum(WORKSPACE_ROLES),
 });
 
 export type InvitationSettings = z.infer<typeof invitationSettingsOutput>;
 
-// --- Lead Settings Contracts ---
-
 export const leadSourceOutput = z.object({
-	id: z.string(),
-	name: z.string(),
-	type: z.enum(["online", "offline"]),
-	leadsCount: z.number().default(0),
-	status: z.enum(["active", "inactive"]).default("active"),
-	isCustom: z.boolean().default(false),
+	id: z.enum(Object.values(LeadSource) as [LeadSource, ...LeadSource[]]),
+	leadsCount: z.number(),
 });
 export type LeadSourceItem = z.infer<typeof leadSourceOutput>;
 
 export const leadFieldOutput = z.object({
 	id: z.string(),
 	name: z.string(),
-	type: z.enum(["text", "email", "phone", "dropdown", "textarea", "number", "date"]),
+	type: z.enum([
+		"text",
+		"email",
+		"phone",
+		"dropdown",
+		"textarea",
+		"number",
+		"date",
+	]),
 	required: z.boolean().default(false),
 	showInForm: z.boolean().default(true),
 	isCustom: z.boolean().default(false),
@@ -187,11 +163,8 @@ export const leadFieldOutput = z.object({
 export type LeadFieldItem = z.infer<typeof leadFieldOutput>;
 
 export const leadStatusOutput = z.object({
-	id: z.string(),
-	name: z.string(),
-	color: z.string(),
-	leadsCount: z.number().default(0),
-	isCustom: z.boolean().default(false),
+	id: z.enum(Object.values(LeadStatus) as [LeadStatus, ...LeadStatus[]]),
+	leadsCount: z.number(),
 });
 export type LeadStatusItem = z.infer<typeof leadStatusOutput>;
 
@@ -214,6 +187,7 @@ export type DefaultLeadOwner = z.infer<typeof defaultLeadOwnerOutput>;
 
 export const leadSettingsOutput = z.object({
 	sources: z.array(leadSourceOutput),
+	unsourcedCount: z.number(),
 	fields: z.array(leadFieldOutput),
 	statuses: z.array(leadStatusOutput),
 	assignmentRules: z.array(leadAssignmentRuleOutput),
@@ -221,28 +195,17 @@ export const leadSettingsOutput = z.object({
 });
 export type LeadSettingsData = z.infer<typeof leadSettingsOutput>;
 
-export const createLeadSourceInput = z.object({
-	name: z.string().trim().min(1).max(50),
-	type: z.enum(["online", "offline"]).default("online"),
-});
-export type CreateLeadSourceInput = z.infer<typeof createLeadSourceInput>;
-
-export const updateLeadSourceInput = z.object({
-	id: z.string().min(1),
-	name: z.string().trim().min(1).max(50).optional(),
-	type: z.enum(["online", "offline"]).optional(),
-	status: z.enum(["active", "inactive"]).optional(),
-});
-export type UpdateLeadSourceInput = z.infer<typeof updateLeadSourceInput>;
-
-export const deleteLeadSourceInput = z.object({
-	id: z.string().min(1),
-});
-export type DeleteLeadSourceInput = z.infer<typeof deleteLeadSourceInput>;
-
 export const createLeadFieldInput = z.object({
 	name: z.string().trim().min(1).max(50),
-	type: z.enum(["text", "email", "phone", "dropdown", "textarea", "number", "date"]),
+	type: z.enum([
+		"text",
+		"email",
+		"phone",
+		"dropdown",
+		"textarea",
+		"number",
+		"date",
+	]),
 	required: z.boolean().default(false),
 	showInForm: z.boolean().default(true),
 });
@@ -251,7 +214,9 @@ export type CreateLeadFieldInput = z.infer<typeof createLeadFieldInput>;
 export const updateLeadFieldInput = z.object({
 	id: z.string().min(1),
 	name: z.string().trim().min(1).max(50).optional(),
-	type: z.enum(["text", "email", "phone", "dropdown", "textarea", "number", "date"]).optional(),
+	type: z
+		.enum(["text", "email", "phone", "dropdown", "textarea", "number", "date"])
+		.optional(),
 	required: z.boolean().optional(),
 	showInForm: z.boolean().optional(),
 });
@@ -262,31 +227,15 @@ export const deleteLeadFieldInput = z.object({
 });
 export type DeleteLeadFieldInput = z.infer<typeof deleteLeadFieldInput>;
 
-export const createLeadStatusInput = z.object({
-	name: z.string().trim().min(1).max(50),
-	color: z.string().min(1),
-});
-export type CreateLeadStatusInput = z.infer<typeof createLeadStatusInput>;
-
-export const updateLeadStatusInput = z.object({
-	id: z.string().min(1),
-	name: z.string().trim().min(1).max(50).optional(),
-	color: z.string().optional(),
-});
-export type UpdateLeadStatusInput = z.infer<typeof updateLeadStatusInput>;
-
-export const deleteLeadStatusInput = z.object({
-	id: z.string().min(1),
-});
-export type DeleteLeadStatusInput = z.infer<typeof deleteLeadStatusInput>;
-
 export const createLeadAssignmentRuleInput = z.object({
 	title: z.string().trim().min(1).max(120),
 	description: z.string().trim().max(255),
 	icon: z.string().default("link"),
 	enabled: z.boolean().default(true),
 });
-export type CreateLeadAssignmentRuleInput = z.infer<typeof createLeadAssignmentRuleInput>;
+export type CreateLeadAssignmentRuleInput = z.infer<
+	typeof createLeadAssignmentRuleInput
+>;
 
 export const updateLeadAssignmentRuleInput = z.object({
 	id: z.string().min(1),
@@ -295,19 +244,23 @@ export const updateLeadAssignmentRuleInput = z.object({
 	description: z.string().trim().max(255).optional(),
 	icon: z.string().optional(),
 });
-export type UpdateLeadAssignmentRuleInput = z.infer<typeof updateLeadAssignmentRuleInput>;
+export type UpdateLeadAssignmentRuleInput = z.infer<
+	typeof updateLeadAssignmentRuleInput
+>;
 
 export const deleteLeadAssignmentRuleInput = z.object({
 	id: z.string().min(1),
 });
-export type DeleteLeadAssignmentRuleInput = z.infer<typeof deleteLeadAssignmentRuleInput>;
+export type DeleteLeadAssignmentRuleInput = z.infer<
+	typeof deleteLeadAssignmentRuleInput
+>;
 
 export const updateDefaultLeadOwnerInput = z.object({
 	userId: z.string().nullable(),
 });
-export type UpdateDefaultLeadOwnerInput = z.infer<typeof updateDefaultLeadOwnerInput>;
-
-// --- Integrations Contracts ---
+export type UpdateDefaultLeadOwnerInput = z.infer<
+	typeof updateDefaultLeadOwnerInput
+>;
 
 export const integrationItemOutput = z.object({
 	id: z.string(),
@@ -344,8 +297,6 @@ export const toggleIntegrationInput = z.object({
 });
 export type ToggleIntegrationInput = z.infer<typeof toggleIntegrationInput>;
 
-// --- Activity Settings Contracts ---
-
 export const activityTypeItemOutput = z.object({
 	id: z.string(),
 	name: z.string(),
@@ -365,7 +316,9 @@ export const defaultActivitySettingsOutput = z.object({
 	defaultOwnerName: z.string().nullable(),
 	addToCalendar: z.boolean(),
 });
-export type DefaultActivitySettings = z.infer<typeof defaultActivitySettingsOutput>;
+export type DefaultActivitySettings = z.infer<
+	typeof defaultActivitySettingsOutput
+>;
 
 export const reminderRulesOutput = z.object({
 	enableActivityReminders: z.boolean(),
@@ -390,7 +343,9 @@ export const activityAssignmentRuleOutput = z.object({
 	assignTo: z.string(),
 	status: z.boolean(),
 });
-export type ActivityAssignmentRule = z.infer<typeof activityAssignmentRuleOutput>;
+export type ActivityAssignmentRule = z.infer<
+	typeof activityAssignmentRuleOutput
+>;
 
 export const activitySettingsOverviewOutput = z.object({
 	activityTypes: z.array(activityTypeItemOutput),
@@ -406,7 +361,9 @@ export const activitySettingsOverviewOutput = z.object({
 		}),
 	),
 });
-export type ActivitySettingsOverview = z.infer<typeof activitySettingsOverviewOutput>;
+export type ActivitySettingsOverview = z.infer<
+	typeof activitySettingsOverviewOutput
+>;
 
 export const createActivityTypeInput = z.object({
 	name: z.string().trim().min(1).max(50),
@@ -492,44 +449,41 @@ export type DeleteActivityAssignmentRuleInput = z.infer<
 	typeof deleteActivityAssignmentRuleInput
 >;
 
-// --- Data Management Contracts ---
+export const DATA_ENTITIES = ["CONTACT", "COMPANY", "DEAL"] as const;
+
+export const dataEntity = z.enum(DATA_ENTITIES);
+
+export type DataEntity = z.infer<typeof dataEntity>;
 
 export const backupItemOutput = z.object({
 	id: z.string(),
 	name: z.string(),
-	createdOn: z.string(),
-	size: z.string(),
-	status: z.enum(["Success", "Pending", "Failed"]),
+	createdAt: z.string(),
+	sizeBytes: z.number(),
+	recordCount: z.number(),
 });
 export type BackupItem = z.infer<typeof backupItemOutput>;
 
-export const dataRetentionSettingsOutput = z.object({
-	deletedLeads: z.string().default("Keep for 60 days"),
-	deletedCustomers: z.string().default("Keep for 1 year"),
-	deletedActivities: z.string().default("Keep for 180 days"),
-	deletedDeals: z.string().default("Keep for 1 year"),
+export const dataTransferOutput = z.object({
+	id: z.string(),
+	entity: dataEntity,
+	filename: z.string().nullable(),
+	rowCount: z.number(),
+	failedCount: z.number(),
+	createdAt: z.string(),
 });
-export type DataRetentionSettings = z.infer<typeof dataRetentionSettingsOutput>;
 
 export const dataManagementOverviewOutput = z.object({
 	summary: z.object({
 		totalRecords: z.number(),
-		importsCount: z.number(),
-		exportsCount: z.number(),
-		lastBackupDate: z.string(),
-		lastBackupStatus: z.string(),
+		importsLast30Days: z.number(),
+		exportsLast30Days: z.number(),
+		lastBackupAt: z.string().nullable(),
 	}),
 	backups: z.array(backupItemOutput),
-	retention: dataRetentionSettingsOutput,
-	recentImports: z.array(
-		z.object({
-			id: z.string(),
-			type: z.string(),
-			filename: z.string(),
-			recordsCount: z.number(),
-			date: z.string(),
-		}),
-	),
+	retentionDays: z.number(),
+	recentImports: z.array(dataTransferOutput),
+	canManage: z.boolean(),
 });
 export type DataManagementOverview = z.infer<
 	typeof dataManagementOverviewOutput
@@ -540,55 +494,90 @@ export const createBackupInput = z.object({
 });
 export type CreateBackupInput = z.infer<typeof createBackupInput>;
 
-export const deleteBackupInput = z.object({
+export const backupIdInput = z.object({
 	id: z.string().min(1),
 });
-export type DeleteBackupInput = z.infer<typeof deleteBackupInput>;
+export type BackupIdInput = z.infer<typeof backupIdInput>;
 
-export const updateDataRetentionInput = z.object({
-	deletedLeads: z.string().optional(),
-	deletedCustomers: z.string().optional(),
-	deletedActivities: z.string().optional(),
-	deletedDeals: z.string().optional(),
+export const backupDownloadOutput = z.object({
+	filename: z.string(),
+	content: z.string(),
 });
-export type UpdateDataRetentionInput = z.infer<typeof updateDataRetentionInput>;
 
 export const clearDeletedDataInput = z.object({
-	type: z
-		.enum(["all", "leads", "customers", "deals", "activities"])
-		.default("all"),
+	entity: dataEntity.nullable(),
 });
 export type ClearDeletedDataInput = z.infer<typeof clearDeletedDataInput>;
 
+export const clearDeletedDataOutput = z.object({
+	purged: z.number(),
+	skipped: z.number(),
+	failed: z.number(),
+});
+
+export const INACTIVE_PERIOD_DAYS = [30, 60, 90, 365] as const;
+
 export const archiveInactiveRecordsInput = z.object({
-	period: z
-		.enum(["30_days", "60_days", "90_days", "1_year"])
-		.default("90_days"),
+	days: z.union([
+		z.literal(INACTIVE_PERIOD_DAYS[0]),
+		z.literal(INACTIVE_PERIOD_DAYS[1]),
+		z.literal(INACTIVE_PERIOD_DAYS[2]),
+		z.literal(INACTIVE_PERIOD_DAYS[3]),
+	]),
 });
 export type ArchiveInactiveRecordsInput = z.infer<
 	typeof archiveInactiveRecordsInput
 >;
 
-export const exportDataInput = z.object({
-	dataType: z.string(),
-	dateRange: z.string(),
-	filter: z.string().optional(),
-	includeFields: z.enum(["all", "custom"]).default("all"),
-	customFields: z.array(z.string()).optional(),
+export const archiveInactiveRecordsOutput = z.object({
+	contacts: z.number(),
+	deals: z.number(),
 });
-export type ExportDataInput = z.infer<typeof exportDataInput>;
+
+export const entityInput = z.object({
+	entity: dataEntity,
+});
+export type EntityInput = z.infer<typeof entityInput>;
+
+export const exportDataOutput = z.object({
+	csv: z.string(),
+	filename: z.string(),
+	rowCount: z.number(),
+});
 
 export const importDataInput = z.object({
-	dataType: z.string(),
-	csvContent: z.string().optional(),
-	filename: z.string().optional(),
+	entity: dataEntity,
+	csv: z
+		.string()
+		.min(1, "The file is empty.")
+		.max(DATA_MANAGEMENT.import.maxBytes, "The file is too large to import."),
+	filename: z.string().trim().max(255).nullable(),
 });
 export type ImportDataInput = z.infer<typeof importDataInput>;
 
-export const deleteAccountInput = z.object({
-	password: z.string().min(1),
-	understandIrreversible: z.boolean(),
+export const importDataOutput = z.object({
+	created: z.number(),
+	updated: z.number(),
+	failed: z.number(),
+	errors: z.array(z.object({ line: z.number(), message: z.string() })),
 });
-export type DeleteAccountInput = z.infer<typeof deleteAccountInput>;
 
+export const importTemplateOutput = z.object({
+	csv: z.string(),
+	filename: z.string(),
+});
 
+export const duplicateEntityInput = z.object({
+	entity: z.enum(["CONTACT", "COMPANY"]),
+});
+export type DuplicateEntityInput = z.infer<typeof duplicateEntityInput>;
+
+export const duplicateGroupsOutput = z.object({
+	groups: z.array(
+		z.object({
+			key: z.string(),
+			records: z.array(z.object({ id: z.string(), name: z.string() })),
+		}),
+	),
+});
+export type DuplicateGroups = z.infer<typeof duplicateGroupsOutput>;

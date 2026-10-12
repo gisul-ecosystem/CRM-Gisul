@@ -1388,9 +1388,79 @@ model AppSetting {
   trackingConfigHash       String?
   trackingPaused           Boolean @default(false)
 
+  pipelineProbabilityTracking Boolean   @default(true)
+  pipelineRequireStageNotes   Boolean   @default(true)
+  pipelineAutoAssignDeals     Boolean   @default(false)
+  pipelineDefaultStage        DealStage @default(DEMO_BOOKED)
+  pipelineApplyToAllProducts  Boolean   @default(true)
+  pipelineAllowSkippingStages Boolean   @default(false)
+
   updatedAt DateTime @updatedAt
 
   @@map("appSetting")
+}
+
+model PipelineStage {
+  stage       DealStage @id
+  name        String
+  probability Int
+  color       String
+  position    Int
+  active      Boolean   @default(true)
+  updatedAt   DateTime  @updatedAt
+
+  @@map("pipelineStage")
+}
+
+model Team {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  createdAt DateTime     @default(now())
+  members   MemberTeam[]
+
+  @@map("team")
+}
+
+model MemberTeam {
+  memberId String @id
+  member   Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  teamId   String
+  team     Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@map("memberTeam")
+}
+
+model WorkspaceBackup {
+  id          String   @id @default(cuid())
+  name        String
+  recordCount Int
+  sizeBytes   Int
+  data        Bytes
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("workspaceBackup")
+}
+
+enum DataTransferKind {
+  IMPORT
+  EXPORT
+}
+
+model DataTransfer {
+  id          String           @id @default(cuid())
+  kind        DataTransferKind
+  entity      FieldEntity
+  filename    String?
+  rowCount    Int
+  failedCount Int              @default(0)
+  userId      String?
+  createdAt   DateTime         @default(now())
+
+  @@index([createdAt])
+  @@map("dataTransfer")
 }
 
 enum DomainScope {
@@ -1581,6 +1651,7 @@ model Member {
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   role           String       @default("member")
   createdAt      DateTime
+  team           MemberTeam?
 
   @@unique([organizationId, userId])
   @@index([organizationId])

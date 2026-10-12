@@ -31,6 +31,13 @@ export function leadStatusLabel(status: LeadStatus): string {
 	);
 }
 
+export function leadStatusColor(status: LeadStatus): string {
+	return (
+		LEAD_STATUS_OPTIONS.find((option) => option.value === status)?.color ??
+		LEAD_STATUS_OPTIONS[0].color
+	);
+}
+
 export function leadSourceLabel(source: LeadSource): string {
 	return (
 		LEAD_SOURCE_OPTIONS.find((option) => option.value === source)?.label ??

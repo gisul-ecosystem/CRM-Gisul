@@ -1,13 +1,10 @@
 "use client";
 
-import Add from "@carbon/icons-react/es/Add";
-import Checkmark from "@carbon/icons-react/es/Checkmark";
 import Close from "@carbon/icons-react/es/Close";
 import Draggable from "@carbon/icons-react/es/Draggable";
 import Filter from "@carbon/icons-react/es/Filter";
 import OverflowMenuVertical from "@carbon/icons-react/es/OverflowMenuVertical";
 import Pause from "@carbon/icons-react/es/Pause";
-import TrashCan from "@carbon/icons-react/es/TrashCan";
 import { Button } from "@crm/ui/components/button";
 import {
 	Dialog,
@@ -22,7 +19,6 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
-	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@crm/ui/components/dropdown-menu";
 import { Field, FieldDescription, FieldLabel } from "@crm/ui/components/field";
@@ -38,14 +34,15 @@ import {
 import { Spinner } from "@crm/ui/components/spinner";
 import { Switch } from "@crm/ui/components/switch";
 import { formatMoney } from "@crm/ui/lib/format";
-import { cn } from "@crm/ui/lib/utils";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { toast } from "sonner";
+import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 
-type PipelineStage = RouterOutputs["deals"]["pipelineOverview"]["stages"][number];
+type PipelineStage =
+	RouterOutputs["deals"]["pipelineOverview"]["stages"][number];
 
 const STAGE_COLORS = [
 	"#6C5CE7",
@@ -60,55 +57,28 @@ const STAGE_COLORS = [
 	"#64748B",
 ];
 
-const STAGE_THEMES: Record<string, { bg: string; text: string }> = {
-	DEMO_BOOKED: { bg: "#dcd6f7", text: "#5e3da8" },
-	QUALIFIED_TO_BUY: { bg: "#cbe0fb", text: "#2563eb" },
-	DECISION_MAKER_BOUGHT_IN: { bg: "#fbe6cb", text: "#d97706" },
-	CONTRACT_SENT: { bg: "#fcd5d1", text: "#e11d48" },
-	CLOSED_WON: { bg: "#c7f4da", text: "#059669" },
-	CLOSED_LOST: { bg: "#cce0fa", text: "#2563eb" },
-};
-
 export function DealPipelineView() {
 	const trpc = useTRPC();
-	const queryClient = useQueryClient();
+	const cache = useCrmCache();
 
 	const overviewQuery = useQuery(trpc.deals.pipelineOverview.queryOptions());
 
-	const [addStageOpen, setAddStageOpen] = useState(false);
 	const [editingStage, setEditingStage] = useState<PipelineStage | null>(null);
 
 	const [stageName, setStageName] = useState("");
 	const [stageProb, setStageProb] = useState(50);
 	const [stageColor, setStageColor] = useState("#6C5CE7");
-	const [stageKind, setStageKind] = useState<"open" | "won" | "lost">("open");
-	const [stageStatus, setStageStatus] = useState<"active" | "won" | "lost" | "inactive">("active");
 
 	const nameId = useId();
 	const probId = useId();
 
-	const invalidate = () =>
-		queryClient.invalidateQueries({
-			queryKey: trpc.deals.pipelineOverview.queryKey(),
-		});
+	const invalidate = () => cache.pipeline();
 
 	const updateSettingsMutation = useMutation(
 		trpc.deals.updatePipelineSettings.mutationOptions({
 			onSuccess: () => {
 				invalidate();
 				toast.success("Pipeline settings saved.");
-			},
-			onError: (err) => toast.error(err.message),
-		}),
-	);
-
-	const createStageMutation = useMutation(
-		trpc.deals.createPipelineStage.mutationOptions({
-			onSuccess: () => {
-				invalidate();
-				toast.success("Stage added to pipeline.");
-				setAddStageOpen(false);
-				resetForm();
 			},
 			onError: (err) => toast.error(err.message),
 		}),
@@ -126,22 +96,10 @@ export function DealPipelineView() {
 		}),
 	);
 
-	const deleteStageMutation = useMutation(
-		trpc.deals.deletePipelineStage.mutationOptions({
-			onSuccess: () => {
-				invalidate();
-				toast.success("Stage deleted from pipeline.");
-			},
-			onError: (err) => toast.error(err.message),
-		}),
-	);
-
 	const resetForm = () => {
 		setStageName("");
 		setStageProb(50);
 		setStageColor("#6C5CE7");
-		setStageKind("open");
-		setStageStatus("active");
 	};
 
 	const openEditModal = (stage: PipelineStage) => {
@@ -149,8 +107,6 @@ export function DealPipelineView() {
 		setStageName(stage.name);
 		setStageProb(stage.probability);
 		setStageColor(stage.color);
-		setStageKind(stage.kind);
-		setStageStatus(stage.status);
 	};
 
 	if (overviewQuery.isLoading) {
@@ -169,88 +125,87 @@ export function DealPipelineView() {
 			enableProbabilityTracking: true,
 			requireStageUpdateNotes: true,
 			autoAssignDeals: false,
-			defaultStage: "DEMO_BOOKED",
+			defaultStage: "DEMO_BOOKED" as const,
 			applyToAllProducts: true,
 			allowSkippingStages: false,
 		},
-		canManage: true,
+		canManage: false,
 	};
 
 	const { stages, stats, currency, settings, canManage } = data;
 
 	return (
 		<div className="flex w-full flex-col gap-6">
-			{/* Top Header Row with + Add Stage Button */}
 			<div className="flex items-center justify-between">
 				<div>
 					<h2 className="text-xl font-bold tracking-tight text-foreground uppercase">
 						Deal Pipeline
 					</h2>
 					<p className="mt-0.5 text-xs text-muted-foreground">
-						Customize your deal stages and settings.
+						Rename the seven deal stages, set their win probability and colour,
+						and choose pipeline defaults.
 					</p>
 				</div>
-				<Button
-					disabled={!canManage}
-					onClick={() => {
-						resetForm();
-						setAddStageOpen(true);
-					}}
-					className="h-9 gap-1.5 rounded-xl bg-[#5e3da8] px-4 text-xs font-semibold text-white shadow-xs hover:bg-[#4d328a]"
-				>
-					<Icon icon={Add} className="h-3.5 w-3.5" />
-					Add Stage
-				</Button>
 			</div>
 
-			{/* Top 4 Summary Metric Cards */}
 			<div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-				{/* Total Stages */}
 				<div className="flex items-center gap-3.5 rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
 					<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300">
 						<Icon icon={Filter} className="h-5 w-5" />
 					</div>
 					<div>
-						<div className="text-xl font-bold text-foreground">{stats.totalStages}</div>
-						<div className="text-[11px] font-medium text-muted-foreground">Total Stages</div>
+						<div className="text-xl font-bold text-foreground">
+							{stats.totalStages}
+						</div>
+						<div className="text-[11px] font-medium text-muted-foreground">
+							Total Stages
+						</div>
 					</div>
 				</div>
 
-				{/* Active Stages */}
 				<div className="flex items-center gap-3.5 rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
 					<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
 						<span className="h-3 w-3 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20" />
 					</div>
 					<div>
-						<div className="text-xl font-bold text-foreground">{stats.activeStages}</div>
-						<div className="text-[11px] font-medium text-muted-foreground">Active Stages</div>
+						<div className="text-xl font-bold text-foreground">
+							{stats.activeStages}
+						</div>
+						<div className="text-[11px] font-medium text-muted-foreground">
+							Active Stages
+						</div>
 					</div>
 				</div>
 
-				{/* Closed Won */}
 				<div className="flex items-center gap-3.5 rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
 					<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
 						<Icon icon={Pause} className="h-5 w-5" />
 					</div>
 					<div>
-						<div className="text-xl font-bold text-foreground">{stats.closedWon}</div>
-						<div className="text-[11px] font-medium text-muted-foreground">Closed Won</div>
+						<div className="text-xl font-bold text-foreground">
+							{stats.closedWon}
+						</div>
+						<div className="text-[11px] font-medium text-muted-foreground">
+							Closed Won
+						</div>
 					</div>
 				</div>
 
-				{/* Closed Lost */}
 				<div className="flex items-center gap-3.5 rounded-2xl border border-border/60 bg-card p-4 shadow-xs">
 					<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
 						<Icon icon={Close} className="h-5 w-5" />
 					</div>
 					<div>
-						<div className="text-xl font-bold text-foreground">{stats.closedLost}</div>
-						<div className="text-[11px] font-medium text-muted-foreground">Closed Lost</div>
+						<div className="text-xl font-bold text-foreground">
+							{stats.closedLost}
+						</div>
+						<div className="text-[11px] font-medium text-muted-foreground">
+							Closed Lost
+						</div>
 					</div>
 				</div>
 			</div>
 
-			{/* Deal Stages Table Container */}
 			<div className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card p-5 shadow-xs">
 				<div>
 					<h3 className="text-sm font-bold text-foreground">Deal Stages</h3>
@@ -277,7 +232,6 @@ export function DealPipelineView() {
 									key={stage.id}
 									className="group transition-colors hover:bg-muted/40"
 								>
-									{/* Drag handle + Position */}
 									<td className="px-4 py-3 text-center">
 										<div className="flex items-center justify-center gap-1 text-muted-foreground">
 											<Icon
@@ -288,23 +242,22 @@ export function DealPipelineView() {
 										</div>
 									</td>
 
-									{/* Stage Name + Dot */}
 									<td className="px-4 py-3">
 										<div className="flex items-center gap-2.5">
 											<span
 												className="h-2.5 w-2.5 rounded-full"
 												style={{ backgroundColor: stage.color }}
 											/>
-											<span className="font-bold text-foreground">{stage.name}</span>
+											<span className="font-bold text-foreground">
+												{stage.name}
+											</span>
 										</div>
 									</td>
 
-									{/* Probability */}
 									<td className="px-4 py-3 text-center font-semibold text-muted-foreground">
 										{stage.probability}%
 									</td>
 
-									{/* Color Badge */}
 									<td className="px-4 py-3 text-center">
 										<span
 											className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-mono font-semibold"
@@ -317,7 +270,6 @@ export function DealPipelineView() {
 										</span>
 									</td>
 
-									{/* Status */}
 									<td className="px-4 py-3 text-center">
 										{stage.kind === "won" ? (
 											<span className="inline-flex rounded-lg border border-emerald-200/80 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
@@ -333,7 +285,7 @@ export function DealPipelineView() {
 												onValueChange={(val) =>
 													updateStageMutation.mutate({
 														id: stage.id,
-														status: val as any,
+														active: val === "active",
 													})
 												}
 												disabled={!canManage}
@@ -349,7 +301,6 @@ export function DealPipelineView() {
 										)}
 									</td>
 
-									{/* Actions */}
 									<td className="px-4 py-3 text-right">
 										<DropdownMenu>
 											<DropdownMenuTrigger asChild>
@@ -358,44 +309,22 @@ export function DealPipelineView() {
 													size="icon"
 													className="h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted/60 hover:text-foreground"
 												>
-													<Icon icon={OverflowMenuVertical} className="h-3.5 w-3.5" />
+													<Icon
+														icon={OverflowMenuVertical}
+														className="h-3.5 w-3.5"
+													/>
 												</Button>
 											</DropdownMenuTrigger>
-											<DropdownMenuContent align="end" className="w-40 rounded-xl">
+											<DropdownMenuContent
+												align="end"
+												className="w-40 rounded-xl"
+											>
 												<DropdownMenuItem
 													disabled={!canManage}
 													onClick={() => openEditModal(stage)}
 													className="text-xs font-medium"
 												>
 													Edit Stage
-												</DropdownMenuItem>
-												<DropdownMenuItem
-													disabled={!canManage}
-													onClick={() =>
-														createStageMutation.mutate({
-															name: `${stage.name} (Copy)`,
-															probability: stage.probability,
-															color: stage.color,
-															kind: stage.kind,
-															status: stage.status,
-														})
-													}
-													className="text-xs font-medium"
-												>
-													Duplicate Stage
-												</DropdownMenuItem>
-												<DropdownMenuSeparator />
-												<DropdownMenuItem
-													disabled={!canManage}
-													onClick={() => {
-														if (confirm(`Delete stage "${stage.name}"?`)) {
-															deleteStageMutation.mutate({ id: stage.id });
-														}
-													}}
-													className="text-xs font-medium text-rose-600 focus:text-rose-600 dark:text-rose-400"
-												>
-													<Icon icon={TrashCan} className="h-3.5 w-3.5" />
-													Delete Stage
 												</DropdownMenuItem>
 											</DropdownMenuContent>
 										</DropdownMenu>
@@ -407,28 +336,23 @@ export function DealPipelineView() {
 				</div>
 			</div>
 
-			{/* Pipeline Preview Section */}
 			<div className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card p-6 shadow-xs">
 				<div>
-					<h3 className="text-sm font-bold text-foreground">Pipeline Preview</h3>
+					<h3 className="text-sm font-bold text-foreground">
+						Pipeline Preview
+					</h3>
 					<p className="text-xs text-muted-foreground">
 						Visual representation of your deal pipeline.
 					</p>
 				</div>
 
-				{/* Chevron Arrow Stage Flow */}
 				<div className="overflow-x-auto pb-2">
 					<div className="flex min-w-[760px] items-stretch gap-2.5 pt-2">
 						{stages.map((stage) => {
-							const theme =
-								STAGE_THEMES[stage.stage] || {
-									bg: `${stage.color}25`,
-									text: stage.color,
-								};
+							const theme = { bg: `${stage.color}25`, text: stage.color };
 
 							return (
 								<div key={stage.id} className="flex flex-1 flex-col gap-2.5">
-									{/* Chevron Arrow Block */}
 									<div
 										className="relative flex h-[62px] flex-col items-center justify-center pl-5 pr-5 text-center transition-transform hover:scale-[1.02]"
 										style={{
@@ -451,10 +375,10 @@ export function DealPipelineView() {
 										</span>
 									</div>
 
-									{/* Deals stats below */}
 									<div className="flex flex-col items-center text-center">
 										<span className="text-[11px] font-normal text-muted-foreground">
-											{stage.dealCount} {stage.dealCount === 1 ? "deals" : "deals"}
+											{stage.dealCount}{" "}
+											{stage.dealCount === 1 ? "deals" : "deals"}
 										</span>
 										<span className="text-xs font-bold text-foreground mt-0.5">
 											{formatMoney(stage.totalValueCents, currency)}
@@ -467,9 +391,7 @@ export function DealPipelineView() {
 				</div>
 			</div>
 
-			{/* Bottom 2 Settings Cards */}
 			<div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-				{/* PIPELINE SETTINGS */}
 				<div className="flex flex-col justify-between gap-5 rounded-2xl border border-border/60 bg-card p-6 shadow-xs">
 					<div>
 						<h3 className="text-xs font-bold tracking-wider text-muted-foreground uppercase">
@@ -481,7 +403,6 @@ export function DealPipelineView() {
 					</div>
 
 					<div className="flex flex-col gap-4 border-t border-border/40 pt-4">
-						{/* Enable probability tracking */}
 						<div className="flex items-center justify-between gap-3">
 							<div>
 								<div className="text-xs font-bold text-foreground">
@@ -503,7 +424,6 @@ export function DealPipelineView() {
 							/>
 						</div>
 
-						{/* Require stage update notes */}
 						<div className="flex items-center justify-between gap-3">
 							<div>
 								<div className="text-xs font-bold text-foreground">
@@ -525,7 +445,6 @@ export function DealPipelineView() {
 							/>
 						</div>
 
-						{/* Auto-assign deals */}
 						<div className="flex items-center justify-between gap-3">
 							<div>
 								<div className="text-xs font-bold text-foreground">
@@ -549,7 +468,6 @@ export function DealPipelineView() {
 					</div>
 				</div>
 
-				{/* DEFAULT STAGE FOR NEW DEALS */}
 				<div className="flex flex-col justify-between gap-5 rounded-2xl border border-border/60 bg-card p-6 shadow-xs">
 					<div>
 						<h3 className="text-xs font-bold tracking-wider text-muted-foreground uppercase">
@@ -561,11 +479,12 @@ export function DealPipelineView() {
 					</div>
 
 					<div className="flex flex-col gap-4 border-t border-border/40 pt-4">
-						{/* Default stage dropdown */}
 						<Select
 							value={settings.defaultStage}
 							onValueChange={(val) =>
-								updateSettingsMutation.mutate({ defaultStage: val })
+								updateSettingsMutation.mutate({
+									defaultStage: val as PipelineStage["stage"],
+								})
 							}
 							disabled={!canManage}
 						>
@@ -581,7 +500,6 @@ export function DealPipelineView() {
 							</SelectContent>
 						</Select>
 
-						{/* Apply to all products */}
 						<div className="flex items-center justify-between gap-3">
 							<div>
 								<div className="text-xs font-bold text-foreground">
@@ -603,7 +521,6 @@ export function DealPipelineView() {
 							/>
 						</div>
 
-						{/* Allow skipping stages */}
 						<div className="flex items-center justify-between gap-3">
 							<div>
 								<div className="text-xs font-bold text-foreground">
@@ -628,12 +545,10 @@ export function DealPipelineView() {
 				</div>
 			</div>
 
-			{/* Add / Edit Stage Modal */}
 			<Dialog
-				open={addStageOpen || Boolean(editingStage)}
+				open={Boolean(editingStage)}
 				onOpenChange={(open) => {
 					if (!open) {
-						setAddStageOpen(false);
 						setEditingStage(null);
 						resetForm();
 					}
@@ -641,13 +556,9 @@ export function DealPipelineView() {
 			>
 				<DialogContent className="sm:max-w-md">
 					<DialogHeader>
-						<DialogTitle>
-							{editingStage ? "Edit Pipeline Stage" : "Add Pipeline Stage"}
-						</DialogTitle>
+						<DialogTitle>Edit pipeline stage</DialogTitle>
 						<DialogDescription>
-							{editingStage
-								? "Update the stage name, win probability, and visual indicator."
-								: "Add a new stage to your sales funnel."}
+							Update the stage name, win probability and colour.
 						</DialogDescription>
 					</DialogHeader>
 
@@ -655,23 +566,13 @@ export function DealPipelineView() {
 						className="flex flex-col gap-4 py-2"
 						onSubmit={(e) => {
 							e.preventDefault();
-							if (editingStage) {
-								updateStageMutation.mutate({
-									id: editingStage.id,
-									name: stageName,
-									probability: Number(stageProb),
-									color: stageColor,
-									status: stageStatus,
-								});
-							} else {
-								createStageMutation.mutate({
-									name: stageName,
-									probability: Number(stageProb),
-									color: stageColor,
-									kind: stageKind,
-									status: stageStatus,
-								});
-							}
+							if (!editingStage) return;
+							updateStageMutation.mutate({
+								id: editingStage.id,
+								name: stageName,
+								probability: Number(stageProb),
+								color: stageColor,
+							});
 						}}
 					>
 						<Field>
@@ -736,15 +637,13 @@ export function DealPipelineView() {
 							</DialogClose>
 							<Button
 								type="submit"
-								disabled={
-									createStageMutation.isPending || updateStageMutation.isPending
-								}
+								disabled={updateStageMutation.isPending}
 								className="rounded-xl bg-[#5e3da8] text-white hover:bg-[#4d328a]"
 							>
-								{createStageMutation.isPending || updateStageMutation.isPending ? (
+								{updateStageMutation.isPending ? (
 									<Spinner className="mr-1.5 h-3.5 w-3.5" />
 								) : null}
-								{editingStage ? "Save Changes" : "Create Stage"}
+								Save changes
 							</Button>
 						</DialogFooter>
 					</form>

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "bun:test";
 import { WorkspaceService } from "../src/workspace/workspace.service";
 
 describe("WorkspaceService Lead Settings", () => {
@@ -18,6 +18,7 @@ describe("WorkspaceService Lead Settings", () => {
 			]),
 		},
 		member: {
+			findUnique: vi.fn().mockResolvedValue({ role: "owner" }),
 			findFirst: vi.fn().mockResolvedValue({
 				userId: "u-owner-1",
 				role: "Sales Manager",
@@ -49,54 +50,42 @@ describe("WorkspaceService Lead Settings", () => {
 		const service = new WorkspaceService(mockDb as any, mockAgent);
 		const settings = await service.leadSettings("u-owner-1");
 
-		expect(settings.sources).toHaveLength(6);
-		const websiteSource = settings.sources.find((s) => s.id === "website");
-		expect(websiteSource?.name).toBe("Website");
-		expect(websiteSource?.type).toBe("online");
+		expect(settings.sources.map((s) => s.id)).toEqual([
+			"WEBSITE",
+			"LINKEDIN",
+			"REFERRAL",
+			"COLD_OUTREACH",
+			"DIRECT",
+			"OTHER",
+		]);
+		const websiteSource = settings.sources.find((s) => s.id === "WEBSITE");
 		expect(websiteSource?.leadsCount).toBe(124);
+		expect(settings.sources.find((s) => s.id === "DIRECT")?.leadsCount).toBe(0);
 
 		expect(settings.fields.length).toBeGreaterThanOrEqual(8);
 		const fullNameField = settings.fields.find((f) => f.id === "full-name");
 		expect(fullNameField?.required).toBe(true);
 		expect(fullNameField?.showInForm).toBe(true);
 
-		expect(settings.statuses).toHaveLength(6);
-		expect(settings.statuses[0].name).toBe("New");
-		expect(settings.statuses[1].name).toBe("Qualified");
+		expect(settings.statuses.map((s) => s.id)).toEqual([
+			"NEW",
+			"CONTACTED",
+			"QUALIFIED",
+			"UNQUALIFIED",
+		]);
+		expect(settings.statuses.find((s) => s.id === "NEW")?.leadsCount).toBe(50);
+		expect(
+			settings.statuses.find((s) => s.id === "CONTACTED")?.leadsCount,
+		).toBe(0);
 
 		expect(settings.assignmentRules).toHaveLength(4);
-		expect(settings.assignmentRules[0].title).toBe("Assign leads from Website to Sales team");
-		expect(settings.assignmentRules[0].enabled).toBe(true);
+		expect(settings.assignmentRules[0]?.title).toBe(
+			"Assign leads from Website to Sales team",
+		);
+		expect(settings.assignmentRules[0]?.enabled).toBe(true);
 
 		expect(settings.defaultOwner.name).toBe("Rahul Kumar");
 		expect(settings.defaultOwner.role).toBe("Sales Manager");
-	});
-
-	it("creates, updates, and deletes a custom lead source", async () => {
-		mockDb.organization.findUnique.mockResolvedValue({
-			id: "ws-1",
-			metadata: "{}",
-		});
-		mockDb.organization.update.mockResolvedValue({});
-
-		const service = new WorkspaceService(mockDb as any, mockAgent);
-
-		const created = await service.createLeadSource("u-1", {
-			name: "Trade Shows",
-			type: "offline",
-		});
-		expect(created.id).toBe("trade-shows");
-		expect(created.type).toBe("offline");
-		expect(created.isCustom).toBe(true);
-
-		const updated = await service.updateLeadSource("u-1", {
-			id: "trade-shows",
-			status: "inactive",
-		});
-		expect(updated.status).toBe("inactive");
-
-		const deleted = await service.deleteLeadSource("u-1", { id: "trade-shows" });
-		expect(deleted.success).toBe(true);
 	});
 
 	it("creates, updates, and deletes custom lead fields and toggle switches", async () => {
@@ -126,33 +115,9 @@ describe("WorkspaceService Lead Settings", () => {
 		expect(toggled.required).toBe(false);
 		expect(toggled.showInForm).toBe(false);
 
-		const deleted = await service.deleteLeadField("u-1", { id: "estimated-budget" });
-		expect(deleted.success).toBe(true);
-	});
-
-	it("creates, updates, and deletes lead statuses", async () => {
-		mockDb.organization.findUnique.mockResolvedValue({
-			id: "ws-1",
-			metadata: "{}",
+		const deleted = await service.deleteLeadField("u-1", {
+			id: "estimated-budget",
 		});
-		mockDb.organization.update.mockResolvedValue({});
-
-		const service = new WorkspaceService(mockDb as any, mockAgent);
-
-		const status = await service.createLeadStatus("u-1", {
-			name: "Demo Completed",
-			color: "#8b5cf6",
-		});
-		expect(status.id).toBe("demo-completed");
-		expect(status.color).toBe("#8b5cf6");
-
-		const updated = await service.updateLeadStatus("u-1", {
-			id: "demo-completed",
-			name: "Demo Scheduled & Completed",
-		});
-		expect(updated.name).toBe("Demo Scheduled & Completed");
-
-		const deleted = await service.deleteLeadStatus("u-1", { id: "demo-completed" });
 		expect(deleted.success).toBe(true);
 	});
 
@@ -180,7 +145,9 @@ describe("WorkspaceService Lead Settings", () => {
 		});
 		expect(updatedRule.enabled).toBe(false);
 
-		const deletedRule = await service.deleteLeadAssignmentRule("u-1", { id: rule.id });
+		const deletedRule = await service.deleteLeadAssignmentRule("u-1", {
+			id: rule.id,
+		});
 		expect(deletedRule.success).toBe(true);
 
 		mockDb.member.findFirst.mockResolvedValueOnce({
