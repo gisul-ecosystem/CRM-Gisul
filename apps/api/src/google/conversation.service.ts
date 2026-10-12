@@ -1,3 +1,4 @@
+import { isWorkspaceAdmin, workspaceRoleOf } from "@crm/auth";
 import type { Db, Prisma } from "@crm/db";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
@@ -17,9 +18,20 @@ const storedRecipients = z.array(z.json()).catch([]);
 export class ConversationService {
 	constructor(@InjectDatabase() private readonly db: Db) {}
 
-	async thread(threadId: string) {
-		const thread = await this.db.emailThread.findUnique({
-			where: { id: threadId },
+	async thread(threadId: string, viewerId: string) {
+		const seesEveryone = await this.seesEveryone(viewerId);
+		const thread = await this.db.emailThread.findFirst({
+			where: {
+				id: threadId,
+				...(seesEveryone
+					? {}
+					: {
+							OR: [
+								{ activity: { createdById: viewerId } },
+								{ messages: { some: { syncedByUserId: viewerId } } },
+							],
+						}),
+			},
 			select: {
 				id: true,
 				subject: true,
@@ -76,6 +88,10 @@ export class ConversationService {
 		};
 	}
 
+	private async seesEveryone(viewerId: string): Promise<boolean> {
+		return isWorkspaceAdmin(await workspaceRoleOf(viewerId, this.db));
+	}
+
 	private async facesFor(addresses: string[]): Promise<Map<string, string>> {
 		const emails = [
 			...new Set(addresses.map((address) => address.toLowerCase())),
@@ -106,9 +122,20 @@ export class ConversationService {
 		return faces;
 	}
 
-	async event(eventId: string) {
-		const event = await this.db.calendarEvent.findUnique({
-			where: { id: eventId },
+	async event(eventId: string, viewerId: string) {
+		const seesEveryone = await this.seesEveryone(viewerId);
+		const event = await this.db.calendarEvent.findFirst({
+			where: {
+				id: eventId,
+				...(seesEveryone
+					? {}
+					: {
+							OR: [
+								{ activity: { createdById: viewerId } },
+								{ syncedByUserId: viewerId },
+							],
+						}),
+			},
 			select: {
 				id: true,
 				title: true,

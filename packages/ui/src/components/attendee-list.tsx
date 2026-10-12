@@ -22,17 +22,42 @@ export type Attendee = {
 
 const RESPONSE_TONE: Record<string, StatusTone> = {
 	accepted: "success",
+	organizer: "success",
 	declined: "error",
 	tentative: "warning",
+	tentativelyAccepted: "warning",
 	needsAction: "neutral",
+	notResponded: "neutral",
+	none: "neutral",
 };
 
 const RESPONSE_LABEL: Record<string, string> = {
 	accepted: "Accepted",
+	organizer: "Organizer",
 	declined: "Declined",
 	tentative: "Maybe",
+	tentativelyAccepted: "Maybe",
 	needsAction: "No reply",
+	notResponded: "No reply",
+	none: "No reply",
 };
+
+function attendeeResponse(status: string | null): {
+	tone: StatusTone;
+	label: string;
+} {
+	const key = status ?? "needsAction";
+	return {
+		tone: RESPONSE_TONE[key] ?? "neutral",
+		label: RESPONSE_LABEL[key] ?? "No reply",
+	};
+}
+
+function displayName(attendee: Attendee): string | null {
+	return attendee.name?.trim() && !attendee.name.includes("@")
+		? attendee.name
+		: null;
+}
 
 function AttendeeList({
 	attendees,
@@ -60,11 +85,7 @@ function AttendeeList({
 						<TooltipTrigger asChild>
 							<PersonAvatar
 								src={attendee.imageUrl}
-								name={
-									attendee.name?.trim() && !attendee.name.includes("@")
-										? attendee.name
-										: null
-								}
+								name={displayName(attendee)}
 								email={attendee.email}
 								size="sm"
 							/>
@@ -72,13 +93,7 @@ function AttendeeList({
 						<TooltipContent>
 							<span className="flex items-center gap-2">
 								{attendee.name ?? attendee.email}
-								<StatusIndicator
-									tone={RESPONSE_TONE[attendee.responseStatus ?? "needsAction"] ?? "neutral"}
-									label={
-										RESPONSE_LABEL[attendee.responseStatus ?? "needsAction"] ??
-										"No reply"
-									}
-								/>
+								<StatusIndicator {...attendeeResponse(attendee.responseStatus)} />
 							</span>
 						</TooltipContent>
 					</Tooltip>
@@ -92,4 +107,54 @@ function AttendeeList({
 	);
 }
 
-export { AttendeeList };
+function AttendeeRoster({
+	attendees,
+	className,
+	...props
+}: Omit<React.ComponentProps<"ul">, "children"> & {
+	attendees: readonly Attendee[];
+}) {
+	if (attendees.length === 0) return null;
+
+	return (
+		<ul
+			data-slot="attendee-roster"
+			className={cn("flex flex-col divide-y rounded-lg border", className)}
+			{...props}
+		>
+			{attendees.map((attendee) => {
+				const name = displayName(attendee);
+				return (
+					<li
+						key={attendee.id}
+						className="flex min-w-0 items-center gap-2.5 px-3 py-2"
+					>
+						<PersonAvatar
+							src={attendee.imageUrl}
+							name={name}
+							email={attendee.email}
+							size="sm"
+						/>
+						<div className="flex min-w-0 flex-1 flex-col">
+							<span className="truncate font-medium text-xs">
+								{name ?? attendee.email}
+							</span>
+							{name ? (
+								<span className="truncate text-muted-foreground text-xs">
+									{attendee.email}
+								</span>
+							) : null}
+						</div>
+						<StatusIndicator
+							{...(attendee.isOrganizer
+								? attendeeResponse("organizer")
+								: attendeeResponse(attendee.responseStatus))}
+						/>
+					</li>
+				);
+			})}
+		</ul>
+	);
+}
+
+export { AttendeeList, AttendeeRoster };

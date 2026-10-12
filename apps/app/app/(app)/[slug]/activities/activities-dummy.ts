@@ -14,6 +14,8 @@ export type ActivityItem = {
 	date: string;
 	min: number;
 	done: boolean;
+	threadId?: string | null;
+	eventId?: string | null;
 };
 
 export const ACTIVITY_TYPE_META = {

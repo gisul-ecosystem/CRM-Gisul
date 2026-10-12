@@ -105,8 +105,11 @@ export class GoogleRouter {
 		output: emailThreadOutput,
 		meta: restMeta("GET", "/google/threads/{threadId}", ["Google"]),
 	})
-	async thread(@Input("threadId") threadId: string) {
-		return this.conversations.thread(threadId);
+	async thread(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input("threadId") threadId: string,
+	) {
+		return this.conversations.thread(threadId, ctx.user.id);
 	}
 
 	@Query({
@@ -114,7 +117,10 @@ export class GoogleRouter {
 		output: calendarEventOutput,
 		meta: restMeta("GET", "/google/events/{eventId}", ["Google"]),
 	})
-	async event(@Input("eventId") eventId: string) {
-		return this.conversations.event(eventId);
+	async event(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input("eventId") eventId: string,
+	) {
+		return this.conversations.event(eventId, ctx.user.id);
 	}
 }

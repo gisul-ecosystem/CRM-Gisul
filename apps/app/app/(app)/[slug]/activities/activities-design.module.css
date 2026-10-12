@@ -603,6 +603,20 @@
 	justify-content: center;
 }
 
+.infoBtn {
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.infoBtn:hover .ttl {
+	text-decoration: underline;
+}
+
 .ttl {
 	font-size: 13px;
 	font-weight: 500;
