@@ -98,7 +98,7 @@ export function DealStageMenu({
 					onValueChange={(next) => {
 						const chosen = next as DealStage;
 						if (chosen === stage) return;
-						if (LOSING_STAGES.includes(chosen)) {
+						if ((LOSING_STAGES as readonly DealStage[]).includes(chosen)) {
 							void setCloseParams({
 								[SEARCH_PARAM.dialog.closeDeal]: dealId,
 								[SEARCH_PARAM.dialog.closeStage]: chosen,

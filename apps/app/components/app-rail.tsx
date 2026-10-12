@@ -33,7 +33,7 @@ function writeStoredOpen(open: boolean) {
 }
 
 export function AppRailProvider({ children }: { children: React.ReactNode }) {
-	const [open, setOpen] = useState(APP_RAIL.defaultOpen);
+	const [open, setOpen] = useState<boolean>(APP_RAIL.defaultOpen);
 
 	useMountEffect(() => {
 		setOpen(readStoredOpen());

@@ -36,24 +36,33 @@ const STAGE_PILL: Record<
 	DealStage,
 	{ label: string; className: string }
 > = {
-	[DealStage.DEMO_BOOKED]: { label: "New", className: styles.stageNew },
+	[DealStage.DEMO_BOOKED]: {
+		label: "New",
+		className: styles.stageNew ?? "",
+	},
 	[DealStage.QUALIFIED_TO_BUY]: {
 		label: "Qualified",
-		className: styles.stageQualified,
+		className: styles.stageQualified ?? "",
 	},
 	[DealStage.DECISION_MAKER_BOUGHT_IN]: {
 		label: "Proposal",
-		className: styles.stageProposal,
+		className: styles.stageProposal ?? "",
 	},
 	[DealStage.CONTRACT_SENT]: {
 		label: "Negotiation",
-		className: styles.stageNegotiation,
+		className: styles.stageNegotiation ?? "",
 	},
-	[DealStage.CLOSED_WON]: { label: "Won", className: styles.stageWon },
-	[DealStage.CLOSED_LOST]: { label: "Lost", className: styles.stageLost },
+	[DealStage.CLOSED_WON]: {
+		label: "Won",
+		className: styles.stageWon ?? "",
+	},
+	[DealStage.CLOSED_LOST]: {
+		label: "Lost",
+		className: styles.stageLost ?? "",
+	},
 	[DealStage.UNQUALIFIED_TO_BUY]: {
 		label: "Lost",
-		className: styles.stageLost,
+		className: styles.stageLost ?? "",
 	},
 };
 

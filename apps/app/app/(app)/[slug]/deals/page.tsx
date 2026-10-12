@@ -43,7 +43,9 @@ export default function DealsPage({
 							Track and manage opportunities across your products.
 						</p>
 					</div>
-					<DealsHeaderActions />
+					<Suspense fallback={null}>
+						<DealsHeaderActions />
+					</Suspense>
 				</header>
 
 				<PageShellContent className="gap-0">

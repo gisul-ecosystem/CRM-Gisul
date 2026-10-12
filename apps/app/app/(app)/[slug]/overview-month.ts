@@ -12,12 +12,12 @@ export function yearMonthKey(date = new Date()): string {
 }
 
 export function monthStartFromKey(key: string): Date {
-	const [year, month] = key.split("-").map(Number);
+	const [year = 0, month = 1] = key.split("-").map(Number);
 	return new Date(year, month - 1, 1);
 }
 
 export function monthEndFromKey(key: string): Date {
-	const [year, month] = key.split("-").map(Number);
+	const [year = 0, month = 1] = key.split("-").map(Number);
 	return new Date(year, month, 0);
 }
 

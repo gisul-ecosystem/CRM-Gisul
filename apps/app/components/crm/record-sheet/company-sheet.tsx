@@ -158,7 +158,9 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 		: null;
 
 	const openDeals =
-		company?.deals.filter((deal) => OPEN_STAGES.includes(deal.stage)) ?? [];
+		company?.deals.filter((deal) =>
+			(OPEN_STAGES as readonly string[]).includes(deal.stage),
+		) ?? [];
 	const openValueCents = openDeals.reduce(
 		(total, deal) => total + (deal.baseAmountCents ?? 0),
 		0,

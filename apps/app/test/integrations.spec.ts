@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 
 describe("Integrations Settings Frontend Logic", () => {
 	const mockIntegrations = [
@@ -53,7 +53,7 @@ describe("Integrations Settings Frontend Logic", () => {
 		);
 
 		expect(filtered).toHaveLength(1);
-		expect(filtered[0].id).toBe("slack");
+		expect(filtered[0]?.id).toBe("slack");
 	});
 
 	it("filters integrations accurately by category", () => {

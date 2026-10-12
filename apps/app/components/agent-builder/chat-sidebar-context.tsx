@@ -37,7 +37,7 @@ export function ChatSidebarProvider({
 }: {
 	children: React.ReactNode;
 }) {
-	const [open, setOpen] = useState(CHAT.sidebar.defaultOpen);
+	const [open, setOpen] = useState<boolean>(CHAT.sidebar.defaultOpen);
 
 	useMountEffect(() => {
 		setOpen(readStoredOpen());
