@@ -1,5 +1,6 @@
 import { ActivityType, type Db, DealStage, LeadSource, Prisma } from "@crm/db";
 import { dealStageLabel, OPEN_DEAL_STAGES } from "@crm/db/deal-stage";
+import { isWorkspaceAdmin, workspaceRoleOf } from "@crm/auth";
 import { activityMeta } from "@crm/validation/activity-meta";
 import { Injectable } from "@nestjs/common";
 import { toCents } from "../crm/values";
@@ -76,6 +77,9 @@ export class DashboardService {
 
 	async summary(actingUserId: string, input: DashboardSummaryInput) {
 		const mine = input.scope === "me";
+		const seesEveryone = isWorkspaceAdmin(
+			await workspaceRoleOf(actingUserId, this.db),
+		);
 		const owned = mine
 			? { ownerId: actingUserId, archivedAt: null }
 			: { archivedAt: null };
@@ -206,7 +210,7 @@ export class DashboardService {
 				},
 			}),
 			this.db.activity.findMany({
-				where: mine ? { createdById: actingUserId } : {},
+				where: mine || !seesEveryone ? { createdById: actingUserId } : {},
 				orderBy: [{ createdAt: "desc" }],
 				take: 12,
 				select: {
@@ -437,7 +441,13 @@ export class DashboardService {
 		};
 	}
 
-	async report(input: DashboardReportInput) {
+	async report(actingUserId: string, requested: DashboardReportInput) {
+		const seesEveryone = isWorkspaceAdmin(
+			await workspaceRoleOf(actingUserId, this.db),
+		);
+		const input = seesEveryone
+			? requested
+			: { ...requested, ownerId: actingUserId };
 		const window = reportWindow(input.range);
 		const base = await this.conversion.reportingCurrency();
 		const counted = this.conversion.countedWhere(base);
@@ -612,6 +622,7 @@ export class DashboardService {
 				select: { id: true, name: true },
 			}),
 			this.db.user.findMany({
+				where: seesEveryone ? {} : { id: actingUserId },
 				orderBy: [{ name: "asc" }],
 				select: { id: true, name: true },
 			}),

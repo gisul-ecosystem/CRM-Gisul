@@ -191,6 +191,12 @@ Two rules follow for the serverless build:
   mailbox-wide delta, so the Outlook cursor is the last `receivedDateTime` seen,
   re-read with a one-second overlap; `rfcMessageId` is unique, so the overlap costs a
   duplicate fetch and never a duplicate row.
+- **Only threads and meetings that touch the CRM are stored.** After matching, a
+  thread or event with neither a `companyId` nor a `contactId` is dropped —
+  `ThreadWriterService.store` returns `false`, both calendar `apply`s return
+  `"ignored"`. A match is a known contact address or a known company domain; with
+  `autoCreate` on, a replied thread or a meeting can still create the record first.
+  Outlook To-Do lists are not read: a task has no participants, so it can never match.
 - **Microsoft has no token-revocation endpoint.** `revoke` clears the columns and the
   UI says the consent itself is removed in the user's Microsoft account. Google's still
   posts to `oauth2.googleapis.com/revoke` and refuses to clear if that fails.

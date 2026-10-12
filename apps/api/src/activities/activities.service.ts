@@ -1,3 +1,4 @@
+import { isWorkspaceAdmin, workspaceRoleOf } from "@crm/auth";
 import { ActivityType, type Db, type Prisma } from "@crm/db";
 import { activityMeta } from "@crm/validation/activity-meta";
 import {
@@ -78,8 +79,11 @@ export class ActivitiesService {
 		private readonly stamp: ActivityStampService,
 	) {}
 
-	async timeline(input: TimelineInput): Promise<TimelineResult> {
-		const where = this.anchor(input);
+	async timeline(
+		input: TimelineInput,
+		actingUserId: string,
+	): Promise<TimelineResult> {
+		const where = await this.visibleAnchor(input, actingUserId);
 		Object.assign(where, filterClause(input.filter));
 
 		const rows = await this.db.activity.findMany({
@@ -105,8 +109,9 @@ export class ActivitiesService {
 
 	async timelineCounts(
 		input: Pick<TimelineInput, "companyId" | "contactId" | "dealId">,
+		actingUserId: string,
 	): Promise<TimelineCounts> {
-		const anchor = this.anchor(input);
+		const anchor = await this.visibleAnchor(input, actingUserId);
 
 		const [all, notes, upcoming, done, email, meetings] = await Promise.all([
 			this.db.activity.count({ where: anchor }),
@@ -300,6 +305,17 @@ export class ActivitiesService {
 		});
 
 		return rows.map(serializeEntry);
+	}
+
+	private async visibleAnchor(
+		input: Pick<TimelineInput, "companyId" | "contactId" | "dealId">,
+		actingUserId: string,
+	): Promise<Prisma.ActivityWhereInput> {
+		const anchor = this.anchor(input);
+		const role = await workspaceRoleOf(actingUserId, this.db);
+		return isWorkspaceAdmin(role)
+			? anchor
+			: { ...anchor, createdById: actingUserId };
 	}
 
 	private anchor(

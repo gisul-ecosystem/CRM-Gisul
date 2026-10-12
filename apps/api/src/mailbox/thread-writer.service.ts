@@ -114,6 +114,8 @@ export class ThreadWriterService {
 			contactId = match.contactId;
 		}
 
+		if (!companyId && !contactId) return false;
+
 		let occurredAt: Date;
 
 		try {

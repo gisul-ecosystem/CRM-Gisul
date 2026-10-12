@@ -32,8 +32,11 @@ export function workspaceDomains(): readonly string[] {
 	return allowList().domains;
 }
 
-export function primaryWorkspaceDomain(): string | undefined {
-	return allowList().domains[0];
+export function soleWorkspaceDomain(): string | undefined {
+	const { domains, addresses } = allowList();
+	return domains.length === 1 && addresses.length === 0
+		? domains[0]
+		: undefined;
 }
 
 export function hasSignInAllowList(): boolean {
