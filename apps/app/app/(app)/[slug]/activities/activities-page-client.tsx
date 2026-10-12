@@ -29,11 +29,13 @@ import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "rea
 import {
 	ACTIVITIES,
 	type ActivityQuickFilter,
+	type ActivityStatus,
 	type ActivityTab,
 	type ActivityTypeKey,
 	type ActivityViewMode,
 } from "./activities-config";
 import styles from "./activities-design.module.css";
+import { ActivityDetailSheet, type OpenActivity } from "./activity-detail-sheet";
 import {
 	ACTIVITY_TYPE_META,
 	type ActivityItem,
@@ -79,6 +81,12 @@ const TAB_LABELS: Record<ActivityTab, string> = {
 };
 
 type ScopeMode = "date" | ActivityQuickFilter;
+
+const STATUS_LABEL: Record<ActivityStatus, string> = {
+	pending: "Pending",
+	completed: "Completed",
+	overdue: "Overdue",
+};
 
 function mapEntryToItem(entry: any): ActivityItem {
 	const rawType = String(entry.type).toUpperCase();
@@ -127,6 +135,8 @@ function mapEntryToItem(entry: any): ActivityItem {
 				? `${entry.contact.firstName} ${entry.contact.lastName ?? ""}`.trim()
 				: (entry.meta?.from || "")),
 		owner: entry.createdBy?.name || "Rep",
+		threadId: entry.emailThread?.id ?? null,
+		eventId: entry.calendarEvent?.id ?? null,
 		date: dateStr,
 		min,
 		done: Boolean(entry.completedAt),
@@ -204,6 +214,7 @@ export function ActivitiesPageClient() {
 		task: true,
 	});
 	const [modalOpen, setModalOpen] = useState(false);
+	const [opened, setOpened] = useState<OpenActivity | null>(null);
 	const [toastMsg, setToastMsg] = useState("");
 	const [toastOn, setToastOn] = useState(false);
 
@@ -648,10 +659,24 @@ export function ActivitiesPageClient() {
 									>
 										<Icon icon={TYPE_ICON[a.type]} />
 									</span>
-									<div className={styles.info}>
-										<div className={styles.ttl} title={a.title}>{a.title}</div>
-										<div className={styles.dsc} title={a.desc}>{a.desc}</div>
-									</div>
+									<button
+										type="button"
+										className={`${styles.info} ${styles.infoBtn}`}
+										onClick={() =>
+											setOpened({
+												item: a,
+												when: `${heading(a.date)}, ${formatTime(a.min)}`,
+												status: STATUS_LABEL[status],
+											})
+										}
+									>
+										<span className={styles.ttl} title={a.title}>
+											{a.title}
+										</span>
+										<span className={styles.dsc} title={a.desc}>
+											{a.desc}
+										</span>
+									</button>
 									<div className={styles.tags}>
 										<span
 											className={styles.tag}
@@ -842,6 +867,11 @@ export function ActivitiesPageClient() {
 					</div>
 				</form>
 			</div>
+
+			<ActivityDetailSheet
+				activity={opened}
+				onClose={() => setOpened(null)}
+			/>
 
 			<div className={`${styles.toast} ${toastOn ? styles.toastShow : ""}`}>
 				{toastMsg}

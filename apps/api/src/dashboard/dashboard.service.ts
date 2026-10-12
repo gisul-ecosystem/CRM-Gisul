@@ -210,7 +210,15 @@ export class DashboardService {
 				},
 			}),
 			this.db.activity.findMany({
-				where: mine || !seesEveryone ? { createdById: actingUserId } : {},
+				where: {
+						...(mine || !seesEveryone ? { createdById: actingUserId } : {}),
+						OR: [
+							{ emailThreadId: null, calendarEventId: null },
+							{ companyId: { not: null } },
+							{ contactId: { not: null } },
+							{ dealId: { not: null } },
+						],
+					},
 				orderBy: [{ createdAt: "desc" }],
 				take: 12,
 				select: {

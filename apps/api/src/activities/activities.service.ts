@@ -63,6 +63,15 @@ const ENTRY_SELECT = {
 	},
 } as const;
 
+const LINKED_OR_LOGGED: Prisma.ActivityWhereInput = {
+	OR: [
+		{ emailThreadId: null, calendarEventId: null },
+		{ companyId: { not: null } },
+		{ contactId: { not: null } },
+		{ dealId: { not: null } },
+	],
+};
+
 const NOTE_TYPES = [
 	ActivityType.NOTE,
 	ActivityType.CALL,
@@ -226,9 +235,11 @@ export class ActivitiesService {
 	): Promise<ActivityEntry[]> {
 		const now = new Date();
 		const where: Prisma.ActivityWhereInput = {};
+		const and: Prisma.ActivityWhereInput[] = [LINKED_OR_LOGGED];
 
 		if (actingUserId) {
-			where.createdById = actingUserId;
+			const role = await workspaceRoleOf(actingUserId, this.db);
+			if (!isWorkspaceAdmin(role)) where.createdById = actingUserId;
 		}
 
 		if (input.type && input.type !== "all") {
@@ -281,18 +292,18 @@ export class ActivitiesService {
 
 		if (input.search?.trim()) {
 			const query = input.search.trim();
-			where.AND = [
-				{
-					OR: [
-						{ subject: { contains: query, mode: "insensitive" } },
-						{ body: { contains: query, mode: "insensitive" } },
-						{ company: { name: { contains: query, mode: "insensitive" } } },
-						{ contact: { firstName: { contains: query, mode: "insensitive" } } },
-						{ contact: { lastName: { contains: query, mode: "insensitive" } } },
-					],
-				},
-			];
+			and.push({
+				OR: [
+					{ subject: { contains: query, mode: "insensitive" } },
+					{ body: { contains: query, mode: "insensitive" } },
+					{ company: { name: { contains: query, mode: "insensitive" } } },
+					{ contact: { firstName: { contains: query, mode: "insensitive" } } },
+					{ contact: { lastName: { contains: query, mode: "insensitive" } } },
+				],
+			});
 		}
+
+		where.AND = and;
 
 		const rows = await this.db.activity.findMany({
 			where,
