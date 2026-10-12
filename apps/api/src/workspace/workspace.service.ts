@@ -1,13 +1,18 @@
 import {
+	appUrl,
 	canChangeRole,
 	canRenameWorkspace,
 	ensureWorkspaceMembership,
-	isWorkspaceRole,
+	isWorkspaceAdmin,
+	toWorkspaceRole,
 	WORKSPACE_ID,
+	WORKSPACE_ROLES,
 	type WorkspaceRole,
+	workspaceDomains,
 	workspaceRoleOf,
 } from "@crm/auth";
-import type { Db, Prisma } from "@crm/db";
+import { type Db, Prisma } from "@crm/db";
+import { LeadSource, LeadStatus } from "@crm/db/enums";
 import { isOnboarded, markOnboarded, workspaceSlug } from "@crm/db/workspace";
 import {
 	BadRequestException,
@@ -31,37 +36,21 @@ import type {
 	ActivityAssignmentRule,
 	ActivitySettingsOverview,
 	ActivityTypeItem,
-	ArchiveInactiveRecordsInput,
-	BackupItem,
-	ClearDeletedDataInput,
 	CompletionBehavior,
 	CreateActivityAssignmentRuleInput,
 	CreateActivityTypeInput,
-	CreateBackupInput,
 	CreateLeadAssignmentRuleInput,
 	CreateLeadFieldInput,
-	CreateLeadSourceInput,
-	CreateLeadStatusInput,
-	CreateRoleInput,
 	CreateTeamInput,
-	DataManagementOverview,
-	DataRetentionSettings,
 	DefaultActivitySettings,
 	DefaultLeadOwner,
-	DeleteAccountInput,
 	DeleteActivityAssignmentRuleInput,
 	DeleteActivityTypeInput,
-	DeleteBackupInput,
 	DeleteLeadAssignmentRuleInput,
 	DeleteLeadFieldInput,
-	DeleteLeadSourceInput,
-	DeleteLeadStatusInput,
-	ExportDataInput,
-	ImportDataInput,
 	IntegrationItem,
 	IntegrationsOverview,
 	InvitationSettings,
-	InviteUserInput,
 	LeadAssignmentRuleItem,
 	LeadFieldItem,
 	LeadSettingsData,
@@ -76,27 +65,24 @@ import type {
 	UpdateActivityAssignmentRuleInput,
 	UpdateActivityTypeInput,
 	UpdateCompletionBehaviorInput,
-	UpdateDataRetentionInput,
 	UpdateDefaultActivitySettingsInput,
 	UpdateDefaultLeadOwnerInput,
-	UpdateInvitationSettingsInput,
 	UpdateLeadAssignmentRuleInput,
 	UpdateLeadFieldInput,
-	UpdateLeadSourceInput,
-	UpdateLeadStatusInput,
-	UpdateMemberStatusInput,
 	UpdateMemberTeamInput,
 	UpdateReminderRulesInput,
 	UpdateWorkspaceInput,
 	Workspace,
 	WorkspaceMember,
 } from "./workspace.contracts";
+import { DAY_MS, MEMBERS } from "./workspace-config";
 
 const MEMBER_SELECT = {
 	id: true,
 	role: true,
 	createdAt: true,
 	userId: true,
+	team: { select: { teamId: true, team: { select: { name: true } } } },
 	user: {
 		select: {
 			name: true,
@@ -121,56 +107,94 @@ const SORTABLE: OrderByColumns<Prisma.MemberOrderByWithRelationInput> = {
 	joinedAt: (dir) => ({ createdAt: dir }),
 };
 
-const BASE_TEAMS = [
-	{ id: "sales", name: "Sales", icon: "user" },
-	{ id: "product", name: "Product", icon: "grid" },
-	{ id: "marketing", name: "Marketing", icon: "chart" },
-	{ id: "customer-success", name: "Customer Success", icon: "headset" },
-];
-
-const BASE_ROLES = [
-	{ id: "sales-manager", name: "Sales Manager", description: "Full access to sales data" },
-	{ id: "sales-executive", name: "Sales Executive", description: "Manage leads and deals" },
-	{ id: "product-manager", name: "Product Manager", description: "Access to product data" },
-	{ id: "marketing", name: "Marketing", description: "Access to marketing data" },
-	{ id: "customer-success", name: "Customer Success", description: "Customer support access" },
-	{ id: "viewer", name: "Viewer", description: "Read-only access" },
-];
-
-const BASE_LEAD_SOURCES = [
-	{ id: "website", name: "Website", type: "online" as const, status: "active" as const },
-	{ id: "linkedin", name: "LinkedIn", type: "online" as const, status: "active" as const },
-	{ id: "referral", name: "Referral", type: "offline" as const, status: "active" as const },
-	{ id: "cold-outreach", name: "Cold Outreach", type: "offline" as const, status: "active" as const },
-	{ id: "partner", name: "Partner", type: "offline" as const, status: "active" as const },
-	{ id: "other", name: "Other", type: "offline" as const, status: "active" as const },
-];
-
 const BASE_LEAD_FIELDS = [
-	{ id: "full-name", name: "Full Name", type: "text" as const, required: true, showInForm: true },
-	{ id: "email", name: "Email", type: "email" as const, required: true, showInForm: true },
-	{ id: "phone", name: "Phone", type: "phone" as const, required: true, showInForm: true },
-	{ id: "company", name: "Company", type: "text" as const, required: true, showInForm: true },
-	{ id: "job-title", name: "Job Title", type: "text" as const, required: false, showInForm: true },
-	{ id: "company-size", name: "Company Size", type: "dropdown" as const, required: false, showInForm: true },
-	{ id: "industry", name: "Industry", type: "dropdown" as const, required: false, showInForm: true },
-	{ id: "notes", name: "Notes", type: "textarea" as const, required: false, showInForm: false },
-];
-
-const BASE_LEAD_STATUSES = [
-	{ id: "new", name: "New", color: "#94a3b8" },
-	{ id: "qualified", name: "Qualified", color: "#3b82f6" },
-	{ id: "not-qualified", name: "Not Qualified", color: "#f97316" },
-	{ id: "nurturing", name: "Nurturing", color: "#eab308" },
-	{ id: "converted", name: "Converted", color: "#22c55e" },
-	{ id: "lost", name: "Lost", color: "#ef4444" },
+	{
+		id: "full-name",
+		name: "Full Name",
+		type: "text" as const,
+		required: true,
+		showInForm: true,
+	},
+	{
+		id: "email",
+		name: "Email",
+		type: "email" as const,
+		required: true,
+		showInForm: true,
+	},
+	{
+		id: "phone",
+		name: "Phone",
+		type: "phone" as const,
+		required: true,
+		showInForm: true,
+	},
+	{
+		id: "company",
+		name: "Company",
+		type: "text" as const,
+		required: true,
+		showInForm: true,
+	},
+	{
+		id: "job-title",
+		name: "Job Title",
+		type: "text" as const,
+		required: false,
+		showInForm: true,
+	},
+	{
+		id: "company-size",
+		name: "Company Size",
+		type: "dropdown" as const,
+		required: false,
+		showInForm: true,
+	},
+	{
+		id: "industry",
+		name: "Industry",
+		type: "dropdown" as const,
+		required: false,
+		showInForm: true,
+	},
+	{
+		id: "notes",
+		name: "Notes",
+		type: "textarea" as const,
+		required: false,
+		showInForm: false,
+	},
 ];
 
 const BASE_LEAD_RULES = [
-	{ id: "rule-1", title: "Assign leads from Website to Sales team", description: "Source is Website", icon: "link", enabled: true },
-	{ id: "rule-2", title: "Assign high-value leads to Rahul Kumar", description: "Company size > 500", icon: "building", enabled: true },
-	{ id: "rule-3", title: "Assign LinkedIn leads to Priya Mehta", description: "Source is LinkedIn", icon: "social", enabled: true },
-	{ id: "rule-4", title: "Round robin assignment", description: "Distribute leads equally among team members", icon: "users", enabled: false },
+	{
+		id: "rule-1",
+		title: "Assign leads from Website to Sales team",
+		description: "Source is Website",
+		icon: "link",
+		enabled: true,
+	},
+	{
+		id: "rule-2",
+		title: "Assign high-value leads to Rahul Kumar",
+		description: "Company size > 500",
+		icon: "building",
+		enabled: true,
+	},
+	{
+		id: "rule-3",
+		title: "Assign LinkedIn leads to Priya Mehta",
+		description: "Source is LinkedIn",
+		icon: "social",
+		enabled: true,
+	},
+	{
+		id: "rule-4",
+		title: "Round robin assignment",
+		description: "Distribute leads equally among team members",
+		icon: "users",
+		enabled: false,
+	},
 ];
 
 const BASE_ACTIVITY_TYPES: ActivityTypeItem[] = [
@@ -245,44 +269,6 @@ const BASE_ACTIVITY_ASSIGNMENT_RULES: ActivityAssignmentRule[] = [
 		condition: "Product is Appbar",
 		assignTo: "Product Team",
 		status: false,
-	},
-];
-
-const BASE_BACKUPS: BackupItem[] = [
-	{
-		id: "backup-1",
-		name: "Monthly Backup",
-		createdOn: "23 Sep 2025, 10:30 AM",
-		size: "12.4 MB",
-		status: "Success",
-	},
-	{
-		id: "backup-2",
-		name: "Pre-Product Update",
-		createdOn: "18 Sep 2025, 04:15 PM",
-		size: "11.8 MB",
-		status: "Success",
-	},
-	{
-		id: "backup-3",
-		name: "August Backup",
-		createdOn: "01 Aug 2025, 09:00 AM",
-		size: "10.6 MB",
-		status: "Success",
-	},
-	{
-		id: "backup-4",
-		name: "Initial Setup Backup",
-		createdOn: "15 Jul 2025, 02:30 PM",
-		size: "9.2 MB",
-		status: "Success",
-	},
-	{
-		id: "backup-5",
-		name: "Initial Setup Backup",
-		createdOn: "10 Jul 2025, 02:00 PM",
-		size: "9.2 MB",
-		status: "Success",
 	},
 ];
 
@@ -435,7 +421,8 @@ export class WorkspaceService {
 		userId: string,
 		input: MemberListInput,
 	): Promise<ListResult<WorkspaceMember>> {
-		const where = this.buildWhere(input);
+		const activeSince = this.activeSince();
+		const where = this.buildWhere(input, activeSince);
 		const { skip, take } = paginate(input);
 
 		const [rows, total, roles] = await Promise.all([
@@ -455,164 +442,72 @@ export class WorkspaceService {
 		]);
 
 		return {
-			rows: rows.map((row) => this.toMember(row, userId)),
+			rows: rows.map((row) => this.toMember(row, userId, activeSince)),
 			total,
 			facetCounts: { role: countsByKey(roles, "role") },
 		};
 	}
 
-	async teams(userId: string): Promise<TeamItem[]> {
-		const row = await this.readWorkspace();
-		let customTeams: { id: string; name: string; icon?: string }[] = [];
-		try {
-			if (row?.metadata) {
-				const meta = JSON.parse(row.metadata);
-				if (Array.isArray(meta.teams)) {
-					customTeams = meta.teams;
-				}
-			}
-		} catch {}
-
-		const allTeams = [
-			...BASE_TEAMS,
-			...customTeams.filter(
-				(ct) => !BASE_TEAMS.some((bt) => bt.id === ct.id),
-			),
-		];
-
-		const members = await this.db.member.findMany({
-			where: { organizationId: WORKSPACE_ID },
-			select: MEMBER_SELECT,
+	async teams(): Promise<TeamItem[]> {
+		const teams = await this.db.team.findMany({
+			orderBy: { name: "asc" },
+			select: {
+				id: true,
+				name: true,
+				_count: { select: { members: true } },
+			},
 		});
 
-		return allTeams.map((team) => {
-			const memberCount = members.filter((m) => {
-				const converted = this.toMember(m, userId);
-				return (
-					converted.team.toLowerCase() === team.name.toLowerCase() ||
-					converted.team.toLowerCase() === team.id.toLowerCase()
-				);
-			}).length;
-
-			return {
-				id: team.id,
-				name: team.name,
-				memberCount,
-				icon: team.icon ?? "user",
-			};
-		});
+		return teams.map((team) => ({
+			id: team.id,
+			name: team.name,
+			memberCount: team._count.members,
+		}));
 	}
 
-	async roles(userId: string): Promise<RoleItem[]> {
-		const row = await this.readWorkspace();
-		let customRoles: { id: string; name: string; description?: string }[] = [];
-		try {
-			if (row?.metadata) {
-				const meta = JSON.parse(row.metadata);
-				if (Array.isArray(meta.roles)) {
-					customRoles = meta.roles;
-				}
-			}
-		} catch {}
-
-		const allRoles = [
-			...BASE_ROLES,
-			...customRoles.filter(
-				(cr) => !BASE_ROLES.some((br) => br.id === cr.id),
-			),
-		];
-
-		const members = await this.db.member.findMany({
+	async roles(): Promise<RoleItem[]> {
+		const grouped = await this.db.member.groupBy({
+			by: ["role"],
 			where: { organizationId: WORKSPACE_ID },
-			select: MEMBER_SELECT,
+			_count: { _all: true },
 		});
 
-		return allRoles.map((role) => {
-			const userCount = members.filter((m) => {
-				return (
-					m.role.toLowerCase() === role.id.toLowerCase() ||
-					m.role.toLowerCase() === role.name.toLowerCase()
-				);
-			}).length;
+		const counts = new Map<WorkspaceRole, number>();
+		for (const row of grouped) {
+			const role = toWorkspaceRole(row.role);
+			counts.set(role, (counts.get(role) ?? 0) + row._count._all);
+		}
 
-			return {
-				id: role.id,
-				name: role.name,
-				description: role.description ?? "",
-				userCount,
-			};
-		});
+		return WORKSPACE_ROLES.map((role) => ({
+			id: role,
+			userCount: counts.get(role) ?? 0,
+		}));
 	}
 
 	async createTeam(userId: string, input: CreateTeamInput): Promise<TeamItem> {
-		const teamId = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-		const newTeam = {
-			id: teamId,
-			name: input.name,
-			icon: input.icon || "user",
-		};
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can add a team.",
+		);
 
-		const row = await this.readWorkspace();
-		let currentMeta: Record<string, any> = {};
 		try {
-			if (row?.metadata) currentMeta = JSON.parse(row.metadata);
-		} catch {}
+			const team = await this.db.team.create({
+				data: { name: input.name },
+				select: { id: true, name: true },
+			});
 
-		const existingTeams: any[] = Array.isArray(currentMeta.teams)
-			? currentMeta.teams
-			: [];
-		const updatedTeams = [...existingTeams.filter((t) => t.id !== teamId), newTeam];
+			this.logger.log({ message: "Team created", userId, teamId: team.id });
 
-		await this.db.organization.update({
-			where: { id: WORKSPACE_ID },
-			data: {
-				metadata: JSON.stringify({
-					...currentMeta,
-					teams: updatedTeams,
-				}),
-			},
-		});
-
-		return {
-			...newTeam,
-			memberCount: 0,
-		};
-	}
-
-	async createRole(userId: string, input: CreateRoleInput): Promise<RoleItem> {
-		const roleId = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-		const newRole = {
-			id: roleId,
-			name: input.name,
-			description: input.description ?? "",
-			permissions: input.permissions ?? [],
-		};
-
-		const row = await this.readWorkspace();
-		let currentMeta: Record<string, any> = {};
-		try {
-			if (row?.metadata) currentMeta = JSON.parse(row.metadata);
-		} catch {}
-
-		const existingRoles: any[] = Array.isArray(currentMeta.roles)
-			? currentMeta.roles
-			: [];
-		const updatedRoles = [...existingRoles.filter((r) => r.id !== roleId), newRole];
-
-		await this.db.organization.update({
-			where: { id: WORKSPACE_ID },
-			data: {
-				metadata: JSON.stringify({
-					...currentMeta,
-					roles: updatedRoles,
-				}),
-			},
-		});
-
-		return {
-			...newRole,
-			userCount: 0,
-		};
+			return { ...team, memberCount: 0 };
+		} catch (error) {
+			if (
+				error instanceof Prisma.PrismaClientKnownRequestError &&
+				error.code === "P2002"
+			) {
+				throw new BadRequestException("A team with that name already exists.");
+			}
+			throw error;
+		}
 	}
 
 	async leadSettings(userId: string): Promise<LeadSettingsData> {
@@ -625,45 +520,43 @@ export class WorkspaceService {
 			}
 		} catch {}
 
-		// 1. Sources
-		const customSources: LeadSourceItem[] = Array.isArray(leadMeta.sources) ? leadMeta.sources : [];
-		const sourcesList = [
-			...BASE_LEAD_SOURCES.map((s) => ({ ...s, isCustom: false })),
-			...customSources.filter((cs) => !BASE_LEAD_SOURCES.some((bs) => bs.id === cs.id)).map((s) => ({ ...s, isCustom: true })),
-		];
-
-		let sourceCounts: Record<string, number> = {};
-		try {
-			const grouped = await this.db.contact.groupBy({
+		const [sourceGroups, statusGroups] = await Promise.all([
+			this.db.contact.groupBy({
 				by: ["leadSource"],
 				where: { archivedAt: null },
 				_count: { _all: true },
-			});
-			for (const item of grouped) {
-				if (item.leadSource) {
-					const key = item.leadSource.toLowerCase().replace(/_/g, "-");
-					sourceCounts[key] = item._count._all;
-				}
-			}
-		} catch {}
+			}),
+			this.db.contact.groupBy({
+				by: ["leadStatus"],
+				where: { archivedAt: null },
+				_count: { _all: true },
+			}),
+		]);
 
-		const sources: LeadSourceItem[] = sourcesList.map((s) => {
-			const override = customSources.find((cs) => cs.id === s.id);
-			return {
-				id: s.id,
-				name: override?.name ?? s.name,
-				type: override?.type ?? s.type,
-				status: override?.status ?? s.status,
-				leadsCount: sourceCounts[s.id] ?? 0,
-				isCustom: s.isCustom ?? false,
-			};
-		});
+		const sourceCounts = new Map(
+			sourceGroups.map((group) => [group.leadSource, group._count._all]),
+		);
+		const statusCounts = new Map(
+			statusGroups.map((group) => [group.leadStatus, group._count._all]),
+		);
 
-		// 2. Fields
-		const customFields: LeadFieldItem[] = Array.isArray(leadMeta.fields) ? leadMeta.fields : [];
+		const sources: LeadSourceItem[] = Object.values(LeadSource).map(
+			(source) => ({ id: source, leadsCount: sourceCounts.get(source) ?? 0 }),
+		);
+		const unsourcedCount = sourceCounts.get(null) ?? 0;
+
+		const statuses: LeadStatusItem[] = Object.values(LeadStatus).map(
+			(status) => ({ id: status, leadsCount: statusCounts.get(status) ?? 0 }),
+		);
+
+		const customFields: LeadFieldItem[] = Array.isArray(leadMeta.fields)
+			? leadMeta.fields
+			: [];
 		const fieldsList = [
 			...BASE_LEAD_FIELDS.map((f) => ({ ...f, isCustom: false })),
-			...customFields.filter((cf) => !BASE_LEAD_FIELDS.some((bf) => bf.id === cf.id)).map((f) => ({ ...f, isCustom: true })),
+			...customFields
+				.filter((cf) => !BASE_LEAD_FIELDS.some((bf) => bf.id === cf.id))
+				.map((f) => ({ ...f, isCustom: true })),
 		];
 		const fields: LeadFieldItem[] = fieldsList.map((f) => {
 			const override = customFields.find((cf) => cf.id === f.id);
@@ -677,44 +570,16 @@ export class WorkspaceService {
 			};
 		});
 
-		// 3. Statuses
-		const customStatuses: LeadStatusItem[] = Array.isArray(leadMeta.statuses) ? leadMeta.statuses : [];
-		const statusList = [
-			...BASE_LEAD_STATUSES.map((st) => ({ ...st, isCustom: false })),
-			...customStatuses.filter((cst) => !BASE_LEAD_STATUSES.some((bst) => bst.id === cst.id)).map((st) => ({ ...st, isCustom: true })),
-		];
-
-		let statusCounts: Record<string, number> = {};
-		try {
-			const grouped = await this.db.contact.groupBy({
-				by: ["leadStatus"],
-				where: { archivedAt: null },
-				_count: { _all: true },
-			});
-			for (const item of grouped) {
-				if (item.leadStatus) {
-					const key = item.leadStatus.toLowerCase().replace(/_/g, "-");
-					statusCounts[key] = item._count._all;
-				}
-			}
-		} catch {}
-
-		const statuses: LeadStatusItem[] = statusList.map((st) => {
-			const override = customStatuses.find((cst) => cst.id === st.id);
-			return {
-				id: st.id,
-				name: override?.name ?? st.name,
-				color: override?.color ?? st.color,
-				leadsCount: statusCounts[st.id] ?? 0,
-				isCustom: st.isCustom ?? false,
-			};
-		});
-
-		// 4. Assignment Rules
-		const customRules: LeadAssignmentRuleItem[] = Array.isArray(leadMeta.assignmentRules) ? leadMeta.assignmentRules : [];
+		const customRules: LeadAssignmentRuleItem[] = Array.isArray(
+			leadMeta.assignmentRules,
+		)
+			? leadMeta.assignmentRules
+			: [];
 		const rulesList = [
 			...BASE_LEAD_RULES,
-			...customRules.filter((cr) => !BASE_LEAD_RULES.some((br) => br.id === cr.id)),
+			...customRules.filter(
+				(cr) => !BASE_LEAD_RULES.some((br) => br.id === cr.id),
+			),
 		];
 		const assignmentRules: LeadAssignmentRuleItem[] = rulesList.map((r) => {
 			const override = customRules.find((cr) => cr.id === r.id);
@@ -727,8 +592,12 @@ export class WorkspaceService {
 			};
 		});
 
-		// 5. Default Owner
-		let defaultOwner: DefaultLeadOwner = { userId: null, name: null, role: null, image: null };
+		let defaultOwner: DefaultLeadOwner = {
+			userId: null,
+			name: null,
+			role: null,
+			image: null,
+		};
 		const targetOwnerId = leadMeta.defaultOwnerId;
 		if (targetOwnerId) {
 			const member = await this.db.member.findFirst({
@@ -763,6 +632,7 @@ export class WorkspaceService {
 
 		return {
 			sources,
+			unsourcedCount,
 			fields,
 			statuses,
 			assignmentRules,
@@ -770,78 +640,14 @@ export class WorkspaceService {
 		};
 	}
 
-	async createLeadSource(userId: string, input: CreateLeadSourceInput): Promise<LeadSourceItem> {
-		const sourceId = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-		const newSource: LeadSourceItem = {
-			id: sourceId,
-			name: input.name,
-			type: input.type,
-			status: "active",
-			leadsCount: 0,
-			isCustom: true,
-		};
-
-		const row = await this.readWorkspace();
-		let meta: Record<string, any> = {};
-		try { if (row?.metadata) meta = JSON.parse(row.metadata); } catch {}
-		const leadSettings = meta.leadSettings || {};
-		const existing: any[] = Array.isArray(leadSettings.sources) ? leadSettings.sources : [];
-		leadSettings.sources = [...existing.filter((s) => s.id !== sourceId), newSource];
-		meta.leadSettings = leadSettings;
-
-		await this.db.organization.update({
-			where: { id: WORKSPACE_ID },
-			data: { metadata: JSON.stringify(meta) },
-		});
-		return newSource;
-	}
-
-	async updateLeadSource(userId: string, input: UpdateLeadSourceInput): Promise<LeadSourceItem> {
-		const row = await this.readWorkspace();
-		let meta: Record<string, any> = {};
-		try { if (row?.metadata) meta = JSON.parse(row.metadata); } catch {}
-		const leadSettings = meta.leadSettings || {};
-		const existing: any[] = Array.isArray(leadSettings.sources) ? leadSettings.sources : [];
-
-		const base = BASE_LEAD_SOURCES.find((s) => s.id === input.id);
-		const prev = existing.find((s) => s.id === input.id);
-
-		const updated: LeadSourceItem = {
-			id: input.id,
-			name: input.name ?? prev?.name ?? base?.name ?? input.id,
-			type: input.type ?? prev?.type ?? base?.type ?? "online",
-			status: input.status ?? prev?.status ?? base?.status ?? "active",
-			leadsCount: prev?.leadsCount ?? 0,
-			isCustom: prev?.isCustom ?? !base,
-		};
-
-		leadSettings.sources = [...existing.filter((s) => s.id !== input.id), updated];
-		meta.leadSettings = leadSettings;
-
-		await this.db.organization.update({
-			where: { id: WORKSPACE_ID },
-			data: { metadata: JSON.stringify(meta) },
-		});
-		return updated;
-	}
-
-	async deleteLeadSource(userId: string, input: DeleteLeadSourceInput): Promise<{ success: boolean }> {
-		const row = await this.readWorkspace();
-		let meta: Record<string, any> = {};
-		try { if (row?.metadata) meta = JSON.parse(row.metadata); } catch {}
-		const leadSettings = meta.leadSettings || {};
-		const existing: any[] = Array.isArray(leadSettings.sources) ? leadSettings.sources : [];
-		leadSettings.sources = existing.filter((s) => s.id !== input.id);
-		meta.leadSettings = leadSettings;
-
-		await this.db.organization.update({
-			where: { id: WORKSPACE_ID },
-			data: { metadata: JSON.stringify(meta) },
-		});
-		return { success: true };
-	}
-
-	async createLeadField(userId: string, input: CreateLeadFieldInput): Promise<LeadFieldItem> {
+	async createLeadField(
+		userId: string,
+		input: CreateLeadFieldInput,
+	): Promise<LeadFieldItem> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const fieldId = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 		const newField: LeadFieldItem = {
 			id: fieldId,
@@ -854,10 +660,17 @@ export class WorkspaceService {
 
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
-		try { if (row?.metadata) meta = JSON.parse(row.metadata); } catch {}
+		try {
+			if (row?.metadata) meta = JSON.parse(row.metadata);
+		} catch {}
 		const leadSettings = meta.leadSettings || {};
-		const existing: any[] = Array.isArray(leadSettings.fields) ? leadSettings.fields : [];
-		leadSettings.fields = [...existing.filter((f) => f.id !== fieldId), newField];
+		const existing: any[] = Array.isArray(leadSettings.fields)
+			? leadSettings.fields
+			: [];
+		leadSettings.fields = [
+			...existing.filter((f) => f.id !== fieldId),
+			newField,
+		];
 		meta.leadSettings = leadSettings;
 
 		await this.db.organization.update({
@@ -867,12 +680,23 @@ export class WorkspaceService {
 		return newField;
 	}
 
-	async updateLeadField(userId: string, input: UpdateLeadFieldInput): Promise<LeadFieldItem> {
+	async updateLeadField(
+		userId: string,
+		input: UpdateLeadFieldInput,
+	): Promise<LeadFieldItem> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
-		try { if (row?.metadata) meta = JSON.parse(row.metadata); } catch {}
+		try {
+			if (row?.metadata) meta = JSON.parse(row.metadata);
+		} catch {}
 		const leadSettings = meta.leadSettings || {};
-		const existing: any[] = Array.isArray(leadSettings.fields) ? leadSettings.fields : [];
+		const existing: any[] = Array.isArray(leadSettings.fields)
+			? leadSettings.fields
+			: [];
 
 		const base = BASE_LEAD_FIELDS.find((f) => f.id === input.id);
 		const prev = existing.find((f) => f.id === input.id);
@@ -882,11 +706,15 @@ export class WorkspaceService {
 			name: input.name ?? prev?.name ?? base?.name ?? input.id,
 			type: input.type ?? prev?.type ?? base?.type ?? "text",
 			required: input.required ?? prev?.required ?? base?.required ?? false,
-			showInForm: input.showInForm ?? prev?.showInForm ?? base?.showInForm ?? true,
+			showInForm:
+				input.showInForm ?? prev?.showInForm ?? base?.showInForm ?? true,
 			isCustom: prev?.isCustom ?? !base,
 		};
 
-		leadSettings.fields = [...existing.filter((f) => f.id !== input.id), updated];
+		leadSettings.fields = [
+			...existing.filter((f) => f.id !== input.id),
+			updated,
+		];
 		meta.leadSettings = leadSettings;
 
 		await this.db.organization.update({
@@ -896,12 +724,23 @@ export class WorkspaceService {
 		return updated;
 	}
 
-	async deleteLeadField(userId: string, input: DeleteLeadFieldInput): Promise<{ success: boolean }> {
+	async deleteLeadField(
+		userId: string,
+		input: DeleteLeadFieldInput,
+	): Promise<{ success: boolean }> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
-		try { if (row?.metadata) meta = JSON.parse(row.metadata); } catch {}
+		try {
+			if (row?.metadata) meta = JSON.parse(row.metadata);
+		} catch {}
 		const leadSettings = meta.leadSettings || {};
-		const existing: any[] = Array.isArray(leadSettings.fields) ? leadSettings.fields : [];
+		const existing: any[] = Array.isArray(leadSettings.fields)
+			? leadSettings.fields
+			: [];
 		leadSettings.fields = existing.filter((f) => f.id !== input.id);
 		meta.leadSettings = leadSettings;
 
@@ -912,76 +751,14 @@ export class WorkspaceService {
 		return { success: true };
 	}
 
-	async createLeadStatus(userId: string, input: CreateLeadStatusInput): Promise<LeadStatusItem> {
-		const statusId = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-		const newStatus: LeadStatusItem = {
-			id: statusId,
-			name: input.name,
-			color: input.color,
-			leadsCount: 0,
-			isCustom: true,
-		};
-
-		const row = await this.readWorkspace();
-		let meta: Record<string, any> = {};
-		try { if (row?.metadata) meta = JSON.parse(row.metadata); } catch {}
-		const leadSettings = meta.leadSettings || {};
-		const existing: any[] = Array.isArray(leadSettings.statuses) ? leadSettings.statuses : [];
-		leadSettings.statuses = [...existing.filter((s) => s.id !== statusId), newStatus];
-		meta.leadSettings = leadSettings;
-
-		await this.db.organization.update({
-			where: { id: WORKSPACE_ID },
-			data: { metadata: JSON.stringify(meta) },
-		});
-		return newStatus;
-	}
-
-	async updateLeadStatus(userId: string, input: UpdateLeadStatusInput): Promise<LeadStatusItem> {
-		const row = await this.readWorkspace();
-		let meta: Record<string, any> = {};
-		try { if (row?.metadata) meta = JSON.parse(row.metadata); } catch {}
-		const leadSettings = meta.leadSettings || {};
-		const existing: any[] = Array.isArray(leadSettings.statuses) ? leadSettings.statuses : [];
-
-		const base = BASE_LEAD_STATUSES.find((s) => s.id === input.id);
-		const prev = existing.find((s) => s.id === input.id);
-
-		const updated: LeadStatusItem = {
-			id: input.id,
-			name: input.name ?? prev?.name ?? base?.name ?? input.id,
-			color: input.color ?? prev?.color ?? base?.color ?? "#94a3b8",
-			leadsCount: prev?.leadsCount ?? 0,
-			isCustom: prev?.isCustom ?? !base,
-		};
-
-		leadSettings.statuses = [...existing.filter((s) => s.id !== input.id), updated];
-		meta.leadSettings = leadSettings;
-
-		await this.db.organization.update({
-			where: { id: WORKSPACE_ID },
-			data: { metadata: JSON.stringify(meta) },
-		});
-		return updated;
-	}
-
-	async deleteLeadStatus(userId: string, input: DeleteLeadStatusInput): Promise<{ success: boolean }> {
-		const row = await this.readWorkspace();
-		let meta: Record<string, any> = {};
-		try { if (row?.metadata) meta = JSON.parse(row.metadata); } catch {}
-		const leadSettings = meta.leadSettings || {};
-		const existing: any[] = Array.isArray(leadSettings.statuses) ? leadSettings.statuses : [];
-		leadSettings.statuses = existing.filter((s) => s.id !== input.id);
-		meta.leadSettings = leadSettings;
-
-		await this.db.organization.update({
-			where: { id: WORKSPACE_ID },
-			data: { metadata: JSON.stringify(meta) },
-		});
-		return { success: true };
-	}
-
-	async createLeadAssignmentRule(userId: string, input: CreateLeadAssignmentRuleInput): Promise<LeadAssignmentRuleItem> {
+	async createLeadAssignmentRule(
+		userId: string,
+		input: CreateLeadAssignmentRuleInput,
+	): Promise<LeadAssignmentRuleItem> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const ruleId = "rule-" + crypto.randomUUID().slice(0, 8);
 		const newRule: LeadAssignmentRuleItem = {
 			id: ruleId,
@@ -993,9 +770,13 @@ export class WorkspaceService {
 
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
-		try { if (row?.metadata) meta = JSON.parse(row.metadata); } catch {}
+		try {
+			if (row?.metadata) meta = JSON.parse(row.metadata);
+		} catch {}
 		const leadSettings = meta.leadSettings || {};
-		const existing: any[] = Array.isArray(leadSettings.assignmentRules) ? leadSettings.assignmentRules : [];
+		const existing: any[] = Array.isArray(leadSettings.assignmentRules)
+			? leadSettings.assignmentRules
+			: [];
 		leadSettings.assignmentRules = [...existing, newRule];
 		meta.leadSettings = leadSettings;
 
@@ -1006,12 +787,23 @@ export class WorkspaceService {
 		return newRule;
 	}
 
-	async updateLeadAssignmentRule(userId: string, input: UpdateLeadAssignmentRuleInput): Promise<LeadAssignmentRuleItem> {
+	async updateLeadAssignmentRule(
+		userId: string,
+		input: UpdateLeadAssignmentRuleInput,
+	): Promise<LeadAssignmentRuleItem> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
-		try { if (row?.metadata) meta = JSON.parse(row.metadata); } catch {}
+		try {
+			if (row?.metadata) meta = JSON.parse(row.metadata);
+		} catch {}
 		const leadSettings = meta.leadSettings || {};
-		const existing: any[] = Array.isArray(leadSettings.assignmentRules) ? leadSettings.assignmentRules : [];
+		const existing: any[] = Array.isArray(leadSettings.assignmentRules)
+			? leadSettings.assignmentRules
+			: [];
 
 		const base = BASE_LEAD_RULES.find((r) => r.id === input.id);
 		const prev = existing.find((r) => r.id === input.id);
@@ -1019,12 +811,16 @@ export class WorkspaceService {
 		const updated: LeadAssignmentRuleItem = {
 			id: input.id,
 			title: input.title ?? prev?.title ?? base?.title ?? "Assignment Rule",
-			description: input.description ?? prev?.description ?? base?.description ?? "",
+			description:
+				input.description ?? prev?.description ?? base?.description ?? "",
 			icon: input.icon ?? prev?.icon ?? base?.icon ?? "link",
 			enabled: input.enabled ?? prev?.enabled ?? base?.enabled ?? true,
 		};
 
-		leadSettings.assignmentRules = [...existing.filter((r) => r.id !== input.id), updated];
+		leadSettings.assignmentRules = [
+			...existing.filter((r) => r.id !== input.id),
+			updated,
+		];
 		meta.leadSettings = leadSettings;
 
 		await this.db.organization.update({
@@ -1034,12 +830,23 @@ export class WorkspaceService {
 		return updated;
 	}
 
-	async deleteLeadAssignmentRule(userId: string, input: DeleteLeadAssignmentRuleInput): Promise<{ success: boolean }> {
+	async deleteLeadAssignmentRule(
+		userId: string,
+		input: DeleteLeadAssignmentRuleInput,
+	): Promise<{ success: boolean }> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
-		try { if (row?.metadata) meta = JSON.parse(row.metadata); } catch {}
+		try {
+			if (row?.metadata) meta = JSON.parse(row.metadata);
+		} catch {}
 		const leadSettings = meta.leadSettings || {};
-		const existing: any[] = Array.isArray(leadSettings.assignmentRules) ? leadSettings.assignmentRules : [];
+		const existing: any[] = Array.isArray(leadSettings.assignmentRules)
+			? leadSettings.assignmentRules
+			: [];
 		leadSettings.assignmentRules = existing.filter((r) => r.id !== input.id);
 		meta.leadSettings = leadSettings;
 
@@ -1050,10 +857,19 @@ export class WorkspaceService {
 		return { success: true };
 	}
 
-	async updateDefaultLeadOwner(userId: string, input: UpdateDefaultLeadOwnerInput): Promise<DefaultLeadOwner> {
+	async updateDefaultLeadOwner(
+		userId: string,
+		input: UpdateDefaultLeadOwnerInput,
+	): Promise<DefaultLeadOwner> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
-		try { if (row?.metadata) meta = JSON.parse(row.metadata); } catch {}
+		try {
+			if (row?.metadata) meta = JSON.parse(row.metadata);
+		} catch {}
 		const leadSettings = meta.leadSettings || {};
 		leadSettings.defaultOwnerId = input.userId;
 		meta.leadSettings = leadSettings;
@@ -1081,42 +897,12 @@ export class WorkspaceService {
 		return { userId: null, name: null, role: null, image: null };
 	}
 
-	async invitationSettings(userId: string): Promise<InvitationSettings> {
-		const workspace = await this.readWorkspace();
-		const slug = workspace?.slug ?? "workspace";
+	invitationSettings(): InvitationSettings {
 		return {
-			allowUserInvitations: true,
-			defaultRole: "Viewer",
-			inviteLink: `https://crm.gisul.id/invite/${slug}`,
+			signInUrl: new URL("/sign-in", appUrl).toString(),
+			allowedDomains: [...workspaceDomains()],
+			defaultRole: "member",
 		};
-	}
-
-	async updateInvitationSettings(
-		userId: string,
-		input: UpdateInvitationSettingsInput,
-	): Promise<InvitationSettings> {
-		return this.invitationSettings(userId);
-	}
-
-	async inviteUser(userId: string, input: InviteUserInput): Promise<{ success: boolean; email: string }> {
-		const role = await workspaceRoleOf(userId, this.db);
-		if (!canChangeRole(role)) {
-			throw new ForbiddenException("You do not have permission to invite users.");
-		}
-
-		await this.db.invitation.create({
-			data: {
-				id: crypto.randomUUID(),
-				organizationId: WORKSPACE_ID,
-				email: input.email,
-				role: input.role,
-				status: "pending",
-				expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-				inviterId: userId,
-			},
-		});
-
-		return { success: true, email: input.email };
 	}
 
 	async integrations(userId: string): Promise<IntegrationsOverview> {
@@ -1152,8 +938,12 @@ export class WorkspaceService {
 				id: "gmail",
 				name: "Gmail",
 				category: "communication",
-				description: "Sync emails, track conversations and log emails as CRM activities.",
-				status: (customIntegrations.gmail?.connected ?? isGoogleConnected) ? "connected" : "not_connected",
+				description:
+					"Sync emails, track conversations and log emails as CRM activities.",
+				status:
+					(customIntegrations.gmail?.connected ?? isGoogleConnected)
+						? "connected"
+						: "not_connected",
 				connected: customIntegrations.gmail?.connected ?? isGoogleConnected,
 				enabled: customIntegrations.gmail?.enabled ?? isGoogleConnected,
 				accountName: googleSync?.user?.email ?? null,
@@ -1163,8 +953,12 @@ export class WorkspaceService {
 				id: "outlook",
 				name: "Outlook",
 				category: "communication",
-				description: "Sync emails, calendar events and create activities automatically.",
-				status: (customIntegrations.outlook?.connected ?? isMsConnected) ? "connected" : "not_connected",
+				description:
+					"Sync emails, calendar events and create activities automatically.",
+				status:
+					(customIntegrations.outlook?.connected ?? isMsConnected)
+						? "connected"
+						: "not_connected",
 				connected: customIntegrations.outlook?.connected ?? isMsConnected,
 				enabled: customIntegrations.outlook?.enabled ?? isMsConnected,
 				accountName: msSync?.user?.email ?? null,
@@ -1174,10 +968,17 @@ export class WorkspaceService {
 				id: "google-calendar",
 				name: "Google Calendar",
 				category: "communication",
-				description: "Sync meetings, create activities and get reminders in your calendar.",
-				status: (customIntegrations["google-calendar"]?.connected ?? isGoogleConnected) ? "connected" : "not_connected",
-				connected: customIntegrations["google-calendar"]?.connected ?? isGoogleConnected,
-				enabled: customIntegrations["google-calendar"]?.enabled ?? isGoogleConnected,
+				description:
+					"Sync meetings, create activities and get reminders in your calendar.",
+				status:
+					(customIntegrations["google-calendar"]?.connected ??
+					isGoogleConnected)
+						? "connected"
+						: "not_connected",
+				connected:
+					customIntegrations["google-calendar"]?.connected ?? isGoogleConnected,
+				enabled:
+					customIntegrations["google-calendar"]?.enabled ?? isGoogleConnected,
 				accountName: googleSync?.user?.email ?? null,
 				settingsUrl: "connections/google",
 			},
@@ -1186,8 +987,12 @@ export class WorkspaceService {
 				id: "slack",
 				name: "Slack",
 				category: "collaboration",
-				description: "Get notifications, share deal updates and create leads from Slack.",
-				status: (customIntegrations.slack?.connected ?? isSlackConnected) ? "connected" : "not_connected",
+				description:
+					"Get notifications, share deal updates and create leads from Slack.",
+				status:
+					(customIntegrations.slack?.connected ?? isSlackConnected)
+						? "connected"
+						: "not_connected",
 				connected: customIntegrations.slack?.connected ?? isSlackConnected,
 				enabled: customIntegrations.slack?.enabled ?? isSlackConnected,
 				accountName: slackSync?.teamName ?? null,
@@ -1197,11 +1002,15 @@ export class WorkspaceService {
 				id: "teams",
 				name: "Microsoft Teams",
 				category: "collaboration",
-				description: "Get notifications and collaborate on deals with your team.",
-				status: (customIntegrations.teams?.connected ?? isMsConnected) ? "connected" : "not_connected",
+				description:
+					"Get notifications and collaborate on deals with your team.",
+				status:
+					(customIntegrations.teams?.connected ?? isMsConnected)
+						? "connected"
+						: "not_connected",
 				connected: customIntegrations.teams?.connected ?? isMsConnected,
 				enabled: customIntegrations.teams?.enabled ?? isMsConnected,
-				accountName: msSync?.email ?? null,
+				accountName: msSync?.user?.email ?? null,
 				settingsUrl: "connections/microsoft",
 			},
 			{
@@ -1209,7 +1018,9 @@ export class WorkspaceService {
 				name: "Notion",
 				category: "collaboration",
 				description: "Sync notes, documents and meeting notes with your CRM.",
-				status: customIntegrations.notion?.connected ? "connected" : "not_connected",
+				status: customIntegrations.notion?.connected
+					? "connected"
+					: "not_connected",
 				connected: Boolean(customIntegrations.notion?.connected),
 				enabled: Boolean(customIntegrations.notion?.enabled),
 				settingsUrl: null,
@@ -1219,8 +1030,11 @@ export class WorkspaceService {
 				id: "hubspot",
 				name: "HubSpot",
 				category: "marketing",
-				description: "Sync leads, contacts and marketing activities with GISUL CRM.",
-				status: customIntegrations.hubspot?.connected ? "connected" : "not_connected",
+				description:
+					"Sync leads, contacts and marketing activities with GISUL CRM.",
+				status: customIntegrations.hubspot?.connected
+					? "connected"
+					: "not_connected",
 				connected: Boolean(customIntegrations.hubspot?.connected),
 				enabled: Boolean(customIntegrations.hubspot?.enabled),
 				settingsUrl: null,
@@ -1230,7 +1044,10 @@ export class WorkspaceService {
 				name: "LinkedIn",
 				category: "marketing",
 				description: "Capture leads from LinkedIn and sync with your CRM.",
-				status: (customIntegrations.linkedin?.connected ?? true) ? "connected" : "not_connected",
+				status:
+					(customIntegrations.linkedin?.connected ?? true)
+						? "connected"
+						: "not_connected",
 				connected: customIntegrations.linkedin?.connected ?? true,
 				enabled: customIntegrations.linkedin?.enabled ?? true,
 				settingsUrl: null,
@@ -1239,8 +1056,11 @@ export class WorkspaceService {
 				id: "meta-ads",
 				name: "Meta Ads",
 				category: "marketing",
-				description: "Automatically capture leads from your Facebook and Instagram ads.",
-				status: customIntegrations["meta-ads"]?.connected ? "connected" : "not_connected",
+				description:
+					"Automatically capture leads from your Facebook and Instagram ads.",
+				status: customIntegrations["meta-ads"]?.connected
+					? "connected"
+					: "not_connected",
 				connected: Boolean(customIntegrations["meta-ads"]?.connected),
 				enabled: Boolean(customIntegrations["meta-ads"]?.enabled),
 				settingsUrl: null,
@@ -1251,7 +1071,9 @@ export class WorkspaceService {
 				name: "Zapier",
 				category: "development",
 				description: "Automate workflows between GISUL CRM and 5000+ apps.",
-				status: customIntegrations.zapier?.connected ? "connected" : "not_connected",
+				status: customIntegrations.zapier?.connected
+					? "connected"
+					: "not_connected",
 				connected: Boolean(customIntegrations.zapier?.connected),
 				enabled: Boolean(customIntegrations.zapier?.enabled),
 				settingsUrl: null,
@@ -1288,6 +1110,10 @@ export class WorkspaceService {
 		userId: string,
 		input: ToggleIntegrationInput,
 	): Promise<IntegrationItem> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
 		try {
@@ -1342,7 +1168,9 @@ export class WorkspaceService {
 			meta.activityDefaultSettings?.defaultOwnerId ??
 			membersList[0]?.userId ??
 			null;
-		const defaultOwnerMember = membersList.find((m) => m.userId === defaultOwnerId);
+		const defaultOwnerMember = membersList.find(
+			(m) => m.userId === defaultOwnerId,
+		);
 		const defaultOwnerName = defaultOwnerMember
 			? `${defaultOwnerMember.user.name} (${defaultOwnerMember.role})`
 			: "Rahul Kumar (Sales Manager)";
@@ -1373,8 +1201,7 @@ export class WorkspaceService {
 		const completionBehavior: CompletionBehavior = {
 			allowAddingNotes:
 				meta.activityCompletionBehavior?.allowAddingNotes ?? true,
-			updateDealStage:
-				meta.activityCompletionBehavior?.updateDealStage ?? true,
+			updateDealStage: meta.activityCompletionBehavior?.updateDealStage ?? true,
 			createFollowUpActivity:
 				meta.activityCompletionBehavior?.createFollowUpActivity ?? true,
 		};
@@ -1396,6 +1223,10 @@ export class WorkspaceService {
 		userId: string,
 		input: UpdateDefaultActivitySettingsInput,
 	): Promise<DefaultActivitySettings> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
 		try {
@@ -1420,6 +1251,10 @@ export class WorkspaceService {
 		userId: string,
 		input: UpdateReminderRulesInput,
 	): Promise<ReminderRules> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
 		try {
@@ -1444,6 +1279,10 @@ export class WorkspaceService {
 		userId: string,
 		input: UpdateCompletionBehaviorInput,
 	): Promise<CompletionBehavior> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
 		try {
@@ -1468,6 +1307,10 @@ export class WorkspaceService {
 		userId: string,
 		input: CreateActivityTypeInput,
 	): Promise<ActivityTypeItem> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
 		try {
@@ -1501,6 +1344,10 @@ export class WorkspaceService {
 		userId: string,
 		input: UpdateActivityTypeInput,
 	): Promise<ActivityTypeItem> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
 		try {
@@ -1510,11 +1357,11 @@ export class WorkspaceService {
 		const current: ActivityTypeItem[] = meta.activityTypes || [
 			...BASE_ACTIVITY_TYPES,
 		];
-		const idx = current.findIndex((c) => c.id === input.id);
-		if (idx === -1) throw new NotFoundException("Activity type not found");
+		const existing = current.find((c) => c.id === input.id);
+		if (!existing) throw new NotFoundException("Activity type not found");
 
-		current[idx] = {
-			...current[idx],
+		const updated = {
+			...existing,
 			...(input.name !== undefined ? { name: input.name } : {}),
 			...(input.icon !== undefined ? { icon: input.icon } : {}),
 			...(input.iconColor !== undefined ? { iconColor: input.iconColor } : {}),
@@ -1526,20 +1373,24 @@ export class WorkspaceService {
 				: {}),
 			...(input.status !== undefined ? { status: input.status } : {}),
 		};
-		meta.activityTypes = current;
+		meta.activityTypes = current.map((c) => (c.id === input.id ? updated : c));
 
 		await this.db.organization.update({
 			where: { id: WORKSPACE_ID },
 			data: { metadata: JSON.stringify(meta) },
 		});
 
-		return current[idx];
+		return updated;
 	}
 
 	async deleteActivityType(
 		userId: string,
 		input: DeleteActivityTypeInput,
 	): Promise<{ success: boolean }> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
 		try {
@@ -1563,14 +1414,19 @@ export class WorkspaceService {
 		userId: string,
 		input: CreateActivityAssignmentRuleInput,
 	): Promise<ActivityAssignmentRule> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
 		try {
 			if (row?.metadata) meta = JSON.parse(row.metadata);
 		} catch {}
 
-		const current: ActivityAssignmentRule[] =
-			meta.activityAssignmentRules || [...BASE_ACTIVITY_ASSIGNMENT_RULES];
+		const current: ActivityAssignmentRule[] = meta.activityAssignmentRules || [
+			...BASE_ACTIVITY_ASSIGNMENT_RULES,
+		];
 		const newRule: ActivityAssignmentRule = {
 			id: `rule-${Date.now()}`,
 			name: input.name,
@@ -1593,49 +1449,59 @@ export class WorkspaceService {
 		userId: string,
 		input: UpdateActivityAssignmentRuleInput,
 	): Promise<ActivityAssignmentRule> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
 		try {
 			if (row?.metadata) meta = JSON.parse(row.metadata);
 		} catch {}
 
-		const current: ActivityAssignmentRule[] =
-			meta.activityAssignmentRules || [...BASE_ACTIVITY_ASSIGNMENT_RULES];
-		const idx = current.findIndex((c) => c.id === input.id);
-		if (idx === -1) throw new NotFoundException("Assignment rule not found");
+		const current: ActivityAssignmentRule[] = meta.activityAssignmentRules || [
+			...BASE_ACTIVITY_ASSIGNMENT_RULES,
+		];
+		const existing = current.find((c) => c.id === input.id);
+		if (!existing) throw new NotFoundException("Assignment rule not found");
 
-		current[idx] = {
-			...current[idx],
+		const updated = {
+			...existing,
 			...(input.name !== undefined ? { name: input.name } : {}),
 			...(input.appliesTo !== undefined ? { appliesTo: input.appliesTo } : {}),
-			...(input.condition !== undefined
-				? { condition: input.condition }
-				: {}),
+			...(input.condition !== undefined ? { condition: input.condition } : {}),
 			...(input.assignTo !== undefined ? { assignTo: input.assignTo } : {}),
 			...(input.status !== undefined ? { status: input.status } : {}),
 		};
-		meta.activityAssignmentRules = current;
+		meta.activityAssignmentRules = current.map((c) =>
+			c.id === input.id ? updated : c,
+		);
 
 		await this.db.organization.update({
 			where: { id: WORKSPACE_ID },
 			data: { metadata: JSON.stringify(meta) },
 		});
 
-		return current[idx];
+		return updated;
 	}
 
 	async deleteActivityAssignmentRule(
 		userId: string,
 		input: DeleteActivityAssignmentRuleInput,
 	): Promise<{ success: boolean }> {
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change workspace settings.",
+		);
 		const row = await this.readWorkspace();
 		let meta: Record<string, any> = {};
 		try {
 			if (row?.metadata) meta = JSON.parse(row.metadata);
 		} catch {}
 
-		const current: ActivityAssignmentRule[] =
-			meta.activityAssignmentRules || [...BASE_ACTIVITY_ASSIGNMENT_RULES];
+		const current: ActivityAssignmentRule[] = meta.activityAssignmentRules || [
+			...BASE_ACTIVITY_ASSIGNMENT_RULES,
+		];
 		meta.activityAssignmentRules = current.filter((c) => c.id !== input.id);
 
 		await this.db.organization.update({
@@ -1646,273 +1512,52 @@ export class WorkspaceService {
 		return { success: true };
 	}
 
-	async dataManagement(userId: string): Promise<DataManagementOverview> {
-		const row = await this.readWorkspace();
-		let meta: Record<string, any> = {};
-		try {
-			if (row?.metadata) meta = JSON.parse(row.metadata);
-		} catch {}
-
-		const [contactsCount, companiesCount, dealsCount, activitiesCount] =
-			await Promise.all([
-				this.db.contact.count().catch(() => 0),
-				this.db.company.count().catch(() => 0),
-				this.db.deal.count().catch(() => 0),
-				this.db.activity.count().catch(() => 0),
-			]);
-
-		const totalRecords =
-			contactsCount + companiesCount + dealsCount + activitiesCount;
-
-		const customBackups: BackupItem[] = meta.backups || [];
-		const retention: DataRetentionSettings = {
-			deletedLeads: meta.dataRetention?.deletedLeads ?? "Keep for 60 days",
-			deletedCustomers:
-				meta.dataRetention?.deletedCustomers ?? "Keep for 1 year",
-			deletedActivities:
-				meta.dataRetention?.deletedActivities ?? "Keep for 180 days",
-			deletedDeals: meta.dataRetention?.deletedDeals ?? "Keep for 1 year",
-		};
-
-		const recentImports = meta.recentImports || [];
-
-		const summary = {
-			totalRecords,
-			importsCount: meta.importsCount ?? recentImports.length,
-			exportsCount: meta.exportsCount ?? 0,
-			lastBackupDate: customBackups[0]?.createdOn ?? "Never",
-			lastBackupStatus: customBackups[0] ? customBackups[0].status : "Not run",
-		};
-
-		return {
-			summary,
-			backups: customBackups,
-			retention,
-			recentImports,
-		};
-	}
-
-	async createBackup(
-		userId: string,
-		input: CreateBackupInput,
-	): Promise<BackupItem> {
-		const row = await this.readWorkspace();
-		let meta: Record<string, any> = {};
-		try {
-			if (row?.metadata) meta = JSON.parse(row.metadata);
-		} catch {}
-
-		const current: BackupItem[] = meta.backups || [];
-		const now = new Date();
-		const dateStr = now.toLocaleDateString("en-GB", {
-			day: "2-digit",
-			month: "short",
-			year: "numeric",
-			hour: "2-digit",
-			minute: "2-digit",
-			hour12: true,
-		});
-
-		const [contactsCount, companiesCount, dealsCount, activitiesCount] =
-			await Promise.all([
-				this.db.contact.count().catch(() => 0),
-				this.db.company.count().catch(() => 0),
-				this.db.deal.count().catch(() => 0),
-				this.db.activity.count().catch(() => 0),
-			]);
-		const recordCount =
-			contactsCount + companiesCount + dealsCount + activitiesCount;
-		const estimatedSize = `${Math.max(0.1, (recordCount * 0.002).toFixed(1))} MB`;
-
-		const newBackup: BackupItem = {
-			id: `backup-${Date.now()}`,
-			name: input.name,
-			createdOn: dateStr,
-			size: estimatedSize,
-			status: "Success",
-		};
-
-		meta.backups = [newBackup, ...current];
-
-		await this.db.organization.update({
-			where: { id: WORKSPACE_ID },
-			data: { metadata: JSON.stringify(meta) },
-		});
-
-		return newBackup;
-	}
-
-	async deleteBackup(
-		userId: string,
-		input: DeleteBackupInput,
-	): Promise<{ success: boolean }> {
-		const row = await this.readWorkspace();
-		let meta: Record<string, any> = {};
-		try {
-			if (row?.metadata) meta = JSON.parse(row.metadata);
-		} catch {}
-
-		const current: BackupItem[] = meta.backups || [];
-		meta.backups = current.filter((b) => b.id !== input.id);
-
-		await this.db.organization.update({
-			where: { id: WORKSPACE_ID },
-			data: { metadata: JSON.stringify(meta) },
-		});
-
-		return { success: true };
-	}
-
-	async updateDataRetention(
-		userId: string,
-		input: UpdateDataRetentionInput,
-	): Promise<DataRetentionSettings> {
-		const row = await this.readWorkspace();
-		let meta: Record<string, any> = {};
-		try {
-			if (row?.metadata) meta = JSON.parse(row.metadata);
-		} catch {}
-
-		meta.dataRetention = {
-			...(meta.dataRetention || {}),
-			...input,
-		};
-
-		await this.db.organization.update({
-			where: { id: WORKSPACE_ID },
-			data: { metadata: JSON.stringify(meta) },
-		});
-
-		const overview = await this.dataManagement(userId);
-		return overview.retention;
-	}
-
-	async clearDeletedData(
-		userId: string,
-		input: ClearDeletedDataInput,
-	): Promise<{ clearedCount: number }> {
-		this.logger.log({
-			message: "Clear deleted data invoked",
-			userId,
-			type: input.type,
-		});
-		return { clearedCount: 24 };
-	}
-
-	async archiveInactiveRecords(
-		userId: string,
-		input: ArchiveInactiveRecordsInput,
-	): Promise<{ archivedCount: number }> {
-		this.logger.log({
-			message: "Archive inactive records invoked",
-			userId,
-			period: input.period,
-		});
-		return { archivedCount: 48 };
-	}
-
-	async exportData(
-		userId: string,
-		input: ExportDataInput,
-	): Promise<{ downloadUrl: string; rowCount: number }> {
-		const row = await this.readWorkspace();
-		let meta: Record<string, any> = {};
-		try {
-			if (row?.metadata) meta = JSON.parse(row.metadata);
-		} catch {}
-
-		meta.exportsCount = (meta.exportsCount ?? 5) + 1;
-		await this.db.organization.update({
-			where: { id: WORKSPACE_ID },
-			data: { metadata: JSON.stringify(meta) },
-		});
-
-		return {
-			downloadUrl: `/api/export/${input.dataType.toLowerCase()}`,
-			rowCount: 150,
-		};
-	}
-
-	async importData(
-		userId: string,
-		input: ImportDataInput,
-	): Promise<{ success: boolean; importedCount: number }> {
-		const row = await this.readWorkspace();
-		let meta: Record<string, any> = {};
-		try {
-			if (row?.metadata) meta = JSON.parse(row.metadata);
-		} catch {}
-
-		meta.importsCount = (meta.importsCount ?? 3) + 1;
-		const recentImports = meta.recentImports || [];
-		recentImports.unshift({
-			id: `imp-${Date.now()}`,
-			type: input.dataType,
-			filename: input.filename || `${input.dataType.toLowerCase()}_import.csv`,
-			recordsCount: 75,
-			date: new Date().toLocaleDateString("en-GB", {
-				day: "2-digit",
-				month: "short",
-				year: "numeric",
-			}),
-		});
-		meta.recentImports = recentImports.slice(0, 10);
-
-		await this.db.organization.update({
-			where: { id: WORKSPACE_ID },
-			data: { metadata: JSON.stringify(meta) },
-		});
-
-		return { success: true, importedCount: 75 };
-	}
-
-	async deleteAccount(
-		userId: string,
-		input: DeleteAccountInput,
-	): Promise<{ success: boolean }> {
-		if (!input.understandIrreversible) {
-			throw new BadRequestException(
-				"Please confirm that you understand this action cannot be undone.",
-			);
-		}
-
-		const role = await workspaceRoleOf(userId, this.db);
-		if (!role || (role !== "owner" && role !== "admin")) {
-			throw new ForbiddenException(
-				"Only workspace owners or admins can request account deletion.",
-			);
-		}
-
-		this.logger.warn({
-			message: "Workspace account deletion requested",
-			userId,
-		});
-
-		return { success: true };
-	}
-
 	async updateMemberTeam(
 		userId: string,
 		input: UpdateMemberTeamInput,
 	): Promise<WorkspaceMember> {
-		const member = await this.db.member.findUnique({
-			where: { id: input.memberId },
-			select: MEMBER_SELECT,
-		});
-		if (!member) throw new NotFoundException("Member not found");
-		return this.toMember(member, userId, input.team);
-	}
+		await this.requireAdmin(
+			userId,
+			"Only an owner or an admin can change a member's team.",
+		);
 
-	async updateMemberStatus(
-		userId: string,
-		input: UpdateMemberStatusInput,
-	): Promise<WorkspaceMember> {
-		const member = await this.db.member.findUnique({
-			where: { id: input.memberId },
+		const member = await this.db.member.findFirst({
+			where: { id: input.memberId, organizationId: WORKSPACE_ID },
+			select: { id: true },
+		});
+		if (!member) {
+			throw new NotFoundException("That person is not in this workspace.");
+		}
+
+		if (input.teamId === null) {
+			await this.db.memberTeam.deleteMany({ where: { memberId: member.id } });
+		} else {
+			const team = await this.db.team.findUnique({
+				where: { id: input.teamId },
+				select: { id: true },
+			});
+			if (!team) throw new NotFoundException("That team does not exist.");
+
+			await this.db.memberTeam.upsert({
+				where: { memberId: member.id },
+				create: { memberId: member.id, teamId: team.id },
+				update: { teamId: team.id },
+			});
+		}
+
+		this.logger.log({
+			message: "Member team changed",
+			userId,
+			memberId: member.id,
+			teamId: input.teamId,
+		});
+
+		const row = await this.db.member.findUniqueOrThrow({
+			where: { id: member.id },
 			select: MEMBER_SELECT,
 		});
-		if (!member) throw new NotFoundException("Member not found");
-		return this.toMember(member, userId, undefined, input.status);
+
+		return this.toMember(row, userId, this.activeSince());
 	}
 
 	async setMemberRole(
@@ -1965,23 +1610,15 @@ export class WorkspaceService {
 			role: input.role,
 		});
 
-		return this.toMember(updated, userId);
+		return this.toMember(updated, userId, this.activeSince());
 	}
 
 	private toMember(
 		row: MemberRow,
-		userId: string,
-		customTeam?: string | null,
-		customStatus?: "active" | "pending" | "inactive",
+		viewerId: string,
+		activeSince: Date,
 	): WorkspaceMember {
-		const sessionUpdate = row.user.sessions?.[0]?.updatedAt ?? row.user.updatedAt;
-		let team = customTeam;
-		if (team === undefined) {
-			if (row.role.toLowerCase().includes("sales") || row.role === "owner") team = "Sales";
-			else if (row.role.toLowerCase().includes("product")) team = "Product";
-			else if (row.role.toLowerCase().includes("market")) team = "Marketing";
-			else team = "Customer Success";
-		}
+		const lastActive = row.user.sessions[0]?.updatedAt ?? null;
 
 		return {
 			id: row.id,
@@ -1989,13 +1626,23 @@ export class WorkspaceService {
 			name: row.user.name,
 			email: row.user.email,
 			image: row.user.image,
-			role: row.role,
-			team: team || "Sales",
-			status: customStatus || "active",
-			lastActive: sessionUpdate ? sessionUpdate.toISOString() : row.createdAt.toISOString(),
+			role: toWorkspaceRole(row.role),
+			teamId: row.team?.teamId ?? null,
+			team: row.team?.team.name ?? null,
+			status: lastActive && lastActive >= activeSince ? "active" : "inactive",
+			lastActive: lastActive ? lastActive.toISOString() : null,
 			joinedAt: row.createdAt.toISOString(),
-			isViewer: row.userId === userId,
+			isViewer: row.userId === viewerId,
 		};
+	}
+
+	private activeSince(): Date {
+		return new Date(Date.now() - MEMBERS.activeWithinDays * DAY_MS);
+	}
+
+	private async requireAdmin(userId: string, message: string): Promise<void> {
+		const role = await workspaceRoleOf(userId, this.db);
+		if (!isWorkspaceAdmin(role)) throw new ForbiddenException(message);
 	}
 
 	private searchWhere(q: string): Prisma.MemberWhereInput {
@@ -2014,12 +1661,33 @@ export class WorkspaceService {
 		return where;
 	}
 
-	private buildWhere(input: MemberListInput): Prisma.MemberWhereInput {
+	private buildWhere(
+		input: MemberListInput,
+		activeSince: Date,
+	): Prisma.MemberWhereInput {
 		const where = this.searchWhere(input.q);
+		const and: Prisma.MemberWhereInput[] = [];
 
 		if (input.role.length > 0) {
-			where.role = { in: input.role };
+			and.push({ role: { in: input.role } });
 		}
+
+		if (input.team.length > 0) {
+			and.push({ team: { teamId: { in: input.team } } });
+		}
+
+		const wantsActive = input.status.includes("active");
+		const wantsInactive = input.status.includes("inactive");
+		const recent = { updatedAt: { gte: activeSince } };
+
+		if (wantsActive && !wantsInactive) {
+			and.push({ user: { sessions: { some: recent } } });
+		}
+		if (wantsInactive && !wantsActive) {
+			and.push({ user: { sessions: { none: recent } } });
+		}
+
+		if (and.length > 0) where.AND = and;
 
 		return where;
 	}

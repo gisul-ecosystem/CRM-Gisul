@@ -60,5 +60,6 @@ jobs:
             API_URL=${{ steps.api.outputs.url }}
           tags: |
             gisuldocker/${{ matrix.image }}:latest
+            gisuldocker/${{ matrix.image }}:dev
           cache-from: type=gha,scope=${{ matrix.service }}-dev
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}-dev

@@ -19,31 +19,25 @@ services:
       retries: 20
 
   migrate:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: migrate
+    image: gisuldocker/crm-migrate:latest
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/crm?schema=public}
+      DATABASE_URL: ${DATABASE_URL}
       ALLOW_REMOTE_DB: ${ALLOW_REMOTE_DB:-}
       NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-}
+    volumes:
+      - ./.env:/app/.env:ro
     depends_on:
       postgres:
         condition: service_healthy
     restart: "no"
 
   api:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: api
-      args:
-        API_URL: ${API_URL:-http://localhost:3001}
+    image: gisuldocker/crm-api:latest
     restart: unless-stopped
     environment:
       NODE_ENV: production
       PORT: 3001
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/crm?schema=public}
+      DATABASE_URL: ${DATABASE_URL}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
       ALLOWED_SIGN_IN: ${ALLOWED_SIGN_IN:?set ALLOWED_SIGN_IN}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -66,7 +60,7 @@ services:
       CRM_TELEMETRY_DISABLED: ${CRM_TELEMETRY_DISABLED:-1}
       NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-}
     ports:
-      - "3001:3001"
+      - "3002:3001"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -74,44 +68,34 @@ services:
         condition: service_healthy
 
   app:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: app
-      args:
-        API_URL: ${API_URL:-http://localhost:3001}
+    image: gisuldocker/crm-app:latest
     restart: unless-stopped
     environment:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/crm?schema=public}
+      DATABASE_URL: ${DATABASE_URL}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
       ALLOWED_SIGN_IN: ${ALLOWED_SIGN_IN:?set ALLOWED_SIGN_IN}
-      API_URL: ${API_URL:-http://localhost:3001}
-      APP_URL: ${APP_URL:-http://localhost:3000}
+      API_URL: ${API_URL:-http://localhost:3002}
+      APP_URL: ${APP_URL:-http://localhost:3010}
       AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:-}
       AGENT_URL: ${AGENT_URL:-http://agent:2000}
       AGENT_BRIDGE_SECRET: ${AGENT_BRIDGE_SECRET:?set AGENT_BRIDGE_SECRET}
       CRM_TELEMETRY_DISABLED: ${CRM_TELEMETRY_DISABLED:-1}
       NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-}
     ports:
-      - "3000:3000"
+      - "3010:3000"
     depends_on:
       - api
 
   agent:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: agent
-      args:
-        API_URL: ${API_URL:-http://localhost:3001}
+    image: gisuldocker/crm-agent:latest
     restart: unless-stopped
     environment:
       NODE_ENV: production
       AGENT_PORT: 2000
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/crm?schema=public}
+      DATABASE_URL: ${DATABASE_URL}
       AGENT_BRIDGE_SECRET: ${AGENT_BRIDGE_SECRET:?set AGENT_BRIDGE_SECRET}
       AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:?set AZURE_OPENAI_ENDPOINT}
       AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:?set AZURE_OPENAI_API_KEY}

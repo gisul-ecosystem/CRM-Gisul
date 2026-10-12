@@ -1,18 +1,31 @@
 "use client";
 
 import Add from "@carbon/icons-react/es/Add";
-import Archive from "@carbon/icons-react/es/Archive";
 import CloudDownload from "@carbon/icons-react/es/CloudDownload";
-import CloudUpload from "@carbon/icons-react/es/CloudUpload";
 import DocumentExport from "@carbon/icons-react/es/DocumentExport";
 import DocumentImport from "@carbon/icons-react/es/DocumentImport";
-import Information from "@carbon/icons-react/es/Information";
-import OverflowMenuVertical from "@carbon/icons-react/es/OverflowMenuVertical";
 import Search from "@carbon/icons-react/es/Search";
-import Time from "@carbon/icons-react/es/Time";
 import TrashCan from "@carbon/icons-react/es/TrashCan";
-import WarningAlt from "@carbon/icons-react/es/WarningAlt";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+} from "@crm/ui/components/alert-dialog";
 import { Button } from "@crm/ui/components/button";
+import {
+	Card,
+	CardAction,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@crm/ui/components/card";
 import {
 	Dialog,
 	DialogClose,
@@ -22,13 +35,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@crm/ui/components/dialog";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@crm/ui/components/dropdown-menu";
 import { Field, FieldDescription, FieldLabel } from "@crm/ui/components/field";
 import { Icon } from "@crm/ui/components/icon";
 import { Input } from "@crm/ui/components/input";
@@ -40,1106 +46,686 @@ import {
 	SelectValue,
 } from "@crm/ui/components/select";
 import { Spinner } from "@crm/ui/components/spinner";
-import { cn } from "@crm/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useId, useState } from "react";
+import Link from "next/link";
+import { type ReactNode, useId, useState } from "react";
 import { toast } from "sonner";
+import { LocalRelativeTime } from "@/components/local-date-time";
+import { downloadText } from "@/lib/download";
+import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
-import type { RouterOutputs } from "@/lib/trpc/types";
+import type { RouterInputs, RouterOutputs } from "@/lib/trpc/types";
+import { useWorkspaceUrl } from "@/lib/use-workspace-url";
+import { ArchiveRetention } from "../archive-retention";
 
-type DataManagementData = RouterOutputs["workspace"]["dataManagement"];
-type BackupItem = DataManagementData["backups"][number];
+type Entity = RouterInputs["workspace"]["exportData"]["entity"];
 
-const DATA_TYPES = ["Leads", "Customers", "Deals", "Activities", "All Data"];
-const RETENTION_OPTIONS = [
-	"Keep for 30 days",
-	"Keep for 60 days",
-	"Keep for 90 days",
-	"Keep for 180 days",
-	"Keep for 1 year",
-	"Keep for 2 years",
-	"Keep forever",
+type DuplicateEntity = RouterInputs["workspace"]["findDuplicates"]["entity"];
+
+type InactiveDays = RouterInputs["workspace"]["archiveInactiveRecords"]["days"];
+
+type ImportResult = RouterOutputs["workspace"]["importData"];
+
+const ENTITY_LABEL = {
+	CONTACT: "Leads",
+	COMPANY: "Companies",
+	DEAL: "Deals",
+} as const satisfies Record<Entity, string>;
+
+const ENTITIES = Object.keys(ENTITY_LABEL) as Entity[];
+
+const DUPLICATE_PATH = {
+	CONTACT: "/contacts",
+	COMPANY: "/companies",
+} as const satisfies Record<DuplicateEntity, string>;
+
+const INACTIVE_OPTIONS: { days: InactiveDays; label: string }[] = [
+	{ days: 30, label: "30 days" },
+	{ days: 60, label: "60 days" },
+	{ days: 90, label: "90 days" },
+	{ days: 365, label: "1 year" },
 ];
+
+const SIZE_UNITS = ["B", "KB", "MB", "GB"] as const;
+
+function formatBytes(bytes: number): string {
+	let value = bytes;
+	let unit = 0;
+	while (value >= 1024 && unit < SIZE_UNITS.length - 1) {
+		value /= 1024;
+		unit += 1;
+	}
+	return `${value.toFixed(unit === 0 ? 0 : 1)} ${SIZE_UNITS[unit]}`;
+}
+
+function EntitySelect({
+	id,
+	value,
+	onChange,
+}: {
+	id: string;
+	value: Entity;
+	onChange: (value: Entity) => void;
+}) {
+	return (
+		<Select value={value} onValueChange={(next) => onChange(next as Entity)}>
+			<SelectTrigger id={id}>
+				<SelectValue />
+			</SelectTrigger>
+			<SelectContent>
+				{ENTITIES.map((entity) => (
+					<SelectItem key={entity} value={entity}>
+						{ENTITY_LABEL[entity]}
+					</SelectItem>
+				))}
+			</SelectContent>
+		</Select>
+	);
+}
+
+function Stat({ label, value }: { label: string; value: ReactNode }) {
+	return (
+		<Card>
+			<CardHeader>
+				<CardDescription>{label}</CardDescription>
+				<CardTitle>{value}</CardTitle>
+			</CardHeader>
+		</Card>
+	);
+}
 
 export function DataManagementView() {
 	const trpc = useTRPC();
+	const cache = useCrmCache();
 	const queryClient = useQueryClient();
+	const workspaceUrl = useWorkspaceUrl();
 
-	const { data, isLoading } = useQuery(
-		trpc.workspace.dataManagement.queryOptions(),
-	);
+	const importTypeId = useId();
+	const importFileId = useId();
+	const exportTypeId = useId();
+	const backupNameId = useId();
+	const inactiveId = useId();
 
-	// Import form state
-	const [importDataType, setImportDataType] = useState("Leads");
-	const [selectedFile, setSelectedFile] = useState<File | null>(null);
+	const [importEntity, setImportEntity] = useState<Entity>("CONTACT");
+	const [importFile, setImportFile] = useState<File | null>(null);
+	const [importResult, setImportResult] = useState<ImportResult | null>(null);
+	const [exportEntity, setExportEntity] = useState<Entity>("CONTACT");
+	const [backupOpen, setBackupOpen] = useState(false);
+	const [backupName, setBackupName] = useState("");
+	const [inactiveDays, setInactiveDays] = useState<InactiveDays>(90);
+	const [duplicateEntity, setDuplicateEntity] =
+		useState<DuplicateEntity | null>(null);
 
-	// Export form state
-	const [exportDataType, setExportDataType] = useState("Customers");
-	const [exportDateRange, setExportDateRange] = useState("Last 30 days");
-	const [exportFilter, setExportFilter] = useState("All");
-	const [includeFields, setIncludeFields] = useState<"all" | "custom">("all");
-
-	// Modals
-	const [isCreateBackupOpen, setIsCreateBackupOpen] = useState(false);
-	const [newBackupName, setNewBackupName] = useState("");
-
-	const [isClearTrashOpen, setIsClearTrashOpen] = useState(false);
-	const [isArchiveOpen, setIsArchiveOpen] = useState(false);
-	const [isFindDuplicatesOpen, setIsFindDuplicatesOpen] = useState(false);
-
-	const [isDeleteAccountOpen, setIsDeleteAccountOpen] = useState(false);
-	const [deletePassword, setDeletePassword] = useState("");
-	const [understandIrreversible, setUnderstandIrreversible] = useState(false);
-	const [showPassword, setShowPassword] = useState(false);
-
-	// --- Mutations ---
-	const createBackupMutation = useMutation(
-		trpc.workspace.createBackup.mutationOptions({
-			onSuccess: () => {
-				queryClient.invalidateQueries({
-					queryKey: trpc.workspace.dataManagement.queryKey(),
-				});
-				toast.success("Backup created successfully");
-				setIsCreateBackupOpen(false);
-				setNewBackupName("");
-			},
-			onError: (err) => toast.error(err.message),
+	const overview = useQuery(trpc.workspace.dataManagement.queryOptions());
+	const duplicates = useQuery({
+		...trpc.workspace.findDuplicates.queryOptions({
+			entity: duplicateEntity ?? "CONTACT",
 		}),
-	);
+		enabled: duplicateEntity !== null,
+	});
 
-	const deleteBackupMutation = useMutation(
-		trpc.workspace.deleteBackup.mutationOptions({
-			onSuccess: () => {
-				queryClient.invalidateQueries({
-					queryKey: trpc.workspace.dataManagement.queryKey(),
-				});
-				toast.success("Backup removed");
-			},
-			onError: (err) => toast.error(err.message),
-		}),
-	);
-
-	const updateRetentionMutation = useMutation(
-		trpc.workspace.updateDataRetention.mutationOptions({
-			onSuccess: () => {
-				queryClient.invalidateQueries({
-					queryKey: trpc.workspace.dataManagement.queryKey(),
-				});
-				toast.success("Retention policy updated");
-			},
-			onError: (err) => toast.error(err.message),
-		}),
-	);
-
-	const clearTrashMutation = useMutation(
-		trpc.workspace.clearDeletedData.mutationOptions({
-			onSuccess: (res) => {
-				queryClient.invalidateQueries({
-					queryKey: trpc.workspace.dataManagement.queryKey(),
-				});
-				toast.success(`Cleared ${res.clearedCount} deleted records from trash`);
-				setIsClearTrashOpen(false);
-			},
-			onError: (err) => toast.error(err.message),
-		}),
-	);
-
-	const archiveRecordsMutation = useMutation(
-		trpc.workspace.archiveInactiveRecords.mutationOptions({
-			onSuccess: (res) => {
-				queryClient.invalidateQueries({
-					queryKey: trpc.workspace.dataManagement.queryKey(),
-				});
-				toast.success(`Archived ${res.archivedCount} inactive records`);
-				setIsArchiveOpen(false);
-			},
-			onError: (err) => toast.error(err.message),
-		}),
-	);
-
-	const exportMutation = useMutation(
-		trpc.workspace.exportData.mutationOptions({
-			onSuccess: (res) => {
-				queryClient.invalidateQueries({
-					queryKey: trpc.workspace.dataManagement.queryKey(),
-				});
-				toast.success(`Export ready! ${res.rowCount} records prepared for download`);
-			},
-			onError: (err) => toast.error(err.message),
-		}),
-	);
-
-	const importMutation = useMutation(
+	const importData = useMutation(
 		trpc.workspace.importData.mutationOptions({
-			onSuccess: (res) => {
-				queryClient.invalidateQueries({
-					queryKey: trpc.workspace.dataManagement.queryKey(),
-				});
-				toast.success(`Successfully imported ${res.importedCount} records`);
-				setSelectedFile(null);
+			onSuccess: async (result) => {
+				await cache.dataManagement();
+				setImportResult(result);
+				setImportFile(null);
+				toast.success(
+					`Imported ${result.created} new and ${result.updated} updated. ${result.failed} rows failed.`,
+				);
 			},
-			onError: (err) => toast.error(err.message),
+			onError: (error) => toast.error(error.message),
 		}),
 	);
 
-	const deleteAccountMutation = useMutation(
-		trpc.workspace.deleteAccount.mutationOptions({
-			onSuccess: () => {
-				toast.success("Account deletion request submitted");
-				setIsDeleteAccountOpen(false);
+	const exportData = useMutation(
+		trpc.workspace.exportData.mutationOptions({
+			onSuccess: async (result) => {
+				downloadText(result.filename, result.csv);
+				await cache.dataManagement();
+				toast.success(`Exported ${result.rowCount} rows.`);
 			},
-			onError: (err) => toast.error(err.message),
+			onError: (error) => toast.error(error.message),
 		}),
 	);
 
-	if (isLoading || !data) {
+	const downloadTemplate = useMutation({
+		mutationFn: (entity: Entity) =>
+			queryClient.fetchQuery(
+				trpc.workspace.importTemplate.queryOptions({ entity }),
+			),
+		onSuccess: (result) => downloadText(result.filename, result.csv),
+		onError: (error) => toast.error(error.message),
+	});
+
+	const createBackup = useMutation(
+		trpc.workspace.createBackup.mutationOptions({
+			onSuccess: async (backup) => {
+				await cache.dataManagement();
+				setBackupOpen(false);
+				setBackupName("");
+				toast.success(`Backup saved with ${backup.recordCount} records.`);
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	const downloadBackup = useMutation(
+		trpc.workspace.downloadBackup.mutationOptions({
+			onSuccess: (file) =>
+				downloadText(file.filename, file.content, "application/json"),
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	const deleteBackup = useMutation(
+		trpc.workspace.deleteBackup.mutationOptions({
+			onSuccess: async () => {
+				await cache.dataManagement();
+				toast.success("Backup deleted.");
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	const clearArchived = useMutation(
+		trpc.workspace.clearDeletedData.mutationOptions({
+			onSuccess: async (result) => {
+				await cache.dataManagement();
+				toast.success(
+					`Deleted ${result.purged} archived records for good. ${result.skipped + result.failed} were left in place.`,
+				);
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	const archiveInactive = useMutation(
+		trpc.workspace.archiveInactiveRecords.mutationOptions({
+			onSuccess: async (result) => {
+				await cache.dataManagement();
+				toast.success(
+					`Archived ${result.contacts} leads and ${result.deals} deals.`,
+				);
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	if (!overview.data) {
 		return (
-			<div className="flex min-h-[400px] items-center justify-center">
-				<Spinner className="h-6 w-6 text-muted-foreground" />
+			<div className="flex min-h-64 items-center justify-center">
+				<Spinner />
 			</div>
 		);
 	}
 
-	const handleDownloadTemplate = () => {
-		const csvContent =
-			"data:text/csv;charset=utf-8,First Name,Last Name,Email,Phone,Company,Job Title,Notes\nJane,Doe,jane@example.com,+1234567890,Acme Inc,Sales Director,VIP Client";
-		const encodedUri = encodeURI(csvContent);
-		const link = document.createElement("a");
-		link.setAttribute("href", encodedUri);
-		link.setAttribute("download", `${importDataType.toLowerCase()}_template.csv`);
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
-		toast.success(`Template downloaded for ${importDataType}`);
-	};
+	const data = overview.data;
 
 	return (
 		<div className="flex flex-col gap-6 pb-16">
-			{/* SECTION 1: 4 Metric Cards */}
 			<div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-				{/* 1. Total Records */}
-				<div className="flex items-center gap-3.5 rounded-2xl border border-border/70 bg-card p-4 shadow-xs">
-					<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-purple-500/15 text-purple-600 dark:text-purple-400">
-						<Icon icon={Archive} className="h-5 w-5" />
-					</div>
-					<div>
-						<p className="text-xl font-bold tracking-tight text-foreground">
-							{data.summary.totalRecords.toLocaleString()}
-						</p>
-						<p className="text-xs font-semibold text-foreground/80 mt-0.5">
-							Total Records
-						</p>
-						<p className="text-[11px] text-muted-foreground">
-							Leads, customers, deals & activities
-						</p>
-					</div>
-				</div>
-
-				{/* 2. Imports */}
-				<div className="flex items-center gap-3.5 rounded-2xl border border-border/70 bg-card p-4 shadow-xs">
-					<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-						<Icon icon={DocumentImport} className="h-5 w-5" />
-					</div>
-					<div>
-						<p className="text-xl font-bold tracking-tight text-foreground">
-							{data.summary.importsCount}
-						</p>
-						<p className="text-xs font-semibold text-foreground/80 mt-0.5">
-							Imports
-						</p>
-						<p className="text-[11px] text-muted-foreground">Last 30 days</p>
-					</div>
-				</div>
-
-				{/* 3. Exports */}
-				<div className="flex items-center gap-3.5 rounded-2xl border border-border/70 bg-card p-4 shadow-xs">
-					<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
-						<Icon icon={DocumentExport} className="h-5 w-5" />
-					</div>
-					<div>
-						<p className="text-xl font-bold tracking-tight text-foreground">
-							{data.summary.exportsCount}
-						</p>
-						<p className="text-xs font-semibold text-foreground/80 mt-0.5">
-							Exports
-						</p>
-						<p className="text-[11px] text-muted-foreground">Last 30 days</p>
-					</div>
-				</div>
-
-				{/* 4. Last Backup */}
-				<div className="flex items-center gap-3.5 rounded-2xl border border-border/70 bg-card p-4 shadow-xs">
-					<div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-500/15 text-rose-600 dark:text-rose-400">
-						<Icon icon={Time} className="h-5 w-5" />
-					</div>
-					<div>
-						<p className="text-xs font-semibold text-foreground/80">
-							Last Backup
-						</p>
-						<p className="text-xs font-medium text-muted-foreground mt-0.5">
-							{data.summary.lastBackupDate}
-						</p>
-						<span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mt-1">
-							<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-							{data.summary.lastBackupStatus}
-						</span>
-					</div>
-				</div>
+				<Stat
+					label="Active records"
+					value={data.summary.totalRecords.toLocaleString()}
+				/>
+				<Stat
+					label="Imports, last 30 days"
+					value={data.summary.importsLast30Days}
+				/>
+				<Stat
+					label="Exports, last 30 days"
+					value={data.summary.exportsLast30Days}
+				/>
+				<Stat
+					label="Last backup"
+					value={
+						data.summary.lastBackupAt ? (
+							<LocalRelativeTime date={data.summary.lastBackupAt} />
+						) : (
+							"Never"
+						)
+					}
+				/>
 			</div>
 
-			{/* SECTION 2: Import Data & Export Data */}
 			<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-				{/* 2A: Import Data Card */}
-				<div className="flex flex-col justify-between rounded-2xl border border-border/70 bg-card p-6 shadow-xs">
-					<div>
-						<div className="flex items-start justify-between gap-3">
-							<div>
-								<h3 className="text-base font-bold text-foreground">
-									Import Data
-								</h3>
-								<p className="text-xs text-muted-foreground mt-1">
-									Import your leads, customers, deals or activities from a
-									CSV file.
-								</p>
-							</div>
+				<Card>
+					<CardHeader>
+						<CardTitle>Import</CardTitle>
+						<CardDescription>
+							Add or update records from a CSV file. Rows that match an existing
+							record by email, domain or name update it.
+						</CardDescription>
+						<CardAction>
 							<Button
 								variant="outline"
-								size="sm"
-								onClick={handleDownloadTemplate}
-								className="shrink-0 text-xs rounded-xl border-border/70 text-foreground hover:bg-muted"
+								disabled={downloadTemplate.isPending}
+								onClick={() => downloadTemplate.mutate(importEntity)}
 							>
-								Download Template
+								Template
 							</Button>
-						</div>
-
-						<div className="mt-5 space-y-4">
-							<div>
-								<FieldLabel className="text-xs font-semibold text-muted-foreground mb-1.5 block">
-									Select Data Type
-								</FieldLabel>
-								<Select
-									value={importDataType}
-									onValueChange={setImportDataType}
-								>
-									<SelectTrigger className="h-10 text-xs rounded-xl border-border/60 bg-background/70">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{DATA_TYPES.map((dt) => (
-											<SelectItem key={dt} value={dt} className="text-xs">
-												{dt}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</div>
-
-							{/* Dropzone */}
-							<label
-								htmlFor="csv-file-upload"
-								className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border/80 bg-muted/20 p-8 text-center cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/40"
-							>
-								<input
-									id="csv-file-upload"
-									type="file"
-									accept=".csv"
-									className="hidden"
-									onChange={(e) => {
-										const file = e.target.files?.[0];
-										if (file) {
-											setSelectedFile(file);
-											toast.success(`Selected file: ${file.name}`);
-										}
-									}}
-								/>
-								<div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary mb-3">
-									<Icon icon={CloudUpload} className="h-5 w-5" />
-								</div>
-								<p className="text-xs font-semibold text-foreground">
-									{selectedFile
-										? selectedFile.name
-										: "Drag and drop your CSV file here"}
-								</p>
-								<p className="text-[11px] text-muted-foreground mt-0.5">
-									or click to browse
-								</p>
-							</label>
-						</div>
-					</div>
-
-					<div className="mt-6 flex items-center justify-between border-t border-border/40 pt-4">
-						<p className="text-[11px] text-muted-foreground">
-							Supported format: CSV (max 10MB)
-						</p>
+						</CardAction>
+					</CardHeader>
+					<CardContent className="flex flex-col gap-4">
+						<Field>
+							<FieldLabel htmlFor={importTypeId}>Record type</FieldLabel>
+							<EntitySelect
+								id={importTypeId}
+								value={importEntity}
+								onChange={(entity) => {
+									setImportEntity(entity);
+									setImportResult(null);
+								}}
+							/>
+						</Field>
+						<Field>
+							<FieldLabel htmlFor={importFileId}>CSV file</FieldLabel>
+							<Input
+								id={importFileId}
+								type="file"
+								accept=".csv,text/csv"
+								onChange={(event) => {
+									setImportFile(event.target.files?.[0] ?? null);
+									setImportResult(null);
+								}}
+							/>
+						</Field>
 						<Button
-							disabled={!selectedFile || importMutation.isPending}
-							onClick={() => {
-								if (selectedFile) {
-									importMutation.mutate({
-										dataType: importDataType,
-										filename: selectedFile.name,
-									});
-								}
+							disabled={!importFile || importData.isPending}
+							onClick={async () => {
+								if (!importFile) return;
+								importData.mutate({
+									entity: importEntity,
+									csv: await importFile.text(),
+									filename: importFile.name,
+								});
 							}}
-							className="gap-1.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-xs"
 						>
-							<Icon icon={DocumentImport} className="h-3.5 w-3.5" />
-							{importMutation.isPending ? "Importing..." : "Import Data"}
+							{importData.isPending ? (
+								<Spinner data-icon="inline-start" />
+							) : (
+								<Icon icon={DocumentImport} data-icon="inline-start" />
+							)}
+							Import
 						</Button>
-					</div>
-				</div>
-
-				{/* 2B: EXPORT DATA Card */}
-				<div className="flex flex-col justify-between rounded-2xl border border-border/70 bg-card p-6 shadow-xs">
-					<div>
-						<h3 className="text-base font-bold tracking-tight text-foreground uppercase">
-							EXPORT DATA
-						</h3>
-						<p className="text-xs text-muted-foreground mt-1">
-							Export your CRM data in CSV format.
-						</p>
-
-						<div className="mt-5 space-y-4">
-							<div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-								<div>
-									<FieldLabel className="text-xs font-semibold text-muted-foreground mb-1.5 block">
-										Select Data Type
-									</FieldLabel>
-									<Select
-										value={exportDataType}
-										onValueChange={setExportDataType}
+						{importResult && importResult.errors.length > 0 ? (
+							<ul className="flex flex-col gap-1 text-destructive text-sm">
+								{importResult.errors.slice(0, 10).map((error) => (
+									<li key={`${error.line}-${error.message}`}>
+										Line {error.line}: {error.message}
+									</li>
+								))}
+							</ul>
+						) : null}
+						{data.recentImports.length > 0 ? (
+							<ul className="flex flex-col divide-y text-sm">
+								{data.recentImports.map((entry) => (
+									<li
+										key={entry.id}
+										className="flex items-center justify-between gap-4 py-2"
 									>
-										<SelectTrigger className="h-9 text-xs rounded-xl border-border/60 bg-background/70">
+										<span className="truncate">
+											{entry.filename ?? ENTITY_LABEL[entry.entity]}
+										</span>
+										<span className="shrink-0 text-muted-foreground">
+											{entry.rowCount} rows
+											{entry.failedCount > 0
+												? `, ${entry.failedCount} failed`
+												: ""}{" "}
+											· <LocalRelativeTime date={entry.createdAt} />
+										</span>
+									</li>
+								))}
+							</ul>
+						) : null}
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader>
+						<CardTitle>Export</CardTitle>
+						<CardDescription>
+							Download every active record of one type as CSV.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="flex flex-col gap-4">
+						<Field>
+							<FieldLabel htmlFor={exportTypeId}>Record type</FieldLabel>
+							<EntitySelect
+								id={exportTypeId}
+								value={exportEntity}
+								onChange={setExportEntity}
+							/>
+						</Field>
+						<Button
+							disabled={exportData.isPending}
+							onClick={() => exportData.mutate({ entity: exportEntity })}
+						>
+							{exportData.isPending ? (
+								<Spinner data-icon="inline-start" />
+							) : (
+								<Icon icon={DocumentExport} data-icon="inline-start" />
+							)}
+							Export
+						</Button>
+					</CardContent>
+				</Card>
+			</div>
+
+			<Card>
+				<CardHeader>
+					<CardTitle>Backups</CardTitle>
+					<CardDescription>
+						A backup is a full copy of leads, companies, deals and activities,
+						kept in this database. Download it to keep a copy somewhere else.
+					</CardDescription>
+					{data.canManage ? (
+						<CardAction>
+							<Button variant="outline" onClick={() => setBackupOpen(true)}>
+								<Icon icon={Add} data-icon="inline-start" />
+								Create backup
+							</Button>
+						</CardAction>
+					) : null}
+				</CardHeader>
+				<CardContent>
+					{data.backups.length === 0 ? (
+						<p className="text-muted-foreground text-sm">No backups yet.</p>
+					) : (
+						<ul className="flex flex-col divide-y text-sm">
+							{data.backups.map((backup) => (
+								<li
+									key={backup.id}
+									className="flex items-center justify-between gap-4 py-2"
+								>
+									<span className="flex min-w-0 flex-col">
+										<span className="truncate font-medium">{backup.name}</span>
+										<span className="text-muted-foreground">
+											<LocalRelativeTime date={backup.createdAt} /> ·{" "}
+											{backup.recordCount.toLocaleString()} records ·{" "}
+											{formatBytes(backup.sizeBytes)}
+										</span>
+									</span>
+									{data.canManage ? (
+										<span className="flex shrink-0 items-center gap-2">
+											<Button
+												variant="outline"
+												size="sm"
+												disabled={downloadBackup.isPending}
+												onClick={() => downloadBackup.mutate({ id: backup.id })}
+											>
+												<Icon icon={CloudDownload} data-icon="inline-start" />
+												Download
+											</Button>
+											<AlertDialog>
+												<AlertDialogTrigger asChild>
+													<Button
+														variant="ghost"
+														size="sm"
+														disabled={deleteBackup.isPending}
+													>
+														<Icon icon={TrashCan} />
+														<span className="sr-only">
+															Delete {backup.name}
+														</span>
+													</Button>
+												</AlertDialogTrigger>
+												<AlertDialogContent>
+													<AlertDialogHeader>
+														<AlertDialogTitle>
+															Delete this backup?
+														</AlertDialogTitle>
+														<AlertDialogDescription>
+															“{backup.name}” is removed for good. Your records
+															are not touched.
+														</AlertDialogDescription>
+													</AlertDialogHeader>
+													<AlertDialogFooter>
+														<AlertDialogCancel>Cancel</AlertDialogCancel>
+														<AlertDialogAction
+															variant="destructive"
+															onClick={() =>
+																deleteBackup.mutate({ id: backup.id })
+															}
+														>
+															Delete backup
+														</AlertDialogAction>
+													</AlertDialogFooter>
+												</AlertDialogContent>
+											</AlertDialog>
+										</span>
+									) : null}
+								</li>
+							))}
+						</ul>
+					)}
+				</CardContent>
+			</Card>
+
+			<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+				<ArchiveRetention />
+
+				<Card>
+					<CardHeader>
+						<CardTitle>Clean up</CardTitle>
+						<CardDescription>
+							{data.canManage
+								? "Archive records nobody has touched, or delete archived records now instead of waiting."
+								: "Only an owner or an admin can clean up records."}
+						</CardDescription>
+					</CardHeader>
+					{data.canManage ? (
+						<CardContent className="flex flex-col gap-4">
+							<Field>
+								<FieldLabel htmlFor={inactiveId}>
+									Archive leads and deals with no activity for
+								</FieldLabel>
+								<div className="flex items-center gap-2">
+									<Select
+										value={String(inactiveDays)}
+										onValueChange={(value) =>
+											setInactiveDays(Number(value) as InactiveDays)
+										}
+									>
+										<SelectTrigger id={inactiveId}>
 											<SelectValue />
 										</SelectTrigger>
 										<SelectContent>
-											{DATA_TYPES.map((dt) => (
-												<SelectItem key={dt} value={dt} className="text-xs">
-													{dt}
+											{INACTIVE_OPTIONS.map((option) => (
+												<SelectItem
+													key={option.days}
+													value={String(option.days)}
+												>
+													{option.label}
 												</SelectItem>
 											))}
 										</SelectContent>
 									</Select>
+									<AlertDialog>
+										<AlertDialogTrigger asChild>
+											<Button
+												variant="outline"
+												disabled={archiveInactive.isPending}
+											>
+												Archive
+											</Button>
+										</AlertDialogTrigger>
+										<AlertDialogContent>
+											<AlertDialogHeader>
+												<AlertDialogTitle>
+													Archive inactive records?
+												</AlertDialogTitle>
+												<AlertDialogDescription>
+													Leads and deals with no activity in the chosen period
+													move to the Archived view. You can restore them from
+													there.
+												</AlertDialogDescription>
+											</AlertDialogHeader>
+											<AlertDialogFooter>
+												<AlertDialogCancel>Cancel</AlertDialogCancel>
+												<AlertDialogAction
+													onClick={() =>
+														archiveInactive.mutate({ days: inactiveDays })
+													}
+												>
+													Archive
+												</AlertDialogAction>
+											</AlertDialogFooter>
+										</AlertDialogContent>
+									</AlertDialog>
 								</div>
+							</Field>
 
-								<div>
-									<FieldLabel className="text-xs font-semibold text-muted-foreground mb-1.5 block">
-										Date Range
-									</FieldLabel>
-									<Select
-										value={exportDateRange}
-										onValueChange={setExportDateRange}
-									>
-										<SelectTrigger className="h-9 text-xs rounded-xl border-border/60 bg-background/70">
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{["Last 30 days", "Last 90 days", "This Year", "All Time"].map(
-												(dr) => (
-													<SelectItem key={dr} value={dr} className="text-xs">
-														{dr}
-													</SelectItem>
-												),
-											)}
-										</SelectContent>
-									</Select>
-								</div>
-
-								<div>
-									<FieldLabel className="text-xs font-semibold text-muted-foreground mb-1.5 block">
-										Filter (Optional)
-									</FieldLabel>
-									<Input
-										value={exportFilter}
-										onChange={(e) => setExportFilter(e.target.value)}
-										placeholder="All"
-										className="h-9 text-xs rounded-xl border-border/60 bg-background/70"
-									/>
-								</div>
-							</div>
-
-							<div>
-								<FieldLabel className="text-xs font-semibold text-muted-foreground mb-2 block">
-									Include Fields
-								</FieldLabel>
-								<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-									<label
-										onClick={() => setIncludeFields("all")}
-										className={cn(
-											"flex items-start gap-2.5 rounded-xl border p-3 cursor-pointer transition-colors",
-											includeFields === "all"
-												? "border-primary bg-primary/5 text-foreground"
-												: "border-border/60 bg-background/50 hover:bg-muted/30 text-muted-foreground",
-										)}
-									>
-										<input
-											type="radio"
-											name="includeFields"
-											checked={includeFields === "all"}
-											onChange={() => setIncludeFields("all")}
-											className="mt-0.5 text-primary accent-primary"
-										/>
-										<div>
-											<p className="text-xs font-bold text-foreground">
-												All Fields
-											</p>
-											<p className="text-[11px] text-muted-foreground mt-0.5">
-												Export all available fields
-											</p>
-										</div>
-									</label>
-
-									<label
-										onClick={() => setIncludeFields("custom")}
-										className={cn(
-											"flex items-start gap-2.5 rounded-xl border p-3 cursor-pointer transition-colors",
-											includeFields === "custom"
-												? "border-primary bg-primary/5 text-foreground"
-												: "border-border/60 bg-background/50 hover:bg-muted/30 text-muted-foreground",
-										)}
-									>
-										<input
-											type="radio"
-											name="includeFields"
-											checked={includeFields === "custom"}
-											onChange={() => setIncludeFields("custom")}
-											className="mt-0.5 text-primary accent-primary"
-										/>
-										<div>
-											<p className="text-xs font-bold text-foreground">
-												Custom Fields
-											</p>
-											<p className="text-[11px] text-muted-foreground mt-0.5">
-												Choose specific fields to export
-											</p>
-										</div>
-									</label>
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<div className="mt-6 flex items-center justify-end border-t border-border/40 pt-4">
-						<Button
-							disabled={exportMutation.isPending}
-							onClick={() => {
-								exportMutation.mutate({
-									dataType: exportDataType,
-									dateRange: exportDateRange,
-									filter: exportFilter,
-									includeFields,
-								});
-							}}
-							className="gap-1.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-xs"
-						>
-							<Icon icon={DocumentExport} className="h-3.5 w-3.5" />
-							{exportMutation.isPending ? "Exporting..." : "Export Data"}
-						</Button>
-					</div>
-				</div>
+							<Field>
+								<FieldLabel>Archived records</FieldLabel>
+								<FieldDescription>
+									Archived records are deleted for good after the retention
+									period. Do it now to free them immediately.
+								</FieldDescription>
+								<AlertDialog>
+									<AlertDialogTrigger asChild>
+										<Button
+											variant="destructive"
+											disabled={clearArchived.isPending}
+										>
+											{clearArchived.isPending ? (
+												<Spinner data-icon="inline-start" />
+											) : null}
+											Delete archived records now
+										</Button>
+									</AlertDialogTrigger>
+									<AlertDialogContent>
+										<AlertDialogHeader>
+											<AlertDialogTitle>
+												Delete every archived record?
+											</AlertDialogTitle>
+											<AlertDialogDescription>
+												Every archived lead, company and deal is deleted for
+												good. This cannot be undone.
+											</AlertDialogDescription>
+										</AlertDialogHeader>
+										<AlertDialogFooter>
+											<AlertDialogCancel>Cancel</AlertDialogCancel>
+											<AlertDialogAction
+												variant="destructive"
+												onClick={() => clearArchived.mutate({ entity: null })}
+											>
+												Delete for good
+											</AlertDialogAction>
+										</AlertDialogFooter>
+									</AlertDialogContent>
+								</AlertDialog>
+							</Field>
+						</CardContent>
+					) : null}
+				</Card>
 			</div>
 
-			{/* SECTION 3: Data Backup & Data Retention/Cleanup */}
-			<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-				{/* 3A: Data Backup */}
-				<div className="rounded-2xl border border-border/70 bg-card p-6 shadow-xs">
-					<div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-						<div>
-							<h3 className="text-base font-bold text-foreground">
-								Data Backup
-							</h3>
-							<p className="text-xs text-muted-foreground mt-1">
-								Create and manage backups of your CRM data.
-							</p>
-						</div>
+			<Card>
+				<CardHeader>
+					<CardTitle>Duplicates</CardTitle>
+					<CardDescription>
+						Find active leads or companies that share the same name. Open a
+						record to merge or archive it by hand.
+					</CardDescription>
+					<CardAction className="flex gap-2">
 						<Button
 							variant="outline"
-							size="sm"
-							onClick={() => setIsCreateBackupOpen(true)}
-							className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10 rounded-xl text-xs"
+							onClick={() => setDuplicateEntity("CONTACT")}
 						>
-							<Icon icon={Add} className="h-3.5 w-3.5" />
-							Create Backup
+							<Icon icon={Search} data-icon="inline-start" />
+							Leads
 						</Button>
-					</div>
-
-					<div className="mt-5 overflow-x-auto">
-						<table className="w-full text-left text-xs">
-							<thead>
-								<tr className="border-b border-border/40 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
-									<th className="pb-3 pl-1 font-semibold w-8">#</th>
-									<th className="pb-3 font-semibold min-w-[140px]">
-										BACKUP NAME
-									</th>
-									<th className="pb-3 font-semibold min-w-[140px]">
-										CREATED ON
-									</th>
-									<th className="pb-3 font-semibold w-20">SIZE</th>
-									<th className="pb-3 font-semibold w-20 text-center">
-										STATUS
-									</th>
-									<th className="pb-3 pr-2 font-semibold w-10 text-right">
-										ACTIONS
-									</th>
-								</tr>
-							</thead>
-							<tbody className="divide-y divide-border/30 font-medium">
-								{data.backups.length === 0 ? (
-									<tr>
-										<td
-											colSpan={6}
-											className="py-8 text-center text-xs text-muted-foreground"
-										>
-											No backups created yet. Click &quot;Create Backup&quot; to
-											generate your first snapshot.
-										</td>
-									</tr>
-								) : (
-									data.backups.map((b, index) => (
-										<tr
-											key={b.id}
-											className="group hover:bg-muted/30 transition-colors"
-										>
-											<td className="py-3 pl-1 text-muted-foreground font-semibold">
-												{index + 1}
-											</td>
-											<td className="py-3 font-semibold text-foreground">
-												{b.name}
-											</td>
-											<td className="py-3 text-muted-foreground">
-												{b.createdOn}
-											</td>
-										<td className="py-3 text-foreground/80">{b.size}</td>
-										<td className="py-3 text-center">
-											<span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-												{b.status}
-											</span>
-										</td>
-										<td className="py-3 pr-2 text-right">
-											<DropdownMenu>
-												<DropdownMenuTrigger asChild>
-													<button
-														type="button"
-														className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-													>
-														<Icon
-															icon={OverflowMenuVertical}
-															className="h-4 w-4"
-														/>
-													</button>
-												</DropdownMenuTrigger>
-												<DropdownMenuContent align="end">
-													<DropdownMenuItem
-														onClick={() => {
-															toast.success(`Downloading ${b.name}...`);
-														}}
-													>
-														<Icon
-															icon={CloudDownload}
-															className="mr-2 h-3.5 w-3.5"
-														/>
-														Download
-													</DropdownMenuItem>
-													<DropdownMenuSeparator />
-													<DropdownMenuItem
-														className="text-destructive focus:text-destructive"
-														onClick={() => {
-															if (confirm(`Delete backup "${b.name}"?`)) {
-																deleteBackupMutation.mutate({ id: b.id });
-															}
-														}}
-													>
-														<Icon
-															icon={TrashCan}
-															className="mr-2 h-3.5 w-3.5"
-														/>
-														Delete
-													</DropdownMenuItem>
-												</DropdownMenuContent>
-											</DropdownMenu>
-										</td>
-									</tr>
-								)))}
-							</tbody>
-						</table>
-					</div>
-				</div>
-
-				{/* 3B: Data Retention & Cleanup */}
-				<div className="flex flex-col gap-6">
-					{/* Data Retention */}
-					<div className="rounded-2xl border border-border/70 bg-card p-6 shadow-xs">
-						<h3 className="text-base font-bold text-foreground">
-							Data Retention
-						</h3>
-						<p className="text-xs text-muted-foreground mt-1">
-							Configure how long to keep deleted data.
-						</p>
-
-						<div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-							<div>
-								<FieldLabel className="text-xs font-semibold text-muted-foreground mb-1 block">
-									Deleted Leads
-								</FieldLabel>
-								<Select
-									value={data.retention.deletedLeads}
-									onValueChange={(val) => {
-										updateRetentionMutation.mutate({ deletedLeads: val });
-									}}
-								>
-									<SelectTrigger className="h-9 text-xs rounded-xl border-border/60 bg-background/70">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{RETENTION_OPTIONS.map((opt) => (
-											<SelectItem key={opt} value={opt} className="text-xs">
-												{opt}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</div>
-
-							<div>
-								<FieldLabel className="text-xs font-semibold text-muted-foreground mb-1 block">
-									Deleted Customers
-								</FieldLabel>
-								<Select
-									value={data.retention.deletedCustomers}
-									onValueChange={(val) => {
-										updateRetentionMutation.mutate({
-											deletedCustomers: val,
-										});
-									}}
-								>
-									<SelectTrigger className="h-9 text-xs rounded-xl border-border/60 bg-background/70">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{RETENTION_OPTIONS.map((opt) => (
-											<SelectItem key={opt} value={opt} className="text-xs">
-												{opt}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</div>
-
-							<div>
-								<FieldLabel className="text-xs font-semibold text-muted-foreground mb-1 block">
-									Deleted Activities
-								</FieldLabel>
-								<Select
-									value={data.retention.deletedActivities}
-									onValueChange={(val) => {
-										updateRetentionMutation.mutate({
-											deletedActivities: val,
-										});
-									}}
-								>
-									<SelectTrigger className="h-9 text-xs rounded-xl border-border/60 bg-background/70">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{RETENTION_OPTIONS.map((opt) => (
-											<SelectItem key={opt} value={opt} className="text-xs">
-												{opt}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</div>
-
-							<div>
-								<FieldLabel className="text-xs font-semibold text-muted-foreground mb-1 block">
-									Deleted Deals
-								</FieldLabel>
-								<Select
-									value={data.retention.deletedDeals}
-									onValueChange={(val) => {
-										updateRetentionMutation.mutate({ deletedDeals: val });
-									}}
-								>
-									<SelectTrigger className="h-9 text-xs rounded-xl border-border/60 bg-background/70">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{RETENTION_OPTIONS.map((opt) => (
-											<SelectItem key={opt} value={opt} className="text-xs">
-												{opt}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							</div>
-						</div>
-
-						<div className="mt-5 flex items-center gap-2.5 rounded-xl border border-sky-500/20 bg-sky-500/10 p-3 text-xs text-sky-700 dark:text-sky-300">
-							<Icon icon={Information} className="h-4 w-4 shrink-0" />
-							<span>
-								Deleted data is moved to trash and can be restored within
-								the retention period.
-							</span>
-						</div>
-					</div>
-
-					{/* Data Cleanup */}
-					<div className="rounded-2xl border border-border/70 bg-card p-6 shadow-xs">
-						<h3 className="text-base font-bold text-foreground">
-							Data Cleanup
-						</h3>
-						<p className="text-xs text-muted-foreground mt-1">
-							Remove old or unwanted data to keep your CRM organized.
-						</p>
-
-						<div className="mt-4 space-y-2.5">
-							<div
-								onClick={() => setIsClearTrashOpen(true)}
-								className="flex items-center justify-between rounded-xl border border-border/60 bg-background/50 p-3 hover:bg-muted/40 cursor-pointer transition-colors"
-							>
-								<div className="flex items-center gap-3">
-									<div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400">
-										<Icon icon={TrashCan} className="h-4 w-4" />
-									</div>
-									<div>
-										<p className="text-xs font-semibold text-foreground">
-											Clear Deleted Data
-										</p>
-										<p className="text-[11px] text-muted-foreground">
-											Permanently delete data from trash
-										</p>
-									</div>
-								</div>
-								<span className="text-muted-foreground text-sm font-semibold">
-									&gt;
-								</span>
-							</div>
-
-							<div
-								onClick={() => setIsArchiveOpen(true)}
-								className="flex items-center justify-between rounded-xl border border-border/60 bg-background/50 p-3 hover:bg-muted/40 cursor-pointer transition-colors"
-							>
-								<div className="flex items-center gap-3">
-									<div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/15 text-purple-600 dark:text-purple-400">
-										<Icon icon={Archive} className="h-4 w-4" />
-									</div>
-									<div>
-										<p className="text-xs font-semibold text-foreground">
-											Archive Inactive Records
-										</p>
-										<p className="text-[11px] text-muted-foreground">
-											Archive old or inactive leads, customers or deals
-										</p>
-									</div>
-								</div>
-								<span className="text-muted-foreground text-sm font-semibold">
-									&gt;
-								</span>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			{/* SECTION 4: Merge Records */}
-			<div className="rounded-2xl border border-border/70 bg-card p-6 shadow-xs">
-				<div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-					<div>
-						<h3 className="text-base font-bold text-foreground">
-							Merge Records
-						</h3>
-						<p className="text-xs text-muted-foreground mt-1">
-							Find and merge duplicate leads or customers.
-						</p>
-					</div>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => setIsFindDuplicatesOpen(true)}
-						className="gap-1.5 border-primary/30 text-primary hover:bg-primary/10 rounded-xl text-xs"
-					>
-						<Icon icon={Search} className="h-3.5 w-3.5" />
-						Find Duplicates
-					</Button>
-				</div>
-
-				<div className="mt-5 space-y-2.5">
-					<div
-						onClick={() => {
-							toast.info("Scanning for duplicate leads... 0 found.");
-						}}
-						className="flex items-center justify-between rounded-xl border border-border/60 bg-background/50 p-3.5 hover:bg-muted/40 cursor-pointer transition-colors"
-					>
-						<div className="flex items-center gap-3">
-							<div className="flex h-8 w-8 items-center justify-center rounded-full bg-rose-500/15 text-rose-600 text-xs font-bold">
-								ML
-							</div>
-							<div>
-								<p className="text-xs font-semibold text-foreground">
-									Merge Duplicate Leads
-								</p>
-								<p className="text-[11px] text-muted-foreground">
-									Identify and merge duplicate lead records
-								</p>
-							</div>
-						</div>
-						<span className="text-muted-foreground text-sm font-semibold">
-							&gt;
-						</span>
-					</div>
-
-					<div
-						onClick={() => {
-							toast.info("Scanning for duplicate customers... 0 found.");
-						}}
-						className="flex items-center justify-between rounded-xl border border-border/60 bg-background/50 p-3.5 hover:bg-muted/40 cursor-pointer transition-colors"
-					>
-						<div className="flex items-center gap-3">
-							<div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500/15 text-purple-600 text-xs font-bold">
-								MC
-							</div>
-							<div>
-								<p className="text-xs font-semibold text-foreground">
-									Merge Duplicate Customers
-								</p>
-								<p className="text-[11px] text-muted-foreground">
-									Identify and merge duplicate customer records
-								</p>
-							</div>
-						</div>
-						<span className="text-muted-foreground text-sm font-semibold">
-							&gt;
-						</span>
-					</div>
-				</div>
-			</div>
-
-			{/* SECTION 5: ACCOUNT SETTINGS */}
-			<div className="rounded-2xl border border-rose-500/30 bg-card p-6 shadow-xs">
-				<h3 className="text-base font-bold tracking-tight text-foreground uppercase">
-					ACCOUNT SETTINGS
-				</h3>
-				<p className="text-xs text-muted-foreground mt-1">
-					Manage your account and data.
-				</p>
-
-				<div className="mt-5 rounded-2xl border border-rose-500/30 bg-rose-500/5 p-5">
-					<div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-						<div className="flex items-start gap-3">
-							<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400">
-								<Icon icon={WarningAlt} className="h-5 w-5" />
-							</div>
-							<div>
-								<p className="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400">
-									DELETE ACCOUNT
-								</p>
-								<p className="text-xs text-muted-foreground mt-0.5">
-									Permanently delete this CRM account and its associated
-									workspace data. This action cannot be undone.
-								</p>
-							</div>
-						</div>
-
 						<Button
-							variant="destructive"
-							onClick={() => setIsDeleteAccountOpen(true)}
-							className="shrink-0 rounded-xl bg-rose-600 text-white hover:bg-rose-700 text-xs px-4"
+							variant="outline"
+							onClick={() => setDuplicateEntity("COMPANY")}
 						>
-							Delete Account
+							<Icon icon={Search} data-icon="inline-start" />
+							Companies
 						</Button>
-					</div>
-				</div>
-			</div>
+					</CardAction>
+				</CardHeader>
+				{duplicateEntity ? (
+					<CardContent>
+						{duplicates.isFetching ? (
+							<Spinner />
+						) : duplicates.error ? (
+							<p className="text-destructive text-sm">
+								{duplicates.error.message}
+							</p>
+						) : (duplicates.data?.groups.length ?? 0) === 0 ? (
+							<p className="text-muted-foreground text-sm">
+								No duplicate{" "}
+								{duplicateEntity === "CONTACT" ? "leads" : "companies"}.
+							</p>
+						) : (
+							<ul className="flex flex-col divide-y text-sm">
+								{duplicates.data?.groups.map((group) => (
+									<li key={group.key} className="flex flex-col gap-1 py-2">
+										<span className="font-medium">
+											{group.records[0]?.name} · {group.records.length} records
+										</span>
+										<span className="flex flex-wrap gap-3">
+											{group.records.map((record, index) => (
+												<Link
+													key={record.id}
+													className="text-primary underline-offset-4 hover:underline"
+													href={workspaceUrl(
+														`${DUPLICATE_PATH[duplicateEntity]}/${record.id}`,
+													)}
+												>
+													Record {index + 1}
+												</Link>
+											))}
+										</span>
+									</li>
+								))}
+							</ul>
+						)}
+					</CardContent>
+				) : null}
+			</Card>
 
-			{/* Create Backup Modal */}
-			<Dialog open={isCreateBackupOpen} onOpenChange={setIsCreateBackupOpen}>
-				<DialogContent className="sm:max-w-md">
+			<Dialog open={backupOpen} onOpenChange={setBackupOpen}>
+				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Create Workspace Backup</DialogTitle>
+						<DialogTitle>Create backup</DialogTitle>
 						<DialogDescription>
-							Save a snapshot of all contacts, companies, deals, and
-							activities.
+							Saves a copy of every lead, company, deal and activity.
 						</DialogDescription>
 					</DialogHeader>
-
-					<div className="space-y-4 py-2">
+					<form
+						id="create-backup"
+						onSubmit={(event) => {
+							event.preventDefault();
+							const name = backupName.trim();
+							if (name) createBackup.mutate({ name });
+						}}
+					>
 						<Field>
-							<FieldLabel>Backup Name</FieldLabel>
+							<FieldLabel htmlFor={backupNameId}>Backup name</FieldLabel>
 							<Input
-								placeholder="e.g. Pre-Migration Snapshot"
-								value={newBackupName}
-								onChange={(e) => setNewBackupName(e.target.value)}
+								id={backupNameId}
+								value={backupName}
+								onChange={(event) => setBackupName(event.target.value)}
+								placeholder="e.g. Before the October import"
 							/>
 						</Field>
-					</div>
-
+					</form>
 					<DialogFooter>
 						<DialogClose asChild>
 							<Button variant="outline">Cancel</Button>
 						</DialogClose>
 						<Button
-							disabled={
-								!newBackupName.trim() || createBackupMutation.isPending
-							}
-							onClick={() => {
-								createBackupMutation.mutate({
-									name: newBackupName.trim(),
-								});
-							}}
+							type="submit"
+							form="create-backup"
+							disabled={!backupName.trim() || createBackup.isPending}
 						>
-							{createBackupMutation.isPending
-								? "Creating..."
-								: "Create Backup"}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-
-			{/* Clear Trash Confirmation Modal */}
-			<Dialog open={isClearTrashOpen} onOpenChange={setIsClearTrashOpen}>
-				<DialogContent className="sm:max-w-md">
-					<DialogHeader>
-						<DialogTitle>Clear Deleted Records</DialogTitle>
-						<DialogDescription>
-							Are you sure you want to permanently empty the trash? Records
-							cannot be restored.
-						</DialogDescription>
-					</DialogHeader>
-
-					<DialogFooter>
-						<DialogClose asChild>
-							<Button variant="outline">Cancel</Button>
-						</DialogClose>
-						<Button
-							variant="destructive"
-							disabled={clearTrashMutation.isPending}
-							onClick={() => clearTrashMutation.mutate({ type: "all" })}
-						>
-							{clearTrashMutation.isPending
-								? "Clearing..."
-								: "Permanently Delete"}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-
-			{/* Archive Confirmation Modal */}
-			<Dialog open={isArchiveOpen} onOpenChange={setIsArchiveOpen}>
-				<DialogContent className="sm:max-w-md">
-					<DialogHeader>
-						<DialogTitle>Archive Inactive Records</DialogTitle>
-						<DialogDescription>
-							Move leads and deals with no activity in the past 90 days to
-							the archive.
-						</DialogDescription>
-					</DialogHeader>
-
-					<DialogFooter>
-						<DialogClose asChild>
-							<Button variant="outline">Cancel</Button>
-						</DialogClose>
-						<Button
-							disabled={archiveRecordsMutation.isPending}
-							onClick={() =>
-								archiveRecordsMutation.mutate({ period: "90_days" })
-							}
-						>
-							{archiveRecordsMutation.isPending
-								? "Archiving..."
-								: "Archive Records"}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-
-			{/* DELETE ACCOUNT MODAL (Matching Screenshot 2) */}
-			<Dialog
-				open={isDeleteAccountOpen}
-				onOpenChange={setIsDeleteAccountOpen}
-			>
-				<DialogContent className="sm:max-w-lg">
-					<DialogHeader>
-						<DialogTitle className="text-base font-bold tracking-tight text-foreground uppercase">
-							DELETE ACCOUNT
-						</DialogTitle>
-					</DialogHeader>
-
-					<div className="space-y-4 py-2">
-						<div className="flex items-start gap-3 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4">
-							<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rose-500/20 text-rose-600 dark:text-rose-400">
-								<Icon icon={WarningAlt} className="h-4 w-4" />
-							</div>
-							<div>
-								<p className="text-xs font-bold text-foreground">
-									Are you sure you want to delete your account?
-								</p>
-								<p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
-									This will permanently delete your account and remove your
-									access to Gisul CRM. Your data will be handled as per our
-									data retention policy.
-								</p>
-							</div>
-						</div>
-
-						<label className="flex items-center gap-2 cursor-pointer select-none text-xs text-muted-foreground hover:text-foreground">
-							<input
-								type="checkbox"
-								checked={understandIrreversible}
-								onChange={(e) =>
-									setUnderstandIrreversible(e.target.checked)
-								}
-								className="h-3.5 w-3.5 rounded border-border text-rose-600 focus:ring-rose-500 accent-rose-600"
-							/>
-							<span>I understand this action cannot be undone.</span>
-						</label>
-
-						<Field>
-							<FieldLabel className="text-xs font-medium text-foreground">
-								Enter your password to confirm
-							</FieldLabel>
-							<div className="relative">
-								<Input
-									type={showPassword ? "text" : "password"}
-									placeholder="Enter your password"
-									value={deletePassword}
-									onChange={(e) => setDeletePassword(e.target.value)}
-									className="pr-10 text-xs rounded-xl"
-								/>
-								<button
-									type="button"
-									onClick={() => setShowPassword(!showPassword)}
-									className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
-								>
-									{showPassword ? "Hide" : "Show"}
-								</button>
-							</div>
-						</Field>
-					</div>
-
-					<DialogFooter className="gap-2 sm:gap-0">
-						<DialogClose asChild>
-							<Button variant="outline" className="rounded-xl text-xs">
-								Cancel
-							</Button>
-						</DialogClose>
-						<Button
-							variant="destructive"
-							disabled={
-								!understandIrreversible ||
-								!deletePassword.trim() ||
-								deleteAccountMutation.isPending
-							}
-							onClick={() => {
-								deleteAccountMutation.mutate({
-									password: deletePassword.trim(),
-									understandIrreversible,
-								});
-							}}
-							className="rounded-xl bg-rose-600 text-white hover:bg-rose-700 text-xs"
-						>
-							{deleteAccountMutation.isPending
-								? "Deleting..."
-								: "Delete Account"}
+							{createBackup.isPending ? (
+								<Spinner data-icon="inline-start" />
+							) : null}
+							Create backup
 						</Button>
 					</DialogFooter>
 				</DialogContent>

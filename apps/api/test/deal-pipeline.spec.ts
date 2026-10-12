@@ -1,105 +1,172 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "bun:test";
+import { type Db, type DealStage, Prisma } from "@crm/db";
+import type { ConversionService } from "../src/currency/conversion.service";
 import { DealsService } from "../src/deals/deals.service";
 
-describe("Deal Pipeline Service", () => {
-	const mockDb = {
+type StoredStage = {
+	stage: DealStage;
+	name: string;
+	probability: number;
+	color: string;
+	position: number;
+	active: boolean;
+};
+
+type StoredSettings = Partial<{
+	pipelineProbabilityTracking: boolean;
+	pipelineRequireStageNotes: boolean;
+	pipelineAutoAssignDeals: boolean;
+	pipelineDefaultStage: DealStage;
+	pipelineApplyToAllProducts: boolean;
+	pipelineAllowSkippingStages: boolean;
+}>;
+
+function buildService(role: "owner" | "member" = "owner") {
+	const stages: StoredStage[] = [
+		{
+			stage: "DEMO_BOOKED",
+			name: "Discovery",
+			probability: 10,
+			color: "#9aa0b4",
+			position: 1,
+			active: true,
+		},
+	];
+	let settings: StoredSettings | null = null;
+
+	const db = {
+		member: {
+			async findUnique() {
+				return { role };
+			},
+		},
 		deal: {
-			findMany: vi.fn(),
-			findUnique: vi.fn(),
-			count: vi.fn().mockResolvedValue(3),
-			groupBy: vi.fn().mockResolvedValue([
-				{ stage: "DEMO_BOOKED", _count: { _all: 12 }, _sum: { baseAmount: "12500.00" } },
-				{ stage: "QUALIFIED_TO_BUY", _count: { _all: 8 }, _sum: { baseAmount: "8200.00" } },
-				{ stage: "CLOSED_WON", _count: { _all: 16 }, _sum: { baseAmount: "32400.00" } },
-				{ stage: "CLOSED_LOST", _count: { _all: 7 }, _sum: { baseAmount: "6100.00" } },
-			]),
-			aggregate: vi.fn(),
-			update: vi.fn(),
+			async groupBy() {
+				return [
+					{
+						stage: "DEMO_BOOKED",
+						_count: { _all: 12 },
+						_sum: { baseAmount: new Prisma.Decimal("12500.00") },
+					},
+					{
+						stage: "CLOSED_WON",
+						_count: { _all: 3 },
+						_sum: { baseAmount: new Prisma.Decimal("900.00") },
+					},
+				];
+			},
 		},
-		product: {
-			findMany: vi.fn().mockResolvedValue([]),
+		pipelineStage: {
+			async findMany() {
+				return stages;
+			},
+			async upsert(args: {
+				where: { stage: DealStage };
+				create: StoredStage;
+				update: Partial<StoredStage>;
+			}) {
+				const existing = stages.find((row) => row.stage === args.where.stage);
+				if (existing) {
+					for (const [key, value] of Object.entries(args.update)) {
+						if (value !== undefined) Object.assign(existing, { [key]: value });
+					}
+				} else {
+					stages.push({ ...args.create });
+				}
+				return args.create;
+			},
 		},
-	} as any;
+		appSetting: {
+			async findUnique() {
+				return settings;
+			},
+			async upsert(args: { update: StoredSettings }) {
+				const next: StoredSettings = { ...settings };
+				for (const [key, value] of Object.entries(args.update)) {
+					if (value !== undefined) Object.assign(next, { [key]: value });
+				}
+				settings = next;
+				return settings;
+			},
+		},
+	} as unknown as Db;
 
-	const mockAgent = {} as any;
-	const mockStamp = {} as any;
-	const mockConversion = {
-		reportingCurrency: vi.fn().mockResolvedValue("INR"),
-		countedWhere: vi.fn().mockReturnValue({}),
-	} as any;
-	const mockFields = {
-		filterableFieldsFor: vi.fn().mockResolvedValue([]),
-	} as any;
+	const conversion = {
+		async reportingCurrency() {
+			return "INR";
+		},
+	} as unknown as ConversionService;
 
-	const service = new DealsService(
-		mockDb,
-		mockAgent,
-		mockStamp,
-		mockConversion,
-		mockFields,
+	return new DealsService(
+		db,
+		{} as never,
+		{} as never,
+		conversion,
+		{} as never,
 	);
+}
 
-	it("retrieves pipeline overview with aggregated real stats and stage metrics", async () => {
+describe("Deal pipeline", () => {
+	it("shows all seven real stages with stored names and live totals", async () => {
+		const service = buildService();
 		const overview = await service.pipelineOverview("user-1");
 
-		expect(overview.currency).toBe("INR");
-		expect(overview.stats.totalStages).toBe(6);
-		expect(overview.stats.activeStages).toBe(4);
-		expect(overview.stats.closedWon).toBe(1);
-		expect(overview.stats.closedLost).toBe(1);
+		expect(overview.stages).toHaveLength(7);
+		expect(overview.stats).toEqual({
+			totalStages: 7,
+			activeStages: 4,
+			closedWon: 1,
+			closedLost: 2,
+		});
+		expect(overview.canManage).toBe(true);
 
-		const demoBooked = overview.stages.find((s) => s.stage === "DEMO_BOOKED");
-		expect(demoBooked).toBeDefined();
-		expect(demoBooked?.name).toBe("Qualification");
-		expect(demoBooked?.dealCount).toBe(12);
-		expect(demoBooked?.totalValueCents).toBe(1250000);
+		const first = overview.stages.find(
+			(stage) => stage.stage === "DEMO_BOOKED",
+		);
+		expect(first?.name).toBe("Discovery");
+		expect(first?.dealCount).toBe(12);
+		expect(first?.totalValueCents).toBe(1_250_000);
+
+		const unqualified = overview.stages.find(
+			(stage) => stage.stage === "UNQUALIFIED_TO_BUY",
+		);
+		expect(unqualified?.status).toBe("lost");
 	});
 
-	it("updates pipeline settings and toggles", async () => {
+	it("saves pipeline settings to the database", async () => {
+		const service = buildService();
 		const updated = await service.updatePipelineSettings("user-1", {
-			enableProbabilityTracking: true,
 			requireStageUpdateNotes: false,
-			autoAssignDeals: true,
 			defaultStage: "QUALIFIED_TO_BUY",
 		});
 
 		expect(updated.requireStageUpdateNotes).toBe(false);
-		expect(updated.autoAssignDeals).toBe(true);
 		expect(updated.defaultStage).toBe("QUALIFIED_TO_BUY");
+		expect(updated.enableProbabilityTracking).toBe(true);
 	});
 
-	it("creates a new custom pipeline stage", async () => {
-		const created = await service.createPipelineStage("user-1", {
-			name: "Contract Review",
-			probability: 85,
-			color: "#8B5CF6",
-			kind: "open",
-			status: "active",
-		});
-
-		expect(created.name).toBe("Contract Review");
-		expect(created.probability).toBe(85);
-		expect(created.color).toBe("#8B5CF6");
-		expect(created.dealCount).toBe(0);
-	});
-
-	it("updates an existing pipeline stage name and probability", async () => {
+	it("saves a stage edit and keeps it on the next read", async () => {
+		const service = buildService();
 		const updated = await service.updatePipelineStage("user-1", {
-			id: "stage-1",
-			name: "Initial Discovery",
-			probability: 15,
-			color: "#6C5CE7",
+			id: "CONTRACT_SENT",
+			name: "Contract out",
+			probability: 75,
+			active: false,
 		});
 
-		expect(updated.name).toBe("Initial Discovery");
-		expect(updated.probability).toBe(15);
-	});
-
-	it("deletes a pipeline stage", async () => {
-		const deleted = await service.deletePipelineStage("user-1", "stage-2");
-		expect(deleted.id).toBe("stage-2");
+		expect(updated.name).toBe("Contract out");
+		expect(updated.status).toBe("inactive");
 
 		const overview = await service.pipelineOverview("user-1");
-		expect(overview.stages.find((s) => s.id === "stage-2")).toBeUndefined();
+		const stage = overview.stages.find((row) => row.stage === "CONTRACT_SENT");
+		expect(stage?.probability).toBe(75);
+	});
+
+	it("refuses pipeline changes from a member", async () => {
+		const service = buildService("member");
+
+		await expect(
+			service.updatePipelineSettings("user-2", { autoAssignDeals: true }),
+		).rejects.toThrow("Only an owner or an admin can change the pipeline.");
 	});
 });

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "bun:test";
 import { WorkspaceService } from "../src/workspace/workspace.service";
 
 describe("WorkspaceService General Settings", () => {
@@ -166,48 +166,5 @@ describe("WorkspaceService General Settings", () => {
 		expect(result.description).toBe("Global e-commerce platform");
 		expect(result.currency).toBe("USD");
 		expect(result.preferences.allowDuplicateLeads).toBe(true);
-	});
-
-	it("computes teams and roles dynamically without static dummy counts", async () => {
-		mockDb.organization.findUnique.mockResolvedValue({
-			id: "ws-1",
-			slug: "gisul-tech",
-			name: "Gisul Technologies",
-			metadata: "{}",
-		});
-
-		mockDb.member.findMany.mockResolvedValue([
-			{
-				id: "m-1",
-				role: "sales-manager",
-				createdAt: new Date(),
-				userId: "u-1",
-				user: {
-					name: "Sales User",
-					email: "sales@example.com",
-					sessions: [],
-				},
-			},
-			{
-				id: "m-2",
-				role: "marketing",
-				createdAt: new Date(),
-				userId: "u-2",
-				user: {
-					name: "Marketing User",
-					email: "mkt@example.com",
-					sessions: [],
-				},
-			},
-		]);
-
-		const service = new WorkspaceService(mockDb as any, mockAgent);
-		const teams = await service.teams("u-1");
-		const roles = await service.roles("u-1");
-
-		expect(teams.find((t) => t.id === "sales")?.memberCount).toBe(1);
-		expect(teams.find((t) => t.id === "marketing")?.memberCount).toBe(1);
-		expect(roles.find((r) => r.id === "sales-manager")?.userCount).toBe(1);
-		expect(roles.find((r) => r.id === "marketing")?.userCount).toBe(1);
 	});
 });

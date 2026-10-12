@@ -7,6 +7,9 @@ describe("WorkspaceService Integrations", () => {
 			findUnique: vi.fn(),
 			update: vi.fn(),
 		},
+		member: {
+			findUnique: vi.fn().mockResolvedValue({ role: "owner" }),
+		},
 		mailboxSync: {
 			findFirst: vi.fn(),
 		},
@@ -62,6 +65,17 @@ describe("WorkspaceService Integrations", () => {
 		const apiAccess = result.integrations.find((i) => i.id === "api-access");
 		expect(apiAccess?.status).toBe("enabled");
 		expect(apiAccess?.connected).toBe(true);
+	});
+
+	it("refuses to let a member toggle an integration", async () => {
+		mockDb.member.findUnique.mockResolvedValueOnce({ role: "member" });
+		const service = new WorkspaceService(mockDb as any, mockAgent);
+
+		await expect(
+			service.toggleIntegration("u-2", { id: "hubspot", enabled: true }),
+		).rejects.toThrow(
+			"Only an owner or an admin can change workspace settings.",
+		);
 	});
 
 	it("toggles integration state and persists into workspace metadata", async () => {

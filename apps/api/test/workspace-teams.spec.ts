@@ -3,8 +3,24 @@ import { WORKSPACE_ID } from "@crm/auth";
 import type { Db } from "@crm/db";
 import { WorkspaceService } from "../src/workspace/workspace.service";
 
-describe("Workspace Teams & Roles Service", () => {
-	const mockMembers = [
+type MockTeam = { id: string; name: string };
+type MockLink = { memberId: string; teamId: string };
+
+function recently(): Date {
+	return new Date(Date.now() - 60_000);
+}
+
+function longAgo(): Date {
+	return new Date(Date.now() - 400 * 24 * 60 * 60_000);
+}
+
+function buildService() {
+	const teams: MockTeam[] = [
+		{ id: "team_sales", name: "Sales" },
+		{ id: "team_product", name: "Product" },
+	];
+	const links: MockLink[] = [];
+	const members = [
 		{
 			id: "mem-1",
 			userId: "usr-1",
@@ -12,11 +28,10 @@ describe("Workspace Teams & Roles Service", () => {
 			role: "owner",
 			createdAt: new Date("2026-01-01T00:00:00Z"),
 			user: {
-				name: "Rahul Kumar",
-				email: "rahul@gisul.id",
+				name: "Owner Person",
+				email: "owner@example.com",
 				image: null,
-				updatedAt: new Date("2026-10-08T11:20:00Z"),
-				sessions: [{ updatedAt: new Date("2026-10-08T11:20:00Z") }],
+				sessions: [{ updatedAt: recently() }],
 			},
 		},
 		{
@@ -26,184 +41,208 @@ describe("Workspace Teams & Roles Service", () => {
 			role: "member",
 			createdAt: new Date("2026-01-02T00:00:00Z"),
 			user: {
-				name: "Priya Mehta",
-				email: "priya@gisul.id",
+				name: "Member Person",
+				email: "member@example.com",
 				image: null,
-				updatedAt: new Date("2026-10-08T09:15:00Z"),
-				sessions: [{ updatedAt: new Date("2026-10-08T09:15:00Z") }],
+				sessions: [{ updatedAt: longAgo() }],
 			},
 		},
 	];
 
-	const mockInvitations: any[] = [];
+	const withTeam = (member: (typeof members)[number]) => {
+		const link = links.find((entry) => entry.memberId === member.id);
+		const team = teams.find((entry) => entry.id === link?.teamId);
+		return {
+			...member,
+			team:
+				link && team ? { teamId: team.id, team: { name: team.name } } : null,
+		};
+	};
 
-	const mockDb = {
-		organization: {
-			async findUnique(args: any) {
-				return {
-					id: WORKSPACE_ID,
-					slug: "gisul-software-services",
-					name: "Gisul Software Services",
-					website: "gisul.co.in",
-					metadata: JSON.stringify({ onboarded: true }),
-				};
-			},
-			async update(args: any) {
-				return args.data;
-			},
-		},
+	const db = {
 		member: {
-			async findMany(args: any) {
-				let filtered = [...mockMembers];
-				if (args.where?.user?.OR) {
-					const term = args.where.user.OR[0].name.contains.toLowerCase();
-					filtered = filtered.filter(
-						(m) =>
-							m.user.name.toLowerCase().includes(term) ||
-							m.user.email.toLowerCase().includes(term),
-					);
-				}
-				if (args.where?.role?.in) {
-					filtered = filtered.filter((m) =>
-						args.where.role.in.includes(m.role),
-					);
-				}
-				return filtered.slice(args.skip ?? 0, (args.skip ?? 0) + (args.take ?? 10));
+			async findMany(args: {
+				where?: { user?: { OR?: { name: { contains: string } }[] } };
+			}) {
+				const term = args.where?.user?.OR?.[0]?.name.contains.toLowerCase();
+				return members
+					.filter(
+						(member) =>
+							!term ||
+							member.user.name.toLowerCase().includes(term) ||
+							member.user.email.toLowerCase().includes(term),
+					)
+					.map(withTeam);
 			},
-			async findUnique(args: any) {
-				if (args.where?.organizationId_userId) {
-					return (
-						mockMembers.find(
-							(m) =>
-								m.userId === args.where.organizationId_userId.userId &&
-								m.organizationId === args.where.organizationId_userId.organizationId,
-						) ?? null
-					);
-				}
-				return mockMembers.find((m) => m.id === args.where.id) ?? null;
+			async findUnique(args: {
+				where: { id?: string; organizationId_userId?: { userId: string } };
+			}) {
+				const match = args.where.organizationId_userId
+					? members.find(
+							(member) =>
+								member.userId === args.where.organizationId_userId?.userId,
+						)
+					: members.find((member) => member.id === args.where.id);
+				return match ? withTeam(match) : null;
 			},
-			async findFirst(args: any) {
-				return mockMembers.find((m) => m.id === args.where.id) ?? null;
+			async findUniqueOrThrow(args: { where: { id: string } }) {
+				const match = members.find((member) => member.id === args.where.id);
+				if (!match) throw new Error("not found");
+				return withTeam(match);
 			},
-			async count(args: any) {
-				return mockMembers.length;
+			async findFirst(args: { where: { id: string } }) {
+				return members.find((member) => member.id === args.where.id) ?? null;
 			},
-			async groupBy(args: any) {
-				return [{ role: "owner", _count: { _all: 1 } }, { role: "member", _count: { _all: 1 } }];
+			async count() {
+				return members.length;
 			},
-			async update(args: any) {
-				const target = mockMembers.find((m) => m.id === args.where.id);
-				if (target) {
-					target.role = args.data.role ?? target.role;
-				}
-				return target;
+			async groupBy() {
+				return [
+					{ role: "owner", _count: { _all: 1 } },
+					{ role: "member", _count: { _all: 1 } },
+					{ role: "Sales Manager", _count: { _all: 2 } },
+				];
 			},
 		},
-		invitation: {
-			async create(args: any) {
-				mockInvitations.push(args.data);
-				return args.data;
+		team: {
+			async findMany() {
+				return teams.map((team) => ({
+					...team,
+					_count: {
+						members: links.filter((link) => link.teamId === team.id).length,
+					},
+				}));
+			},
+			async findUnique(args: { where: { id: string } }) {
+				return teams.find((team) => team.id === args.where.id) ?? null;
+			},
+			async create(args: { data: { name: string } }) {
+				const team = { id: `team_${teams.length + 1}`, name: args.data.name };
+				teams.push(team);
+				return team;
 			},
 		},
-		$transaction: async (cb: any) => {
-			return cb(mockDb);
+		memberTeam: {
+			async upsert(args: { create: MockLink; update: { teamId: string } }) {
+				const existing = links.find(
+					(link) => link.memberId === args.create.memberId,
+				);
+				if (existing) existing.teamId = args.update.teamId;
+				else links.push({ ...args.create });
+				return args.create;
+			},
+			async deleteMany(args: { where: { memberId: string } }) {
+				const index = links.findIndex(
+					(link) => link.memberId === args.where.memberId,
+				);
+				if (index >= 0) links.splice(index, 1);
+				return { count: index >= 0 ? 1 : 0 };
+			},
 		},
-		$queryRaw: async () => [{ id: "mem-1" }, { id: "mem-owner-2" }],
 	} as unknown as Db;
 
-	const mockAgent = {
-		workspaceChanged: async () => {},
-	} as any;
+	const agent = { workspaceChanged: async () => {} } as never;
 
-	const service = new WorkspaceService(mockDb, mockAgent);
+	return { service: new WorkspaceService(db, agent), links };
+}
 
-	it("lists default teams with member counts", async () => {
-		const teams = await service.teams("usr-1");
-		expect(teams.length).toBeGreaterThanOrEqual(4);
-		expect(teams.map((t) => t.name)).toContain("Sales");
-		expect(teams.map((t) => t.name)).toContain("Product");
-		expect(teams.map((t) => t.name)).toContain("Marketing");
-		expect(teams.map((t) => t.name)).toContain("Customer Success");
+describe("Workspace teams and roles", () => {
+	it("lists teams stored in the database with real member counts", async () => {
+		const { service } = buildService();
+		const teams = await service.teams();
+
+		expect(teams).toEqual([
+			{ id: "team_sales", name: "Sales", memberCount: 0 },
+			{ id: "team_product", name: "Product", memberCount: 0 },
+		]);
 	});
 
-	it("lists standard and custom roles with descriptions", async () => {
-		const roles = await service.roles("usr-1");
-		expect(roles.length).toBeGreaterThanOrEqual(5);
-		const salesManager = roles.find((r) => r.name === "Sales Manager");
-		expect(salesManager).toBeDefined();
-		expect(salesManager?.description).toBe("Full access to sales data");
+	it("lists only the three real roles and folds unknown role strings into member", async () => {
+		const { service } = buildService();
+		const roles = await service.roles();
+
+		expect(roles).toEqual([
+			{ id: "owner", userCount: 1 },
+			{ id: "admin", userCount: 0 },
+			{ id: "member", userCount: 3 },
+		]);
 	});
 
-	it("creates a new team with normalized slug id", async () => {
-		const newTeam = await service.createTeam("usr-1", {
-			name: "Enterprise Solutions",
-			icon: "briefcase",
-		});
-		expect(newTeam.name).toBe("Enterprise Solutions");
-		expect(newTeam.id).toBe("enterprise-solutions");
-		expect(newTeam.icon).toBe("briefcase");
+	it("lets an owner create a team", async () => {
+		const { service } = buildService();
+		const team = await service.createTeam("usr-1", { name: "Enterprise" });
+
+		expect(team.name).toBe("Enterprise");
+		expect(team.memberCount).toBe(0);
 	});
 
-	it("creates a custom role with permissions", async () => {
-		const newRole = await service.createRole("usr-1", {
-			name: "Compliance Officer",
-			description: "Audit logs and data retention",
-			permissions: "read:audit,write:compliance",
-		});
-		expect(newRole.name).toBe("Compliance Officer");
-		expect(newRole.description).toBe("Audit logs and data retention");
-		expect(newRole.permissions).toBe("read:audit,write:compliance");
+	it("refuses to let a member create a team", async () => {
+		const { service } = buildService();
+
+		await expect(
+			service.createTeam("usr-2", { name: "Enterprise" }),
+		).rejects.toThrow("Only an owner or an admin can add a team.");
 	});
 
-	it("retrieves invitation settings with proper workspace slug", async () => {
-		const settings = await service.invitationSettings("usr-1");
-		expect(settings.allowUserInvitations).toBe(true);
-		expect(settings.defaultRole).toBe("Viewer");
-		expect(settings.inviteLink).toBe("https://crm.gisul.id/invite/gisul-software-services");
-	});
+	it("saves a member's team and clears it again", async () => {
+		const { service, links } = buildService();
 
-	it("invites a new user and stores invitation in database", async () => {
-		// Mock auth check
-		const result = await service.inviteUser("usr-1", {
-			email: "newmember@gisul.id",
-			role: "Sales Executive",
-			team: "Sales",
-		});
-		expect(result.success).toBe(true);
-		expect(result.email).toBe("newmember@gisul.id");
-		expect(mockInvitations.length).toBe(1);
-		expect(mockInvitations[0].email).toBe("newmember@gisul.id");
-		expect(mockInvitations[0].status).toBe("pending");
-	});
-
-	it("updates a member's team assignment", async () => {
-		const updated = await service.updateMemberTeam("usr-1", {
+		const moved = await service.updateMemberTeam("usr-1", {
 			memberId: "mem-2",
-			team: "Product",
+			teamId: "team_product",
 		});
-		expect(updated.team).toBe("Product");
-	});
+		expect(moved.teamId).toBe("team_product");
+		expect(moved.team).toBe("Product");
+		expect(links).toEqual([{ memberId: "mem-2", teamId: "team_product" }]);
 
-	it("updates a member's status (active/pending/inactive)", async () => {
-		const updated = await service.updateMemberStatus("usr-1", {
+		const cleared = await service.updateMemberTeam("usr-1", {
 			memberId: "mem-2",
-			status: "inactive",
+			teamId: null,
 		});
-		expect(updated.status).toBe("inactive");
+		expect(cleared.team).toBeNull();
+		expect(links).toEqual([]);
 	});
 
-	it("lists members with enriched metadata, pagination and search", async () => {
+	it("rejects a team that does not exist", async () => {
+		const { service } = buildService();
+
+		await expect(
+			service.updateMemberTeam("usr-1", {
+				memberId: "mem-2",
+				teamId: "team_missing",
+			}),
+		).rejects.toThrow("That team does not exist.");
+	});
+
+	it("points the invite card at the real sign-in page", () => {
+		const { service } = buildService();
+		const settings = service.invitationSettings();
+
+		expect(settings.signInUrl.endsWith("/sign-in")).toBe(true);
+		expect(settings.defaultRole).toBe("member");
+		expect(Array.isArray(settings.allowedDomains)).toBe(true);
+	});
+
+	it("derives status and last activity from the newest session", async () => {
+		const { service } = buildService();
 		const result = await service.members("usr-1", {
 			page: 1,
 			pageSize: 10,
-			q: "Priya",
+			q: "",
+			sort: "",
+			dir: "asc",
 			role: [],
 			team: [],
 			status: [],
 		});
-		expect(result.rows.length).toBe(1);
-		expect(result.rows[0]?.name).toBe("Priya Mehta");
-		expect(result.rows[0]?.email).toBe("priya@gisul.id");
-		expect(result.rows[0]?.isViewer).toBe(false);
+
+		const owner = result.rows.find((row) => row.id === "mem-1");
+		const member = result.rows.find((row) => row.id === "mem-2");
+
+		expect(owner?.status).toBe("active");
+		expect(owner?.isViewer).toBe(true);
+		expect(owner?.lastActive).not.toBeNull();
+		expect(member?.status).toBe("inactive");
+		expect(member?.role).toBe("member");
 	});
 });
