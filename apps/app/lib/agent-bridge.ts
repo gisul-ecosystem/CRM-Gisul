@@ -1,3 +1,5 @@
+import { signHs256Jwt } from "./hs256-jwt";
+
 const ISSUER = "crm-app";
 const AUDIENCE = "crm-agent";
 
@@ -36,7 +38,6 @@ export async function mintBridgeToken(
 
 	const now = Math.floor(Date.now() / 1000);
 
-	const header = { alg: "HS256", typ: "JWT" };
 	const payload: BridgeClaims = {
 		iss: ISSUER,
 		aud: AUDIENCE,
@@ -52,32 +53,5 @@ export async function mintBridgeToken(
 	if (record.companyId) payload.companyId = record.companyId;
 	if (record.dealId) payload.dealId = record.dealId;
 
-	const signingInput = `${base64url(encode(JSON.stringify(header)))}.${base64url(
-		encode(JSON.stringify(payload)),
-	)}`;
-
-	const key = await crypto.subtle.importKey(
-		"raw",
-		encode(secret),
-		{ name: "HMAC", hash: "SHA-256" },
-		false,
-		["sign"],
-	);
-
-	const signature = await crypto.subtle.sign("HMAC", key, encode(signingInput));
-
-	return `${signingInput}.${base64url(new Uint8Array(signature))}`;
-}
-
-function encode(input: string) {
-	return new TextEncoder().encode(input);
-}
-
-function base64url(bytes: Uint8Array): string {
-	let binary = "";
-	for (const byte of bytes) binary += String.fromCharCode(byte);
-	return btoa(binary)
-		.replace(/\+/g, "-")
-		.replace(/\//g, "_")
-		.replace(/=+$/, "");
+	return signHs256Jwt(secret, payload);
 }

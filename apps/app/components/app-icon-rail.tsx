@@ -4,12 +4,23 @@ import Activity from "@carbon/icons-react/es/Activity";
 import Analytics from "@carbon/icons-react/es/Analytics";
 import Building from "@carbon/icons-react/es/Building";
 import Close from "@carbon/icons-react/es/Close";
+import Group from "@carbon/icons-react/es/Group";
 import Home from "@carbon/icons-react/es/Home";
+import ListChecked from "@carbon/icons-react/es/ListChecked";
+import LogoLinkedin from "@carbon/icons-react/es/LogoLinkedin";
+import MailAll from "@carbon/icons-react/es/MailAll";
 import Partnership from "@carbon/icons-react/es/Partnership";
+import Reply from "@carbon/icons-react/es/Reply";
+import Rocket from "@carbon/icons-react/es/Rocket";
+import Search from "@carbon/icons-react/es/Search";
+import Send from "@carbon/icons-react/es/Send";
+import SendAlt from "@carbon/icons-react/es/SendAlt";
 import Settings from "@carbon/icons-react/es/Settings";
+import SettingsAdjust from "@carbon/icons-react/es/SettingsAdjust";
 import SidePanelClose from "@carbon/icons-react/es/SidePanelClose";
 import SidePanelOpen from "@carbon/icons-react/es/SidePanelOpen";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
+import UserProfile from "@carbon/icons-react/es/UserProfile";
 import { Button } from "@crm/ui/components/button";
 import type { CarbonIcon } from "@crm/ui/components/icon";
 import { Icon } from "@crm/ui/components/icon";
@@ -86,6 +97,82 @@ const GROUPS: NavGroup[] = [
 				iconClassName: "size-5",
 				match: "prefix",
 				related: ["/agents"],
+			},
+		],
+	},
+	{
+		label: "Outreach",
+		items: [
+			{
+				title: "Overview",
+				href: "/outreach",
+				icon: Rocket,
+				match: "exact",
+			},
+			{
+				title: "Campaigns",
+				href: "/outreach/campaigns",
+				icon: Send,
+				match: "prefix",
+			},
+			{
+				title: "Audiences",
+				href: "/outreach/audiences",
+				icon: Group,
+				match: "prefix",
+			},
+			{
+				title: "Sent",
+				href: "/outreach/sent",
+				icon: MailAll,
+				match: "prefix",
+			},
+			{
+				title: "Replies",
+				href: "/outreach/replies",
+				icon: Reply,
+				match: "prefix",
+			},
+			{
+				title: "Sending setup",
+				href: "/outreach/setup",
+				icon: SettingsAdjust,
+				match: "prefix",
+			},
+		],
+	},
+	{
+		label: "LinkedIn",
+		items: [
+			{
+				title: "Overview",
+				href: "/linkedin",
+				icon: LogoLinkedin,
+				match: "exact",
+			},
+			{
+				title: "Search and scrape",
+				href: "/linkedin/scrape",
+				icon: Search,
+				match: "prefix",
+			},
+			{
+				title: "Profiles",
+				href: "/linkedin/profiles",
+				icon: UserProfile,
+				match: "prefix",
+			},
+			{
+				title: "Queue",
+				href: "/linkedin/queue",
+				icon: ListChecked,
+				match: "prefix",
+			},
+			{
+				title: "Sent",
+				href: "/linkedin/sent",
+				icon: SendAlt,
+				match: "prefix",
 			},
 		],
 	},

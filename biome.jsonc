@@ -18,6 +18,7 @@
 			"!.claude",
 			"!.agents",
 			"!tools/oxlint/anti-slop",
+			"!services/linkedin-scraper",
 			"!skills-lock.json"
 		]
 	},

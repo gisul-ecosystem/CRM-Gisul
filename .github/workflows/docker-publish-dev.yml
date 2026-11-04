@@ -5,6 +5,13 @@ on:
   push:
     branches: [dev]
 
+concurrency:
+  group: docker-publish-dev
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 env:
   DOCKERHUB_USERNAME: gisuldocker
 
@@ -29,6 +36,10 @@ jobs:
           - service: migrate
             target: migrate
             image: crm-migrate
+          - service: linkedin-scraper
+            image: linkedin-scrapper
+            context: services/linkedin-scraper
+            file: services/linkedin-scraper/Dockerfile
 
     steps:
       - uses: actions/checkout@v5
@@ -51,15 +62,15 @@ jobs:
 
       - uses: docker/build-push-action@v6
         with:
-          context: .
-          file: docker/Dockerfile
+          context: ${{ matrix.context || '.' }}
+          file: ${{ matrix.file || 'docker/Dockerfile' }}
           target: ${{ matrix.target }}
           push: true
           platforms: linux/amd64
           build-args: |
             API_URL=${{ steps.api.outputs.url }}
           tags: |
-            gisuldocker/${{ matrix.image }}:latest
             gisuldocker/${{ matrix.image }}:dev
+            gisuldocker/${{ matrix.image }}:dev-sha-${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.service }}-dev
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}-dev

@@ -116,6 +116,9 @@ single place that knows what is set.
 | `BLOB_READ_WRITE_TOKEN` | Mirrors logos and photos into Blob |
 | `AZURE_OPENAI_API_KEY` | The model. Pair it with `AZURE_OPENAI_ENDPOINT` |
 | `AGENT_BRIDGE_SECRET` | The rep-facing Agent panel — see `agent.md` |
+| `OUTREACH_URL` + `OUTREACH_EMAIL` + `OUTREACH_PASSWORD` | The Outreach section. All three, or the section says it is not connected — see `outreach.md` |
+| `LINKEDIN_SCRAPER_URL` | The LinkedIn section. Unset, the section says it is not connected — see `linkedin-scraper.md` |
+| `LINKEDIN_SCRAPER_VIEWER_URL` | The "Open browser viewer" link for a scraper in Docker — see `linkedin-scraper.md` |
 
 `BLOB_READ_WRITE_TOKEN` is also in `env.validation.ts` and `apps/api/turbo.json`
 because the API and the seed write pictures too. The Next.js app is deliberately
