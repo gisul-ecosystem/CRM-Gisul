@@ -5,6 +5,13 @@ on:
   push:
     branches: [main, release]
 
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
 env:
   DOCKERHUB_USERNAME: gisuldocker
 
@@ -29,6 +36,10 @@ jobs:
           - service: migrate
             target: migrate
             image: crm-migrate
+          - service: linkedin-scraper
+            image: linkedin-scrapper
+            context: services/linkedin-scraper
+            file: services/linkedin-scraper/Dockerfile
 
     steps:
       - uses: actions/checkout@v5
@@ -40,11 +51,31 @@ jobs:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Read version
-        id: pkg
+      - name: Choose tags
+        id: tags
+        env:
+          IMAGE: gisuldocker/${{ matrix.image }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
         run: |
+          set -euo pipefail
+
           version=$(jq -r .version package.json)
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "list<<EOF"
+            echo "$IMAGE:sha-$SHA"
+            case "$BRANCH" in
+              release)
+                echo "$IMAGE:latest"
+                echo "$IMAGE:$version"
+                ;;
+              main)
+                echo "$IMAGE:main"
+                ;;
+            esac
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Resolve API URL
         id: api
@@ -57,16 +88,13 @@ jobs:
 
       - uses: docker/build-push-action@v6
         with:
-          context: .
-          file: docker/Dockerfile
+          context: ${{ matrix.context || '.' }}
+          file: ${{ matrix.file || 'docker/Dockerfile' }}
           target: ${{ matrix.target }}
           push: true
           platforms: linux/amd64
           build-args: |
             API_URL=${{ steps.api.outputs.url }}
-          tags: |
-            gisuldocker/${{ matrix.image }}:latest
-            gisuldocker/${{ matrix.image }}:${{ steps.pkg.outputs.version }}
-            gisuldocker/${{ matrix.image }}:sha-${{ github.sha }}
+          tags: ${{ steps.tags.outputs.list }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}

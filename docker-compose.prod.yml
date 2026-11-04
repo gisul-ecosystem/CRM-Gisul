@@ -1,7 +1,38 @@
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+x-crm-env: &crm-env
+  DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-crm}?schema=public
+  NODE_ENV: production
+  NODE_TLS_REJECT_UNAUTHORIZED: "1"
+
+x-crm: &crm
+  env_file: .env
+  restart: unless-stopped
+  logging: *logging
+
+x-outreach: &outreach
+  image: gisuldocker/outreach-engine:${OUTREACH_IMAGE_TAG:-latest}
+  profiles: [outreach]
+  env_file:
+    - path: ./outreach.env
+      required: false
+  environment:
+    MONGODB_URI: mongodb://outreach-mongo:27017/outreach
+  init: true
+  restart: unless-stopped
+  logging: *logging
+
 services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
+    logging: *logging
+    shm_size: 256mb
+    stop_grace_period: 30s
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
@@ -21,23 +52,34 @@ services:
       - "127.0.0.1:5432:5432"
 
   migrate:
-    image: gisuldocker/crm-migrate:${CRM_IMAGE_TAG:-dev}
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-crm}?schema=public
+    <<: *crm
+    image: gisuldocker/crm-migrate:${CRM_IMAGE_TAG:?set CRM_IMAGE_TAG}
+    environment: *crm-env
     restart: "no"
     depends_on:
       postgres:
         condition: service_healthy
 
   api:
-    image: gisuldocker/crm-api:${CRM_IMAGE_TAG:-dev}
-    env_file: .env
+    <<: *crm
+    image: gisuldocker/crm-api:${CRM_IMAGE_TAG:?set CRM_IMAGE_TAG}
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-crm}?schema=public
-    restart: unless-stopped
+      <<: *crm-env
+      PORT: 3001
     ports:
       - "127.0.0.1:3011:3001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://127.0.0.1:3001/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,28 +87,157 @@ services:
         condition: service_completed_successfully
 
   app:
-    image: gisuldocker/crm-app:${CRM_IMAGE_TAG:-dev}
-    env_file: .env
+    <<: *crm
+    image: gisuldocker/crm-app:${CRM_IMAGE_TAG:?set CRM_IMAGE_TAG}
     environment:
+      <<: *crm-env
+      PORT: 3000
       HOSTNAME: 0.0.0.0
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-crm}?schema=public
-    restart: unless-stopped
+      AGENT_URL: http://agent:2000
+      OUTREACH_URL: http://outreach-web:3000
+      LINKEDIN_SCRAPER_URL: http://linkedin-scraper:6363
     ports:
       - "127.0.0.1:3010:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/', { redirect: 'manual' }).then(r => process.exit(r.status < 500 ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   agent:
-    image: gisuldocker/crm-agent:${CRM_IMAGE_TAG:-dev}
-    env_file: .env
+    <<: *crm
+    image: gisuldocker/crm-agent:${CRM_IMAGE_TAG:?set CRM_IMAGE_TAG}
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-crm}?schema=public
-    restart: unless-stopped
+      <<: *crm-env
+      AGENT_PORT: 2000
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://127.0.0.1:2000/eve/v1/info').then(r => process.exit(r.status < 500 ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     depends_on:
       postgres:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
 
+  outreach-mongo:
+    image: mongo:8.0
+    profiles: [outreach]
+    restart: unless-stopped
+    logging: *logging
+    volumes:
+      - outreach-mongo:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  outreach-setup:
+    <<: *outreach
+    command: ["sh", "-c", "npm run db:indexes && npm run seed"]
+    restart: "no"
+    healthcheck:
+      disable: true
+    depends_on:
+      outreach-mongo:
+        condition: service_healthy
+
+  outreach-web:
+    <<: *outreach
+    ports:
+      - "127.0.0.1:3020:3000"
+    depends_on:
+      outreach-setup:
+        condition: service_completed_successfully
+
+  outreach-worker:
+    <<: *outreach
+    command: ["node_modules/.bin/tsx", "src/worker/index.ts"]
+    stop_grace_period: 40s
+    healthcheck:
+      disable: true
+    depends_on:
+      outreach-setup:
+        condition: service_completed_successfully
+
+  linkedin-mongo:
+    image: mongo:7
+    profiles: [linkedin]
+    restart: unless-stopped
+    logging: *logging
+    volumes:
+      - linkedin-mongo:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  linkedin-scraper:
+    image: ${LINKEDIN_SCRAPER_IMAGE:-gisuldocker/linkedin-scrapper:latest}
+    profiles: [linkedin]
+    restart: unless-stopped
+    logging: *logging
+    shm_size: 2gb
+    env_file:
+      - path: ./linkedin-scraper.env
+        required: false
+    environment:
+      PORT: "6363"
+      MONGODB_URI: mongodb://linkedin-mongo:27017
+      MONGODB_DB: linkedin_scrapper
+      HEADLESS: "false"
+      IN_DOCKER: "true"
+      DISPLAY: ":99"
+      SEND_MESSAGES: "false"
+    volumes:
+      - linkedin-auth:/app/.auth
+      - linkedin-output:/app/output
+      - linkedin-data:/app/data
+    ports:
+      - "127.0.0.1:6363:6363"
+      - "127.0.0.1:6080:6080"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:6363/api/connection-types').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      linkedin-mongo:
+        condition: service_healthy
+
 volumes:
   crm-postgres:
+  outreach-mongo:
+  linkedin-mongo:
+  linkedin-auth:
+  linkedin-output:
+  linkedin-data:

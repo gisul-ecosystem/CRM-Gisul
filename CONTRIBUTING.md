@@ -202,6 +202,28 @@ Three consequences worth knowing:
 protection requiring the `check-types, lint, test` and `conventional commit` checks** — not the
 release workflow, which cannot wait on a run in another workflow.
 
+### Docker images
+
+`docker-publish.yml` builds `crm-api`, `crm-app`, `crm-agent`, `crm-migrate` and `linkedin-scrapper`
+and pushes them to Docker Hub. `linkedin-scrapper` builds from `services/linkedin-scraper` with its
+own Dockerfile. The branch decides the tags:
+
+| Branch | Tags |
+| --- | --- |
+| `release` | `latest`, the version in `package.json`, `sha-<commit>` |
+| `main` | `main`, `sha-<commit>` |
+| `dev` (`docker-publish-dev.yml`) | `dev`, `dev-sha-<commit>` |
+
+**`latest` and a version tag only ever come from `release`.** Before, every push to `main` and
+`dev` overwrote `latest`, and `main` overwrote the last version tag with unreleased code.
+
+**The Release workflow starts the `release` build itself.** Its merge into `release` uses
+`GITHUB_TOKEN`, and a push by `GITHUB_TOKEN` starts no workflow. So it dispatches
+`docker-publish.yml` on `release`. With `AUTOMATION_TOKEN` set, the push starts the build and the
+dispatch is skipped.
+
+`docker-compose.prod.yml` refuses to start without `CRM_IMAGE_TAG`. Pin a version.
+
 ### When it jams
 
 A jam used to be silent — the workflow reported success while doing nothing, and the symptom was

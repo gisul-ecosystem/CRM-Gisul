@@ -10,6 +10,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
 
@@ -18,6 +19,8 @@ jobs:
     name: Release pull request, tag and notes
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      HAS_AUTOMATION_TOKEN: ${{ secrets.AUTOMATION_TOKEN != '' && 'true' || '' }}
     steps:
       - uses: googleapis/release-please-action@v5
         id: release
@@ -80,6 +83,18 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           exit 1
+
+      - name: Build the release images
+        if: steps.release.outputs.tag_name && !env.HAS_AUTOMATION_TOKEN
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          gh workflow run docker-publish.yml --ref release
+
+          echo "Started the image build for \`release\`." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Say what happened
         if: ${{ !steps.release.outputs.tag_name }}
