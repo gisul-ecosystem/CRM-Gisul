@@ -106,6 +106,7 @@ services:
       AGENT_BRIDGE_SECRET: ${AGENT_BRIDGE_SECRET:?set AGENT_BRIDGE_SECRET}
       LINKEDIN_SCRAPER_URL: ${LINKEDIN_SCRAPER_URL:-http://linkedin-scraper:6363}
       LINKEDIN_SCRAPER_VIEWER_URL: ${LINKEDIN_SCRAPER_VIEWER_URL:-}
+      LEADS_PIPELINE_URL: ${LEADS_PIPELINE_URL:-http://leads-pipeline:8501}
       OUTREACH_URL: ${OUTREACH_URL:-http://outreach-web:3000}
       OUTREACH_EMAIL: ${OUTREACH_EMAIL:-}
       OUTREACH_PASSWORD: ${OUTREACH_PASSWORD:-}
@@ -289,6 +290,45 @@ services:
       linkedin-mongo:
         condition: service_healthy
 
+  leads-reacher:
+    image: ${LEADS_REACHER_IMAGE:-reacherhq/backend:v0.11.8}
+    profiles: [leads]
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      RCH__HELLO_NAME: ${LEADS_REACHER_HELLO_NAME:-localhost}
+      RCH__FROM_EMAIL: ${LEADS_REACHER_FROM_EMAIL:-verify@localhost}
+
+  leads-pipeline:
+    image: ${LEADS_PIPELINE_IMAGE:-gisuldocker/leads-pipeline:${CRM_IMAGE_TAG:-latest}}
+    build: ./services/leads-pipeline
+    profiles: [leads]
+    restart: unless-stopped
+    logging: *logging
+    init: true
+    shm_size: 1gb
+    environment:
+      TZ: ${LEADS_PIPELINE_TZ:-Asia/Kolkata}
+      REACHER_URL: http://leads-reacher:8080/v0/check_email
+    volumes:
+      - leads-data:/app/data
+    ports:
+      - "127.0.0.1:8502:8501"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8501/api/health', timeout=4).status == 200 else 1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      - leads-reacher
+
 volumes:
   crm-postgres:
   outreach-mongo:
@@ -296,3 +336,4 @@ volumes:
   linkedin-auth:
   linkedin-output:
   linkedin-data:
+  leads-data:

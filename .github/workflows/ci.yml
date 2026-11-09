@@ -67,3 +67,27 @@ jobs:
       - run: bun run lint:slop
 
       - run: bun run test
+
+  leads-pipeline:
+    name: leads-pipeline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/leads-pipeline
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/leads-pipeline/requirements.txt
+
+      - run: pip install -r requirements.txt
+
+      - run: python -m compileall -q leads
+
+      - run: python -c "import leads.web, leads.__main__"
+
+      - run: sh -n docker-entrypoint.sh

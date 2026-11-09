@@ -1,0 +1,11 @@
+# Training profile: public pages that list training providers with links to their websites.
+# One line per page: name, URL, and optionally india=yes when every organisation on it is Indian.
+# Only Indian organisations are kept: each site is checked (address, +91, .in, Indian cities) and
+# foreign ones are dropped after their first pages. The organisation's own site also decides
+# whether it runs training in lab-heavy subjects.
+# Checked 2026-10-16: CNCF's Kubernetes Training Partners list is readable. Not usable (search
+# forms or login, no readable list): AWS, Microsoft, Red Hat, Cisco, CompTIA, Oracle, EC-Council,
+# NSDC, NASSCOM FutureSkills; UGC-DEB (JavaScript/PDF).
+# Removed 2026-10-16: CNCF Kubernetes Training Partners (mostly foreign consultancies; gave
+# non-Indian, non-training rows). Add only pages that list Indian training institutes.
+incubator,url,india

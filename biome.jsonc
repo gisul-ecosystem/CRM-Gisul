@@ -19,6 +19,7 @@
 			"!.agents",
 			"!tools/oxlint/anti-slop",
 			"!services/linkedin-scraper",
+			"!services/leads-pipeline",
 			"!skills-lock.json"
 		]
 	},

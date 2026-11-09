@@ -1,0 +1,80 @@
+# Indian incubators whose portfolio page lists startups with links to their websites.
+# Checked 2026-10-13, all allowed by robots.txt. Pages that build their list with JavaScript are
+# read with the headless browser (RENDER_JS=1), which also clicks "Load more" buttons.
+# Add more lines as you find them (incubator name, portfolio page URL).
+# Optional columns: india (blank = Indian incubator, startups count as Indian; check = each
+# startup's own site decides whether it is in a COUNTRIES country; global = kept from any country) and follow: a path like /portfolio when the list links to one page per startup on the
+# list's own site (VC portfolios) - those pages are read for the startup's website.
+# Not usable: IIT Madras Incubation Cell (blank even in a browser), T-Hub (no startup directory).
+# Checked 2026-10-14, no usable list found: CIIE.CO, IIT Hyderabad i-TIC, IIT Kharagpur STEP,
+# IIT Guwahati, IIT Mandi, IISc SID, BBC, IKP, BITS PIEDS, IIIT-B IC, IITGN, IIM Calcutta IP,
+# Zone Startups, AIC Sangam, Startup TN, KSUM (pages without startup website links).
+incubator,url,india,follow
+C-CAMP Bengaluru,https://www.ccamp.res.in/incubation-incubatees
+CIE IIIT Hyderabad,https://cie.iiit.ac.in/startup-portfolio/
+KIIT-TBI Bhubaneswar,https://kiitincubator.in/
+IIIT-Delhi Innovation Centre,https://iiitdic.in/startups/
+NSRCEL IIM Bangalore,https://nsrcel.org/startups
+SINE IIT Bombay,https://www.sineiitb.org/portfolio/
+SIIC IIT Kanpur,https://www.siicincubator.com/startups
+FITT IIT Delhi (current),https://fitt-iitd.in/web/current-startups
+FITT IIT Delhi (graduated),https://fitt-iitd.in/web/graduated-startups
+Venture Center Pune,https://www.venturecenter.co.in/startups-and-success-stories/startups
+TIDES IIT Roorkee,https://tides.iitr.ac.in/portfolio
+IIT Madras Pravartak,https://pravartak.org.in/startups/
+AIC BIMTECH,https://aicbimtech.com/startups
+Amrita TBI,https://www.amritatbi.com/startups.html
+Villgro,https://villgro.org/companies/
+NSRCEL Women Startup Program,https://nsrcel.org/women-startup-program/
+# Added 2026-10-17: Indian VC / accelerator portfolios (GPU leads only). VC-backed companies that are
+# past early stage are dropped by the early-stage filter; foreign ones by the India filter.
+Venture Catalysts,https://venturecatalysts.in/portfolio,check,
+Social Alpha,https://www.socialalpha.org/our-portfolio/,check,
+Axilor Ventures,https://www.axilor.com/portfolio,check,
+Unicorn India Ventures,https://www.unicornivc.com/deep-tech-venture-capital-portfolio,check,
+Huddle,https://www.huddle.work/portfolio/,check,
+Brigade REAP,https://www.brigadereap.com/?is_reap_company=true&page=1,check,
+Antler,https://www.antler.co/portfolio,check,
+pi Ventures,https://www.piventures.in/portfolio,check,/portfolio
+Ideaspring Capital,https://www.ideaspringcap.com/portfolio,check,/portfolio
+Exfinity Ventures,https://www.exfinityventures.com/portfolio,check,/portfolio
+# Added 2026-10-30: more Indian lists (incubators, angel networks, early-stage deep-tech / AI /
+# gaming funds), each tested with the pipeline's own reader. Later-stage companies are dropped by
+# the early-stage filter.
+IIMA Ventures,https://www.iimaventures.com/portfolio/,check,
+AIC IIIT Hyderabad,https://aic.iiit.ac.in/startups
+NSRCEL (graduated),https://nsrcel.org/startups/graduated
+Hyderabad Angels,https://www.hyderabadangels.in/portfolio,check,
+Thinkuvate,https://thinkuvate.com/portfolio,check,
+Riceberg Ventures,https://www.riceberg.vc/portfolio,check,
+Lumikai (gaming),https://www.lumikai.com/portfolio,check,
+Ankur Capital,https://www.ankurcapital.com/portfolio,check,
+Endiya Partners,https://www.endiya.com/portfolio,check,/portfolio
+# Added 2026-10-30: global accelerators and early-stage AI / deep-tech funds (india=global: their
+# startups are kept from any country). Checked 2026-10-30; not usable: Techstars and 500 Global
+# (only famous alumni shown), HAX and Upekkha (startup pages link no website), Station F,
+# MassChallenge, Point Nine, Hustle Fund, Betaworks, Rockstart (page not served to the pipeline).
+Berkeley SkyDeck,https://skydeck.berkeley.edu/portfolio/,global,
+Seedcamp,https://seedcamp.com/companies/,global,
+Pear VC,https://pear.vc/companies/,global,
+Iterative,https://www.iterative.vc/companies,global,
+Founder Institute,https://fi.co/companies,global,
+Antler (global),https://www.antler.co/portfolio?region=asia,global,
+Air Street Capital,https://www.airstreet.com/portfolio,global,
+AIX Ventures,https://www.aixventures.com/portfolio,global,
+Speedinvest,https://www.speedinvest.com/portfolio,global,
+Village Global,https://www.villageglobal.vc/portfolio,global,
+Founders Factory,https://foundersfactory.com/portfolio/,global,
+Deep Science Ventures,https://www.deepscienceventures.com/portfolio,global,
+EIT Digital,https://www.eitdigital.eu/portfolio/,global,
+Creative Destruction Lab,https://creativedestructionlab.com/companies/,global,/companies
+# Added 2026-11-01: Southeast Asian funds and programmes (Malaysia, Singapore, Thailand, Indonesia).
+# india=check: each startup's own site decides, kept when it is in a country ticked in COUNTRIES.
+# Not usable: ScaleUp Malaysia, KMP, Brinc, 500 TukTuks, Addventures, AC Ventures, MDI, Kejora, Init-6,
+# Intudo, TMI (page not served), Openspace, Insignia, Monk's Hill, Block71, Cradle, 1337 Ventures (no websites).
+SGInnovate (SG),https://www.sginnovate.com/portfolio,check,
+Skystar Capital (ID),https://skystarcapital.com/portfolio,check,
+Golden Gate Ventures (SG),https://goldengate.vc/portfolio/,check,/portfolio
+# Removed 2026-11-03: later-stage funds whose portfolios are mostly grown companies (Prime, Kalaari,
+# 3one4, WEH, Rainmatter, Jungle, Gobi, Quest, Beacon VC, Alpha JWC, Radical). Add only programmes
+# and funds that back pre-seed / seed / pre-Series A startups.

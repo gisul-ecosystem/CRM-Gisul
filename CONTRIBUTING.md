@@ -204,9 +204,10 @@ release workflow, which cannot wait on a run in another workflow.
 
 ### Docker images
 
-`docker-publish.yml` builds `crm-api`, `crm-app`, `crm-agent`, `crm-migrate` and `linkedin-scrapper`
-and pushes them to Docker Hub. `linkedin-scrapper` builds from `services/linkedin-scraper` with its
-own Dockerfile. The branch decides the tags:
+`docker-publish.yml` builds `crm-api`, `crm-app`, `crm-agent`, `crm-migrate`, `linkedin-scrapper`
+and `leads-pipeline` and pushes them to Docker Hub. `linkedin-scrapper` builds from
+`services/linkedin-scraper` and `leads-pipeline` from `services/leads-pipeline`, each with its own
+Dockerfile. The branch decides the tags:
 
 | Branch | Tags |
 | --- | --- |

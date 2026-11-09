@@ -1,0 +1,4 @@
+# Training profile: small and medium institutes you know (one per line). Only company and domain
+# are needed; segment is optional: upskilling, training_institute, university, corporate_training.
+# Large organisations are dropped automatically (SMALL_ONLY=1), so there is no need to list big brands.
+company,domain,segment

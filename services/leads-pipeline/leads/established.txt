@@ -1,0 +1,21 @@
+# Startups past the early stage (well funded, large teams, or government GPU allocations).
+# Dropped by profiles with EARLY_ONLY=1 (GPU leads), also from the sheet on the next run;
+# other profiles (e.g. competitor clients) keep them. One registered domain per line.
+# Added 2026-11-03: the IndiaAI Mission picks and the funded studios / drone / vision companies
+# that were in leads/seeds.
+sarvam.ai
+soket.ai
+gnani.ai
+gan.ai
+avataar.ai
+zenteiq.ai
+genloop.ai
+neurodx.ai
+shodh.ai
+airbound.ai
+awiros.com
+kratosstudios.com
+lightfurygames.com
+marutdrones.com
+ripik.ai
+supergaming.com

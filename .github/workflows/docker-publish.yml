@@ -40,6 +40,10 @@ jobs:
             image: linkedin-scrapper
             context: services/linkedin-scraper
             file: services/linkedin-scraper/Dockerfile
+          - service: leads-pipeline
+            image: leads-pipeline
+            context: services/leads-pipeline
+            file: services/leads-pipeline/Dockerfile
 
     steps:
       - uses: actions/checkout@v5

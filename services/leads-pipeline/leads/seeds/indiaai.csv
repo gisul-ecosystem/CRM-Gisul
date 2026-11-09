@@ -1,0 +1,3 @@
+# IndiaAI Mission foundation-model picks used to be listed here. Emptied 2026-11-03: they are
+# established and get government GPU allocations, so they are poor prospects (see blocklist.txt).
+company,domain,segment,founded,signal,signal_url
