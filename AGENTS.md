@@ -16,6 +16,7 @@ context until you read them, and the rules in them are not optional.
 | The tracking script, the collector, form submissions | `docs/tracking.md` |
 | `/outreach`, the Outreach Engine bridge and its screens | `docs/outreach.md` |
 | `/linkedin`, the LinkedIn scraper bridge and its screens | `docs/linkedin-scraper.md` |
+| `/lead-generation`, the leads pipeline bridge and its screens | `docs/leads-pipeline.md` |
 | Running it locally, Google Cloud, DB commands, secrets | `docs/setup.md` |
 | Anything that sends a telemetry event, or a new property on one | `docs/telemetry.md` |
 | `.github/workflows`, versions, changelog, how a change reaches `release` | `CONTRIBUTING.md` |

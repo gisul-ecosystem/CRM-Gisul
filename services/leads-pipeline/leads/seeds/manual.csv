@@ -1,0 +1,5 @@
+# Your own list. Add one company per line; company and domain are enough.
+# Good for companies you find by hand, e.g. on startupindia.gov.in (its API forbids bots in
+# robots.txt, so the pipeline does not scrape it), at events, or from referrals.
+# Rows here show up with source 'manual'.
+company,domain,signal,signal_url

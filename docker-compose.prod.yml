@@ -5,9 +5,10 @@ x-logging: &logging
     max-file: "5"
 
 x-crm-env: &crm-env
-  DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-crm}?schema=public
+  DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
   NODE_ENV: production
   NODE_TLS_REJECT_UNAUTHORIZED: "1"
+  CRM_TELEMETRY_DISABLED: ${CRM_TELEMETRY_DISABLED:-1}
 
 x-crm: &crm
   env_file: .env
@@ -56,6 +57,8 @@ services:
     image: gisuldocker/crm-migrate:${CRM_IMAGE_TAG:?set CRM_IMAGE_TAG}
     environment: *crm-env
     restart: "no"
+    volumes:
+      - ./.env:/app/.env:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,6 +69,10 @@ services:
     environment:
       <<: *crm-env
       PORT: 3001
+      AGENT_URL: http://agent:2000
+      MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-common}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-v1}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
     ports:
       - "127.0.0.1:3011:3001"
     healthcheck:
@@ -96,6 +103,7 @@ services:
       AGENT_URL: http://agent:2000
       OUTREACH_URL: http://outreach-web:3000
       LINKEDIN_SCRAPER_URL: http://linkedin-scraper:6363
+      LEADS_PIPELINE_URL: http://leads-pipeline:8501
     ports:
       - "127.0.0.1:3010:3000"
     healthcheck:
@@ -120,6 +128,8 @@ services:
     environment:
       <<: *crm-env
       AGENT_PORT: 2000
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-v1}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
     healthcheck:
       test:
         [
@@ -216,8 +226,8 @@ services:
       - linkedin-output:/app/output
       - linkedin-data:/app/data
     ports:
-      - "127.0.0.1:6363:6363"
-      - "127.0.0.1:6080:6080"
+      - "127.0.0.1:6364:6363"
+      - "127.0.0.1:6081:6080"
     healthcheck:
       test:
         [
@@ -234,6 +244,44 @@ services:
       linkedin-mongo:
         condition: service_healthy
 
+  leads-reacher:
+    image: ${LEADS_REACHER_IMAGE:-reacherhq/backend:v0.11.8}
+    profiles: [leads]
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      RCH__HELLO_NAME: ${LEADS_REACHER_HELLO_NAME:-localhost}
+      RCH__FROM_EMAIL: ${LEADS_REACHER_FROM_EMAIL:-verify@localhost}
+
+  leads-pipeline:
+    image: ${LEADS_PIPELINE_IMAGE:-gisuldocker/leads-pipeline:${CRM_IMAGE_TAG:?set CRM_IMAGE_TAG}}
+    profiles: [leads]
+    restart: unless-stopped
+    logging: *logging
+    init: true
+    shm_size: 1gb
+    environment:
+      TZ: ${LEADS_PIPELINE_TZ:-Asia/Kolkata}
+      REACHER_URL: http://leads-reacher:8080/v0/check_email
+    volumes:
+      - leads-data:/app/data
+    ports:
+      - "127.0.0.1:8502:8501"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8501/api/health', timeout=4).status == 200 else 1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      - leads-reacher
+
 volumes:
   crm-postgres:
   outreach-mongo:
@@ -241,3 +289,4 @@ volumes:
   linkedin-auth:
   linkedin-output:
   linkedin-data:
+  leads-data:

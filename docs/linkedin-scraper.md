@@ -95,7 +95,9 @@ under the `linkedin` profile: `COMPOSE_PROFILES=outreach,linkedin` in `.env`, or
 - **The scraper reads `./linkedin-scraper.env`, not the CRM's `.env`.** Put
   `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) there, and the sending limits.
 - **`MONGODB_URI` is always the `linkedin-mongo` container.** Compose sets it.
-- **`linkedin-scraper` listens on `127.0.0.1:6363` and `127.0.0.1:6080`.** The
+- **`linkedin-scraper` listens on `127.0.0.1:6363` and `127.0.0.1:6080`.** In
+  `docker-compose.prod.yml` the host ports are `6364` and `6081`, because a separate
+  scraper already holds 6363 and 6080 on the production server. The
   CRM reaches it as `http://linkedin-scraper:6363` inside Docker.
 - **The Atlas backup is off unless `MONGODB_ATLAS_URI` is set** in
   `linkedin-scraper.env`.

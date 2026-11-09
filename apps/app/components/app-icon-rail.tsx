@@ -177,6 +177,29 @@ const GROUPS: NavGroup[] = [
 		],
 	},
 	{
+		label: "Lead generation",
+		items: [
+			{
+				title: "Overview",
+				href: "/lead-generation",
+				icon: Rocket,
+				match: "exact",
+			},
+			{
+				title: "Leads",
+				href: "/lead-generation/leads",
+				icon: UserMultiple,
+				match: "prefix",
+			},
+			{
+				title: "Settings",
+				href: "/lead-generation/settings",
+				icon: SettingsAdjust,
+				match: "prefix",
+			},
+		],
+	},
+	{
 		label: "Insights",
 		items: [
 			{

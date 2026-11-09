@@ -1,0 +1,10 @@
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=5.0
+tldextract>=5.1
+phonenumbers>=8.13
+dnspython>=2.4
+pandas>=2.0
+openpyxl>=3.1
+flask>=3.0         # the web page (python -m leads.web)
+playwright>=1.40   # optional: headless browser for JavaScript-only pages

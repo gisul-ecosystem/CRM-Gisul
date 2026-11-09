@@ -119,6 +119,7 @@ single place that knows what is set.
 | `OUTREACH_URL` + `OUTREACH_EMAIL` + `OUTREACH_PASSWORD` | The Outreach section. All three, or the section says it is not connected — see `outreach.md` |
 | `LINKEDIN_SCRAPER_URL` | The LinkedIn section. Unset, the section says it is not connected — see `linkedin-scraper.md` |
 | `LINKEDIN_SCRAPER_VIEWER_URL` | The "Open browser viewer" link for a scraper in Docker — see `linkedin-scraper.md` |
+| `LEADS_PIPELINE_URL` | The Lead generation section. Unset, the section says it is not connected — see `leads-pipeline.md` |
 
 `BLOB_READ_WRITE_TOKEN` is also in `env.validation.ts` and `apps/api/turbo.json`
 because the API and the seed write pictures too. The Next.js app is deliberately
