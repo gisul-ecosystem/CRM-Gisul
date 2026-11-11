@@ -25,6 +25,17 @@ function getJobStatus(userId) {
   return activeJobs.get(userId) || { status: 'idle' };
 }
 
+function requestScrapeStop(userId) {
+  const job = activeJobs.get(userId);
+  if (job?.status !== 'running') return false;
+  if (!job.stopRequested) {
+    job.stopRequested = true;
+    job.logs.push({ at: new Date().toISOString(), msg: 'Stop requested — finishing the current profile, then saving' });
+    if (job.logs.length > 100) job.logs.shift();
+  }
+  return true;
+}
+
 async function runScrapeJob(userId, filters, onProgress) {
   const existing = activeJobs.get(userId);
   if (existing?.status === 'running') {
@@ -58,6 +69,7 @@ async function runScrapeJob(userId, filters, onProgress) {
     sendFailed: 0,
     skipped: 0,
     queued: 0,
+    stopRequested: false,
   };
   activeJobs.set(userId, job);
   await db.jobs.createScrapeJob(job);
@@ -231,6 +243,7 @@ async function runScrapeJob(userId, filters, onProgress) {
     }
 
     for (let i = 0; i < sliced.length; i += 1) {
+      if (job.stopRequested) break;
       const conn = sliced[i];
       const slug = slugFromProfileUrl(conn.profileUrl);
       const existingProfile = existingMap[slug] || {};
@@ -348,7 +361,7 @@ async function runScrapeJob(userId, filters, onProgress) {
                 record.queueStatus = 'sent';
                 job.sent = (job.sent || 0) + 1;
                 await log(`[${i + 1}] SENT → ${record.name || slug}`);
-                await maybeBatchPause(job.sent, log);
+                await maybeBatchPause(job.sent, log, () => job.stopRequested);
               } else {
                 await db.profiles.markMessageSent(userId, slug, {
                   error: result.error || 'send failed',
@@ -394,7 +407,7 @@ async function runScrapeJob(userId, filters, onProgress) {
         errors: job.errors.slice(-50),
       });
       if (onProgress) onProgress(job);
-      await sleep(ACTION_DELAY_MS);
+      if (!job.stopRequested) await sleep(ACTION_DELAY_MS);
     }
 
     const allProfiles = await db.profiles.listProfiles(userId, { limit: 5000 });
@@ -415,11 +428,11 @@ async function runScrapeJob(userId, filters, onProgress) {
       /* ignore */
     }
 
-    job.status = 'completed';
+    job.status = job.stopRequested ? 'stopped' : 'completed';
     job.finishedAt = new Date().toISOString();
     job.resultCount = allProfiles.length;
     await db.jobs.updateScrapeJob(jobId, {
-      status: 'completed',
+      status: job.status,
       finishedAt: job.finishedAt,
       resultCount: job.resultCount,
       processed: job.processed,
@@ -427,7 +440,11 @@ async function runScrapeJob(userId, filters, onProgress) {
     const sendSummary = autoSend
       ? ` | sent ${job.sent || 0}, failed ${job.sendFailed || 0}, skipped ${job.skipped || 0}`
       : '';
-    await log(`Done — ${job.processed} profiles scraped${sendSummary}`);
+    await log(
+      job.stopRequested
+        ? `Stopped — ${job.processed} profiles scraped and saved${sendSummary}`
+        : `Done — ${job.processed} profiles scraped${sendSummary}`
+    );
     return job;
   } catch (err) {
     job.status = 'failed';
@@ -444,4 +461,4 @@ async function runScrapeJob(userId, filters, onProgress) {
   }
 }
 
-module.exports = { runScrapeJob, getJobStatus };
+module.exports = { runScrapeJob, getJobStatus, requestScrapeStop };

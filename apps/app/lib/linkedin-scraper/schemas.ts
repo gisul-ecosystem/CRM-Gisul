@@ -20,7 +20,13 @@ export const QUEUE_STATUSES = [
 ] as const;
 export type QueueStatus = (typeof QUEUE_STATUSES)[number];
 
-export const JOB_STATUSES = ["idle", "running", "completed", "failed"] as const;
+export const JOB_STATUSES = [
+	"idle",
+	"running",
+	"completed",
+	"stopped",
+	"failed",
+] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
 const text = z
@@ -93,6 +99,10 @@ export const scrapeJob = z.object({
 	sendFailed: count,
 	resultCount: count,
 	error: text,
+	stopRequested: z
+		.boolean()
+		.nullish()
+		.transform((value) => value ?? false),
 	logs: z.array(logEntry).default([]),
 });
 export type ScrapeJob = z.infer<typeof scrapeJob>;

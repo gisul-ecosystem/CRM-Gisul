@@ -58,6 +58,7 @@ export const scrapeApi = {
 			form,
 		});
 	},
+	stop: () => scraperJson("/scrape/stop", okMessage, { method: "POST" }),
 	history: () => scraperJson("/jobs", jobsResponse),
 };
 

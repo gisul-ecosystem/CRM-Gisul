@@ -16,5 +16,6 @@ export const JOB_STATUS = {
 	idle: { label: "Idle", tone: "neutral" },
 	running: { label: "Running", tone: "primary" },
 	completed: { label: "Completed", tone: "success" },
+	stopped: { label: "Stopped", tone: "warning" },
 	failed: { label: "Failed", tone: "error" },
 } as const satisfies Record<JobStatus, StatusLabel>;

@@ -81,10 +81,17 @@ browser ──► CRM app /api/linkedin-scraper/<path>   (apps/app/app/api/linke
 | CRM page | Scraper endpoints |
 | --- | --- |
 | Overview | `/status`, `/products`, `/rag/rebuild`, `/linkedin/*` |
-| Search and scrape | `/connection-types`, `/scrape/start`, `/scrape/import`, `/jobs` |
+| Search and scrape | `/connection-types`, `/scrape/start`, `/scrape/import`, `/scrape/stop`, `/jobs` |
 | Profiles | `/results`, `/results/download` |
 | Queue | `/queue`, `/queue/:slug`, `/queue/skip`, `/queue/clear`, `/queue/send` |
 | Sent | `/reports/daily-sends/summary`, `/reports/daily-sends` |
+
+- **Stop and save stops a running scrape.** The scraper finishes the profile in
+  progress, saves it, writes the Excel export and ends the job as `stopped`.
+  Every profile scraped before the stop stays saved. A batch pause during
+  auto-send ends at once. A send started from the Queue page does not stop.
+- **The stop needs a scraper image with `POST /api/scrape/stop`.** An older
+  image answers 404, and the button shows that error.
 
 ## Running it
 

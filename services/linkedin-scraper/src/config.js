@@ -50,6 +50,7 @@ const SEND_BATCH_PAUSE_MS = Math.max(
   Number(process.env.SEND_BATCH_PAUSE_MS || 10 * 60 * 1000)
 );
 const SEND_DAY_TZ = process.env.SEND_DAY_TZ || 'Asia/Kolkata';
+const STOP_CHECK_MS = 1000;
 
 module.exports = {
   ROOT,
@@ -59,6 +60,7 @@ module.exports = {
   PROGRESS_PATH,
   HEADLESS,
   ACTION_DELAY_MS,
+  STOP_CHECK_MS,
   MAX_CONNECTIONS,
   START_INDEX,
   SEND_MESSAGES,
