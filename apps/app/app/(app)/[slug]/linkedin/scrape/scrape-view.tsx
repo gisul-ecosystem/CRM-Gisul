@@ -78,9 +78,20 @@ export function ScrapeView() {
 
 function ScrapeBody() {
 	const status = useScraperStatus();
+	const cache = useScraperCache();
 	const job = status.data?.scrapeJob;
 	const busy =
 		job?.status === "running" || status.data?.sendJob.status === "running";
+	const stopping = job?.status === "running" && job.stopRequested;
+
+	const stop = useMutation({
+		mutationFn: () => scrapeApi.stop(),
+		onSuccess: (result) => {
+			toast.success(result.message);
+			void cache.scrape();
+		},
+		onError: (error) => toast.error(error.message),
+	});
 
 	return (
 		<div className="flex flex-col gap-6">
@@ -134,11 +145,24 @@ function ScrapeBody() {
 										pulse={job.status === "running"}
 										size="sm"
 									/>
-									{job.total > 0 ? (
-										<span className="text-muted-foreground text-xs tabular-nums">
-											{COUNT.format(job.processed)} / {COUNT.format(job.total)}
-										</span>
-									) : null}
+									<div className="flex items-center gap-3">
+										{job.total > 0 ? (
+											<span className="text-muted-foreground text-xs tabular-nums">
+												{COUNT.format(job.processed)} /{" "}
+												{COUNT.format(job.total)}
+											</span>
+										) : null}
+										{job.status === "running" ? (
+											<Button
+												variant="outline"
+												size="sm"
+												disabled={stopping || stop.isPending}
+												onClick={() => stop.mutate()}
+											>
+												{stopping ? "Stopping…" : "Stop and save"}
+											</Button>
+										) : null}
+									</div>
 								</div>
 								{job.total > 0 ? (
 									<Meter

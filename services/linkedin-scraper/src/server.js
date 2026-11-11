@@ -6,7 +6,7 @@ const path = require('path');
 const express = require('express');
 const { ROOT, PORT, MONGODB_URI, MONGODB_DB, OPENAI_API_KEY, ANTHROPIC_API_KEY, SEND_DAY_TZ, OUT_DIR } = require('./config');
 const { CONNECTION_TYPES, buildSearchUrl, resolveConnectionType } = require('./search');
-const { runScrapeJob, getJobStatus } = require('./scrape-job');
+const { runScrapeJob, getJobStatus, requestScrapeStop } = require('./scrape-job');
 const { runSendQueueJob, getSendJobStatus } = require('./send-queue-job');
 const { startLinkedInConnect, getLinkedInJob, hasLinkedInSession, logoutLinkedIn, rescueLinkedInBrowser } = require('./linkedin-login-job');
 const { listProducts, parseProductIds } = require('./products');
@@ -620,6 +620,13 @@ app.post('/api/scrape/import', upload.single('file'), async (req, res) => {
   runScrapeJob(USER_ID, filters).catch((err) => {
     console.error(`[scrape-import:${USER_ID}]`, err.message);
   });
+});
+
+app.post('/api/scrape/stop', (_req, res) => {
+  if (!requestScrapeStop(USER_ID)) {
+    return res.status(409).json({ error: 'No scrape is running' });
+  }
+  res.json({ ok: true, message: 'Stopping — the current profile finishes, then everything scraped so far is saved' });
 });
 
 app.get('/api/job', (_req, res) => {
