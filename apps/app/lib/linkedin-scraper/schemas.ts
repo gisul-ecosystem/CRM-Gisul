@@ -317,6 +317,7 @@ export type PostSearch = {
 	products: string[];
 	aiMessages: boolean;
 	rescrape: boolean;
+	messageTemplate: string;
 };
 
 export type ScrapeFilters = {
@@ -332,4 +333,5 @@ export type ScrapeFilters = {
 	aiMessages: boolean;
 	rescrape: boolean;
 	sendMessages: boolean;
+	messageTemplate: string;
 };

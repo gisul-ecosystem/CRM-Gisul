@@ -67,6 +67,11 @@ const POST_SEARCH = {
   datePosted: ['past-24h', 'past-week', 'past-month'],
   defaultDatePosted: 'past-week',
 };
+const MESSAGE_TEMPLATE = {
+  maxChars: 2000,
+  placeholders: ['firstName', 'name', 'company', 'title', 'location'],
+  fallbacks: { firstName: 'there', name: '', company: 'your organisation', title: 'your role', location: 'your area' },
+};
 
 module.exports = {
   ROOT,
@@ -78,6 +83,7 @@ module.exports = {
   ACTION_DELAY_MS,
   STOP_CHECK_MS,
   POST_SEARCH,
+  MESSAGE_TEMPLATE,
   MAX_CONNECTIONS,
   START_INDEX,
   SEND_MESSAGES,

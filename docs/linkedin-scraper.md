@@ -117,7 +117,7 @@ browser ──► CRM app /api/linkedin-scraper/<path>   (apps/app/app/api/linke
 | Search and scrape | `/connection-types`, `/scrape/start`, `/scrape/posts`, `/scrape/import`, `/scrape/stop`, `/jobs` |
 | Found posts | `/results`, filtered to profiles with `sourcePost` |
 | Profiles | `/results`, `/results/download` |
-| Queue | `/queue`, `/queue/:slug`, `/queue/skip`, `/queue/clear`, `/queue/send` |
+| Queue | `/queue`, `/queue/:slug`, `/queue/template`, `/queue/skip`, `/queue/clear`, `/queue/send` |
 | Sent | `/reports/daily-sends/summary`, `/reports/daily-sends` |
 
 - **Auto-send is a switch on the LinkedIn search tab, off by default.** On, each
@@ -148,6 +148,16 @@ browser ──► CRM app /api/linkedin-scraper/<path>   (apps/app/app/api/linke
   `post-search-debug.png` and `post-search-debug.html` in the output volume.
 - **Found posts lists every person found from a post,** newest first, with the
   post, need score and product. A click opens the profile sheet with the draft.
+- **Message: an AI draft for each person, or one template for everyone.** Every
+  scrape tab has a Message choice: AI draft, same template, or no message. A
+  template (typed, or a .txt file uploaded into the box) takes the placeholders
+  `{{firstName}}`, `{{name}}`, `{{company}}`, `{{title}}` and `{{location}}`,
+  filled from each profile, with a neutral word when a value is missing
+  (`MESSAGE_TEMPLATE` in `src/config.js`, `src/message-template.js`). An unknown
+  placeholder is a `400`. With the AI fit check on, the AI still skips people
+  who do not fit and the rest get the template; off, everyone is queued with it.
+  Auto-send sends the template too. On the Queue, "Use one template" replaces
+  the selected drafts, or every queued draft, through `POST /api/queue/template`.
 - **Stop and save stops a running scrape.** The scraper finishes the profile in
   progress, saves it, writes the Excel export and ends the job as `stopped`.
   Every profile scraped before the stop stays saved. A batch pause during

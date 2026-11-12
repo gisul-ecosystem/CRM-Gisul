@@ -11,6 +11,14 @@ import {
 } from "@crm/ui/components/card";
 import { Checkbox } from "@crm/ui/components/checkbox";
 import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@crm/ui/components/dialog";
+import {
 	Empty,
 	EmptyDescription,
 	EmptyHeader,
@@ -27,6 +35,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 import { JobLog } from "@/components/linkedin-scraper/job-log";
+import { MessageTemplateField } from "@/components/linkedin-scraper/message-template-field";
 import { ProfileSheet } from "@/components/linkedin-scraper/profile-sheet";
 import { ScraperPage } from "@/components/linkedin-scraper/scraper-page";
 import { ConfirmDialog } from "@/components/outreach/confirm-dialog";
@@ -47,7 +56,7 @@ export function QueueView() {
 	return (
 		<ScraperPage
 			title="Message queue"
-			description="AI drafts waiting for review. Edit a draft, skip it, or send it from the shared LinkedIn account."
+			description="Drafts waiting for review. Edit a draft, put one template on all of them, skip, or send from the shared LinkedIn account."
 		>
 			<QueueBody />
 		</ScraperPage>
@@ -62,6 +71,8 @@ function QueueBody() {
 	const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
 	const [open, setOpen] = useState<ScrapedProfile | null>(null);
 	const [pending, setPending] = useState<Pending>(null);
+	const [templateOpen, setTemplateOpen] = useState(false);
+	const [template, setTemplate] = useState("");
 	const query = useDebounced(search, LINKEDIN_SCRAPER.searchDebounceMs)
 		.trim()
 		.toLowerCase();
@@ -100,6 +111,16 @@ function QueueBody() {
 	const clear = useMutation({
 		mutationFn: (slugs: string[]) => queueApi.clear(slugs),
 		onSuccess: (result) => done(result.message),
+		onError: (error) => toast.error(error.message),
+	});
+
+	const applyTemplate = useMutation({
+		mutationFn: (slugs: string[]) =>
+			queueApi.applyTemplate(template.trim(), slugs),
+		onSuccess: (result) => {
+			setTemplateOpen(false);
+			done(result.message);
+		},
 		onError: (error) => toast.error(error.message),
 	});
 
@@ -187,6 +208,14 @@ function QueueBody() {
 					/>
 				</OutreachToolbar>
 				<div className="flex flex-wrap gap-2">
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={items.length === 0 || sending}
+						onClick={() => setTemplateOpen(true)}
+					>
+						Use one template
+					</Button>
 					{picked.length > 0 ? (
 						<>
 							<Button
@@ -232,6 +261,34 @@ function QueueBody() {
 					</Button>
 				</div>
 			</div>
+
+			<Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Use one template</DialogTitle>
+						<DialogDescription>
+							{picked.length > 0
+								? `Replaces the draft of the ${plural(picked.length, "selected person", "selected people")} with your template.`
+								: `Replaces every queued draft (${COUNT.format(items.length)}) with your template.`}{" "}
+							Each placeholder is filled from that person's profile.
+						</DialogDescription>
+					</DialogHeader>
+					<MessageTemplateField value={template} onChange={setTemplate} />
+					<DialogFooter>
+						<Button variant="outline" onClick={() => setTemplateOpen(false)}>
+							Cancel
+						</Button>
+						<Button
+							disabled={!template.trim() || applyTemplate.isPending}
+							onClick={() => applyTemplate.mutate(picked)}
+						>
+							{picked.length > 0
+								? `Apply to ${COUNT.format(picked.length)}`
+								: "Apply to all"}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 
 			{queue.isPending ? (
 				<Skeleton className="h-48 w-full rounded-lg" />
