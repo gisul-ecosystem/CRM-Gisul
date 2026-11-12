@@ -186,6 +186,7 @@ async function runScrapeJob(userId, filters, onProgress) {
         maxPosts: filters.maxResults,
         shouldStop: () => job.stopRequested,
         log,
+        debugDir: paths.outDir,
       });
       connections = [];
       let checked = 0;

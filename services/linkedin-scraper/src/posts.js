@@ -1,3 +1,4 @@
+const path = require('path');
 const { POST_SEARCH } = require('./config');
 const { gotoAndSettle } = require('./connections');
 const { sleep, slugFromProfileUrl, normalizeProfileUrl } = require('./utils');
@@ -13,55 +14,98 @@ function buildPostSearchUrl({ keywords, datePosted }) {
 
 async function extractPosts(page, maxChars) {
   return page.evaluate((limit) => {
-    const containers = Array.from(
-      document.querySelectorAll(
-        'div[data-urn^="urn:li:activity"], div.feed-shared-update-v2, div[data-view-name="feed-full-update"]'
-      )
-    );
-    const seen = new Set();
-    const out = [];
+    const URN_RE = /urn:li:(?:activity|ugcPost|share):\d+/;
+    const OWNER_LINK = 'a[href*="/in/"], a[href*="/company/"], a[href*="/school/"], a[href*="/showcase/"]';
     const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
-    for (const el of containers) {
-      const holder = el.closest('[data-urn^="urn:li:activity"]') || el;
-      const urn = holder.getAttribute('data-urn') || el.getAttribute('data-urn') || '';
-      const key = urn || holder;
-      if (seen.has(key)) continue;
-      seen.add(key);
+    const root = document.querySelector('main') || document.body;
 
-      const actor =
-        holder.querySelector('.update-components-actor__container, .update-components-actor') || holder;
-      const authorLink = Array.from(actor.querySelectorAll('a[href*="/in/"]'))[0];
-      if (!authorLink) continue;
+    const urnOf = (el) => {
+      for (const name of el.getAttributeNames()) {
+        if (name === 'href') continue;
+        const match = String(el.getAttribute(name)).match(URN_RE);
+        if (match) return match[0];
+      }
+      return '';
+    };
 
-      const nameEl = actor.querySelector(
-        '.update-components-actor__title span[aria-hidden="true"], .update-components-actor__name span[aria-hidden="true"]'
-      );
-      const headlineEl = actor.querySelector('.update-components-actor__description');
-      const timeEl = actor.querySelector('.update-components-actor__sub-description');
-      const textEl = holder.querySelector(
+    const byUrn = new Map();
+    for (const el of root.querySelectorAll('*')) {
+      const urn = urnOf(el);
+      if (urn && !byUrn.has(urn)) byUrn.set(urn, el);
+    }
+    for (const link of root.querySelectorAll('a[href*="/feed/update/"]')) {
+      const match = link.href.match(URN_RE);
+      if (!match || byUrn.has(match[0])) continue;
+      let box = link;
+      while (box.parentElement && box.parentElement !== root) {
+        box = box.parentElement;
+        if (box.querySelector(OWNER_LINK) && clean(box.innerText).length > 80) break;
+      }
+      byUrn.set(match[0], box);
+    }
+
+    const containers = [];
+    for (const [urn, el] of byUrn) {
+      const inner = Array.from(byUrn.values()).some((other) => other !== el && other.contains(el));
+      if (!inner) containers.push([urn, el]);
+    }
+
+    const stats = {
+      title: document.title,
+      urns: byUrn.size,
+      containers: containers.length,
+      profileLinks: root.querySelectorAll('a[href*="/in/"]').length,
+      noResults: /no results found/i.test(root.innerText || ''),
+    };
+
+    const out = [];
+    for (const [urn, box] of containers) {
+      const owner = box.querySelector(OWNER_LINK);
+      if (!owner || !/\/in\//.test(owner.getAttribute('href') || owner.href)) continue;
+
+      const hidden = owner.querySelector('span[aria-hidden="true"]');
+      const nameLines = String((hidden || owner).innerText || '')
+        .split('\n')
+        .map(clean)
+        .filter(Boolean);
+      const authorName = (nameLines[0] || '').split(' • ')[0];
+
+      const known = box.querySelector(
         '.update-components-text, .feed-shared-inline-show-more-text, .feed-shared-update-v2__description'
       );
-      const text = clean(textEl ? textEl.innerText : '');
-      if (!text) continue;
+      let text = clean(known ? known.innerText : '');
+      if (!text) {
+        let best = '';
+        for (const el of box.querySelectorAll('[dir="ltr"], .break-words, p, span')) {
+          if (owner.contains(el)) continue;
+          const value = clean(el.innerText);
+          if (value.length > best.length && value.length < 4000) best = value;
+        }
+        text = best;
+      }
+      if (text.length < 20) continue;
+
+      const headlineEl = box.querySelector('.update-components-actor__description');
+      const boxText = clean(box.innerText);
+      const ago = boxText.match(/\b(\d+\s?(?:mo|[smhdwy]))\s*•/i);
 
       out.push({
         urn,
-        authorUrl: authorLink.href,
-        authorName: clean(nameEl ? nameEl.innerText : authorLink.innerText).split(' • ')[0],
-        authorHeadline: clean(headlineEl ? headlineEl.innerText : ''),
-        postedAgo: (() => {
-          const raw = clean(timeEl ? timeEl.innerText : '');
-          const token = raw.match(/^\d+\s?(?:mo|[smhdwy])\b/i);
-          return token ? token[0].replace(/\s/g, '') : raw.split('•')[0].trim();
-        })(),
+        authorUrl: owner.href,
+        authorName,
+        authorHeadline: clean(headlineEl ? headlineEl.innerText : nameLines[2] || ''),
+        postedAgo: ago ? ago[1].replace(/\s/g, '') : '',
         text: text.slice(0, limit),
       });
     }
-    return out;
+    return { posts: out, stats };
   }, maxChars);
 }
 
-async function collectPosts(page, { keywords, datePosted, maxPosts, shouldStop = () => false, log = console.log }) {
+async function collectPosts(
+  page,
+  { keywords, datePosted, maxPosts, shouldStop = () => false, log = console.log, debugDir = '' }
+) {
   const url = buildPostSearchUrl({ keywords, datePosted });
   await log(`Post search: ${url}`);
   await gotoAndSettle(page, url);
@@ -70,11 +114,14 @@ async function collectPosts(page, { keywords, datePosted, maxPosts, shouldStop =
   const posts = [];
   const seenAuthors = new Set();
   let stale = 0;
+  let lastStats = null;
 
   for (let round = 0; round < POST_SEARCH.maxScrollRounds && posts.length < maxPosts; round += 1) {
     if (shouldStop()) break;
     const before = posts.length;
-    for (const raw of await extractPosts(page, POST_SEARCH.maxPostChars)) {
+    const { posts: batch, stats } = await extractPosts(page, POST_SEARCH.maxPostChars);
+    lastStats = stats;
+    for (const raw of batch) {
       const profileUrl = normalizeProfileUrl(raw.authorUrl.split('?')[0]);
       const slug = slugFromProfileUrl(profileUrl);
       if (!slug || seenAuthors.has(slug)) continue;
@@ -86,7 +133,7 @@ async function collectPosts(page, { keywords, datePosted, maxPosts, shouldStop =
         authorHeadline: raw.authorHeadline,
         postedAgo: raw.postedAgo,
         text: raw.text,
-        url: raw.urn ? `https://www.linkedin.com/feed/update/${raw.urn}/` : '',
+        url: `https://www.linkedin.com/feed/update/${raw.urn}/`,
       });
       if (posts.length >= maxPosts) break;
     }
@@ -102,6 +149,16 @@ async function collectPosts(page, { keywords, datePosted, maxPosts, shouldStop =
   }
 
   await log(`Post search found ${posts.length} post(s) by people`);
+  if (!posts.length && lastStats) {
+    await log(
+      `Post search page check: url=${page.url()} | title="${lastStats.title}" | post ids=${lastStats.urns} | post boxes=${lastStats.containers} | profile links=${lastStats.profileLinks} | "no results" shown=${lastStats.noResults}`
+    );
+    if (debugDir) {
+      const shot = path.join(debugDir, 'post-search-debug.png');
+      await page.screenshot({ path: shot, fullPage: false }).catch(() => {});
+      await log(`Post search screenshot saved: ${shot}`);
+    }
+  }
   return posts.slice(0, maxPosts);
 }
 
