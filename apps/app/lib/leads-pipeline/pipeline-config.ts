@@ -15,4 +15,5 @@ export const LEADS_PIPELINE = {
 	pageSize: 25,
 	searchDebounceMs: 300,
 	defaultProfile: "gpu",
+	addToCrm: { maxLeads: 200, defaultLeadSource: "COLD_OUTREACH" },
 } as const;

@@ -79,6 +79,17 @@ browser ──► CRM app /api/leads-pipeline/<path>   (apps/app/app/api/leads-p
 | Leads | `/leads`, `/download` |
 | Settings | `/settings` (GET and POST) |
 
+- **Leads become CRM contacts by selection.** Tick rows on the Leads page (the
+  header box ticks the page; the choice survives paging) and click **Add to CRM
+  contacts**, after picking a lead source (default Cold outreach). The app calls `contacts.importLeads` with the lead's name, email,
+  phone, title, company and domain, at most 200 at a time
+  (`LEADS_PIPELINE.addToCrm`, `CONTACT_IO.leads`). Each contact gets lead status
+  New and the chosen lead source. The company is found by domain or created
+  with the lead's company name (`CompanyDirectoryService.companyForDomain`); an
+  existing company is never renamed, and a free-mail domain makes no company. A
+  person already in the CRM (same email, or same name at the same company) is
+  counted as existing and left unchanged. A row without a person name cannot be
+  ticked.
 - **Stop works only for a run started from the CRM.** The daily run belongs to the
   scheduler, so the Stop button stays disabled for it.
 

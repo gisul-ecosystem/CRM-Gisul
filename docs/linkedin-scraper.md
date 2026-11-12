@@ -115,6 +115,7 @@ browser ──► CRM app /api/linkedin-scraper/<path>   (apps/app/app/api/linke
 | --- | --- |
 | Overview | `/status`, `/products`, `/rag/rebuild`, `/linkedin/*` |
 | Search and scrape | `/connection-types`, `/scrape/start`, `/scrape/posts`, `/scrape/import`, `/scrape/stop`, `/jobs` |
+| Found posts | `/results`, filtered to profiles with `sourcePost` |
 | Profiles | `/results`, `/results/download` |
 | Queue | `/queue`, `/queue/:slug`, `/queue/skip`, `/queue/clear`, `/queue/send` |
 | Sent | `/reports/daily-sends/summary`, `/reports/daily-sends` |
@@ -126,16 +127,27 @@ browser ──► CRM app /api/linkedin-scraper/<path>   (apps/app/app/api/linke
   are not connections. The scraper answers `400` to any other auto-send request.
   Posts and file imports never send.
 - **Posts finds people by what they post.** One keyword search of LinkedIn
-  posts per run, newest first, limited to the last 24 hours, week or month: at
-  most 30 posts by default and 100 at most (`POST_SEARCH` in
+  posts per run, newest first, limited to the last 24 hours, week or month: 10
+  posts by default and 25 at most (`POST_SEARCH` in
   `services/linkedin-scraper/src/config.js`). The AI reads each post first and
   keeps only authors who show a need, with a score of at least 60. Only those
   profiles are opened, so LinkedIn sees few page views. The draft uses the post
   as its hook. The post is stored on the profile as `sourcePost`, and the
   profile sheet shows it under "Found from a post". Post runs never send:
   drafts go to the Queue. Without an AI key, every post author is kept.
-- **Post search reads LinkedIn's page markup.** When LinkedIn changes it, a run
-  finds 0 posts. Fix the selectors in `src/posts.js`.
+- **Post search is paced for account safety.** One run per day by default
+  (`POST_SEARCH_DAILY_RUNS` in `linkedin-scraper.env`); a second run gets
+  `429`. Each run first scrolls the feed, then waits a random 4 to 9 seconds
+  between scrolls and 25 to 60 seconds between profile visits. A new account
+  that signs in from a server IP still gets restricted fast: use an older
+  account.
+- **Post search reads LinkedIn's page markup.** It finds a post by its post ID,
+  or, on pages without IDs, by one author link plus the post's own Like button
+  (next to Comment and Repost). Without a post ID, "Open the post" opens the
+  author's recent activity. A run with 0 posts logs a page check line and saves
+  `post-search-debug.png` and `post-search-debug.html` in the output volume.
+- **Found posts lists every person found from a post,** newest first, with the
+  post, need score and product. A click opens the profile sheet with the draft.
 - **Stop and save stops a running scrape.** The scraper finishes the profile in
   progress, saves it, writes the Excel export and ends the job as `stopped`.
   Every profile scraped before the stop stays saved. A batch pause during

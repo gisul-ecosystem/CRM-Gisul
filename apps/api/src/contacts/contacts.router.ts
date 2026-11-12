@@ -24,6 +24,8 @@ import {
 	contactExportOutput,
 	contactIdInput,
 	contactImportInput,
+	contactImportLeadsInput,
+	contactImportLeadsOutput,
 	contactImportOutput,
 	contactImportTemplateOutput,
 	contactListInput,
@@ -75,6 +77,15 @@ export class ContactsRouter {
 	})
 	async importCsv(@Input() input: z.infer<typeof contactImportInput>) {
 		return this.contacts.importCsv(input);
+	}
+
+	@Mutation({
+		input: contactImportLeadsInput,
+		output: contactImportLeadsOutput,
+		meta: restMeta("POST", "/contacts/import-leads", ["Contacts"]),
+	})
+	async importLeads(@Input() input: z.infer<typeof contactImportLeadsInput>) {
+		return this.contacts.importLeads(input);
 	}
 
 	@Query({

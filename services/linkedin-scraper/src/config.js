@@ -50,13 +50,17 @@ const SEND_BATCH_PAUSE_MS = Math.max(
   Number(process.env.SEND_BATCH_PAUSE_MS || 10 * 60 * 1000)
 );
 const SEND_DAY_TZ = process.env.SEND_DAY_TZ || 'Asia/Kolkata';
-const STOP_CHECK_MS = 1000;
+const SECOND_MS = 1000;
+const STOP_CHECK_MS = SECOND_MS;
 const POST_SEARCH = {
-  defaultMaxPosts: 30,
-  maxPostsCap: 100,
-  maxScrollRounds: 12,
-  scrollPauseMs: 2500,
-  settleMs: 4000,
+  defaultMaxPosts: 10,
+  maxPostsCap: 25,
+  dailyRunLimit: Math.max(1, Number(process.env.POST_SEARCH_DAILY_RUNS || 1)),
+  maxScrollRounds: 8,
+  warmup: { scrolls: 2, pause: { minMs: 3 * SECOND_MS, maxMs: 7 * SECOND_MS } },
+  settle: { minMs: 5 * SECOND_MS, maxMs: 10 * SECOND_MS },
+  scrollPause: { minMs: 4 * SECOND_MS, maxMs: 9 * SECOND_MS },
+  profilePause: { minMs: 25 * SECOND_MS, maxMs: 60 * SECOND_MS },
   minIntentScore: 60,
   maxPostChars: 1500,
   maxKeywordChars: 300,

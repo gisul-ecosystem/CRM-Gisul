@@ -23,8 +23,8 @@ export const LINKEDIN_SCRAPER = {
 		historyLimit: 20,
 	},
 	posts: {
-		defaultMaxPosts: 30,
-		maxPosts: 100,
+		defaultMaxPosts: 10,
+		maxPosts: 25,
 		maxKeywordChars: 300,
 		defaultDatePosted: "past-week",
 		suggestions: [

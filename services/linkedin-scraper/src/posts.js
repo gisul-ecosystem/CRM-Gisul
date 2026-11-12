@@ -1,7 +1,8 @@
+const fs = require('fs');
 const path = require('path');
 const { POST_SEARCH } = require('./config');
 const { gotoAndSettle } = require('./connections');
-const { sleep, slugFromProfileUrl, normalizeProfileUrl } = require('./utils');
+const { sleepBetween, slugFromProfileUrl, normalizeProfileUrl } = require('./utils');
 
 function buildPostSearchUrl({ keywords, datePosted }) {
   const params = new URLSearchParams();
@@ -50,18 +51,72 @@ async function extractPosts(page, maxChars) {
       if (!inner) containers.push([urn, el]);
     }
 
+    const ACTIVITY_RE = /(?:activity|ugcPost|share)[-:](\d{10,})/;
+    const label = (el) => `${el.getAttribute('aria-label') || ''} ${clean(el.innerText)}`.trim();
+    const isLike = (el) => /^(react\b|like\b)/i.test(label(el));
+    const inSocialBar = (button) => {
+      let bar = button.parentElement;
+      for (let depth = 0; bar && bar !== root && depth < 3; depth += 1) {
+        const labels = Array.from(bar.querySelectorAll('button')).map(label);
+        if (labels.some((l) => /comment/i.test(l)) && labels.some((l) => /repost|share|send/i.test(l))) {
+          return true;
+        }
+        bar = bar.parentElement;
+      }
+      return false;
+    };
+    const likeButtons = Array.from(root.querySelectorAll('button')).filter(
+      (b) => isLike(b) && inSocialBar(b)
+    );
+    const likesIn = (el) => likeButtons.filter((b) => el.contains(b)).length;
+
+    if (!containers.length && likeButtons.length) {
+      const boxes = new Set();
+      for (const link of root.querySelectorAll('a[href*="/in/"]')) {
+        let box = null;
+        let el = link.parentElement;
+        while (el && el !== root) {
+          const count = likesIn(el);
+          if (count > 1) break;
+          if (count === 1) box = el;
+          el = el.parentElement;
+        }
+        if (box) boxes.add(box);
+      }
+      for (const box of boxes) {
+        if (Array.from(boxes).some((other) => other !== box && other.contains(box))) continue;
+        let urn = '';
+        for (const a of box.querySelectorAll('a[href]')) {
+          const match = a.href.match(URN_RE) || a.href.match(ACTIVITY_RE);
+          if (match) {
+            urn = match[0].startsWith('urn:') ? match[0] : `urn:li:activity:${match[1]}`;
+            break;
+          }
+        }
+        containers.push([urn, box]);
+      }
+    }
+
     const stats = {
       title: document.title,
       urns: byUrn.size,
       containers: containers.length,
+      likeButtons: likeButtons.length,
       profileLinks: root.querySelectorAll('a[href*="/in/"]').length,
       noResults: /no results found/i.test(root.innerText || ''),
     };
 
     const out = [];
     for (const [urn, box] of containers) {
-      const owner = box.querySelector(OWNER_LINK);
-      if (!owner || !/\/in\//.test(owner.getAttribute('href') || owner.href)) continue;
+      const ownerLinks = Array.from(box.querySelectorAll(OWNER_LINK));
+      const first = ownerLinks[0];
+      if (!first || !/\/in\//.test(first.getAttribute('href') || first.href)) continue;
+      const ownerPath = first.pathname.replace(/\/+$/, '');
+      const owner =
+        ownerLinks.find((l) => l.pathname.replace(/\/+$/, '') === ownerPath && clean(l.innerText)) || first;
+      const postLike = likeButtons.find((b) => box.contains(b));
+      const beforeLike = (el) =>
+        !postLike || Boolean(el.compareDocumentPosition(postLike) & Node.DOCUMENT_POSITION_FOLLOWING);
 
       const hidden = owner.querySelector('span[aria-hidden="true"]');
       const nameLines = String((hidden || owner).innerText || '')
@@ -71,13 +126,13 @@ async function extractPosts(page, maxChars) {
       const authorName = (nameLines[0] || '').split(' • ')[0];
 
       const known = box.querySelector(
-        '.update-components-text, .feed-shared-inline-show-more-text, .feed-shared-update-v2__description'
+        '[data-testid="expandable-text-box"], .update-components-text, .feed-shared-inline-show-more-text, .feed-shared-update-v2__description'
       );
       let text = clean(known ? known.innerText : '');
       if (!text) {
         let best = '';
         for (const el of box.querySelectorAll('[dir="ltr"], .break-words, p, span')) {
-          if (owner.contains(el)) continue;
+          if (ownerLinks.some((l) => l.contains(el)) || el.querySelector('button') || !beforeLike(el)) continue;
           const value = clean(el.innerText);
           if (value.length > best.length && value.length < 4000) best = value;
         }
@@ -107,9 +162,14 @@ async function collectPosts(
   { keywords, datePosted, maxPosts, shouldStop = () => false, log = console.log, debugDir = '' }
 ) {
   const url = buildPostSearchUrl({ keywords, datePosted });
+  await log('Warm-up: reading the feed for a moment before the search');
+  for (let i = 0; i < POST_SEARCH.warmup.scrolls && !shouldStop(); i += 1) {
+    await page.mouse.wheel(0, 900 + Math.round(Math.random() * 900));
+    await sleepBetween(POST_SEARCH.warmup.pause);
+  }
   await log(`Post search: ${url}`);
   await gotoAndSettle(page, url);
-  await sleep(POST_SEARCH.settleMs);
+  await sleepBetween(POST_SEARCH.settle);
 
   const posts = [];
   const seenAuthors = new Set();
@@ -133,30 +193,38 @@ async function collectPosts(
         authorHeadline: raw.authorHeadline,
         postedAgo: raw.postedAgo,
         text: raw.text,
-        url: `https://www.linkedin.com/feed/update/${raw.urn}/`,
+        url: raw.urn
+          ? `https://www.linkedin.com/feed/update/${raw.urn}/`
+          : `${profileUrl}/recent-activity/all/`,
       });
       if (posts.length >= maxPosts) break;
     }
     stale = posts.length === before ? stale + 1 : 0;
     if (stale >= 3) break;
-    await page.mouse.wheel(0, 2200);
-    await sleep(POST_SEARCH.scrollPauseMs);
+    await page.mouse.wheel(0, 1400 + Math.round(Math.random() * 1200));
+    await sleepBetween(POST_SEARCH.scrollPause);
     const more = page.locator('button.scaffold-finite-scroll__load-button').first();
     if (await more.isVisible().catch(() => false)) {
       await more.click().catch(() => {});
-      await sleep(POST_SEARCH.scrollPauseMs);
+      await sleepBetween(POST_SEARCH.scrollPause);
     }
   }
 
   await log(`Post search found ${posts.length} post(s) by people`);
   if (!posts.length && lastStats) {
     await log(
-      `Post search page check: url=${page.url()} | title="${lastStats.title}" | post ids=${lastStats.urns} | post boxes=${lastStats.containers} | profile links=${lastStats.profileLinks} | "no results" shown=${lastStats.noResults}`
+      `Post search page check: url=${page.url()} | title="${lastStats.title}" | post ids=${lastStats.urns} | post boxes=${lastStats.containers} | like buttons=${lastStats.likeButtons} | profile links=${lastStats.profileLinks} | "no results" shown=${lastStats.noResults}`
     );
     if (debugDir) {
       const shot = path.join(debugDir, 'post-search-debug.png');
       await page.screenshot({ path: shot, fullPage: false }).catch(() => {});
       await log(`Post search screenshot saved: ${shot}`);
+      const html = path.join(debugDir, 'post-search-debug.html');
+      const markup = await page.content().catch(() => '');
+      if (markup) {
+        await fs.promises.writeFile(html, markup).catch(() => {});
+        await log(`Post search page saved: ${html}`);
+      }
     }
   }
   return posts.slice(0, maxPosts);

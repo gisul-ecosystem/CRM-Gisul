@@ -56,6 +56,7 @@ import type {
 	ContactCreateInput,
 	ContactExportInput,
 	ContactImportInput,
+	ContactImportLeadsInput,
 	ContactListInput,
 	ContactRow,
 	ContactUpdateInput,
@@ -242,6 +243,70 @@ export class ContactsService {
 			csv: contactCsvTemplate(),
 			filename: "leads-import-template.csv",
 		};
+	}
+
+	async importLeads(input: ContactImportLeadsInput) {
+		let created = 0;
+		let existing = 0;
+		const errors: { name: string; message: string }[] = [];
+
+		for (const lead of input.leads) {
+			try {
+				const [firstName = "", ...rest] = lead.fullName.split(/\s+/);
+				const lastName = rest.join(" ");
+				const email = normalizeEmail(lead.email);
+				const companyId = lead.domain
+					? await this.companies.companyForDomain(lead.domain, lead.company)
+					: null;
+
+				const match = await this.db.contact.findFirst({
+					where: email
+						? {
+								email: { equals: email, mode: "insensitive" },
+								archivedAt: null,
+							}
+						: {
+								firstName: { equals: firstName, mode: "insensitive" },
+								lastName: lastName
+									? { equals: lastName, mode: "insensitive" }
+									: null,
+								companyId,
+								archivedAt: null,
+							},
+					select: { id: true },
+				});
+				if (match) {
+					existing += 1;
+					continue;
+				}
+
+				await this.create({
+					firstName,
+					lastName: lastName || undefined,
+					email: email ?? undefined,
+					phone: lead.phone || undefined,
+					title: lead.title || undefined,
+					companyId,
+					leadStatus: "NEW",
+					leadSource: input.leadSource,
+				});
+				created += 1;
+			} catch (error) {
+				errors.push({
+					name: lead.fullName,
+					message: error instanceof Error ? error.message : "Import failed.",
+				});
+			}
+		}
+
+		this.logger.log({
+			message: "Leads added as contacts",
+			created,
+			existing,
+			failed: errors.length,
+		});
+
+		return { created, existing, failed: errors.length, errors };
 	}
 
 	async importCsv(input: ContactImportInput) {

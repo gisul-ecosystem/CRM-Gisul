@@ -4,6 +4,10 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function sleepBetween({ minMs, maxMs }) {
+  return sleep(minMs + Math.random() * Math.max(0, maxMs - minMs));
+}
+
 /** Navigate with retries for transient Docker DNS / network errors. */
 async function gotoWithRetry(page, url, options = {}, { retries = 4, delayMs = 2000 } = {}) {
   let lastErr;
@@ -102,6 +106,7 @@ function maskUri(uri) {
 module.exports = {
   maskUri,
   sleep,
+  sleepBetween,
   gotoWithRetry,
   ensureDirs,
   loadJson,

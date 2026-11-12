@@ -619,9 +619,17 @@ app.post('/api/scrape/posts', async (req, res) => {
   filters.datePosted = datePosted;
   filters.sendMessages = false;
 
+  const runs = await db.postSearchLimits.getDailyPostRuns(USER_ID);
+  if (runs.runCount >= POST_SEARCH.dailyRunLimit) {
+    return res.status(429).json({
+      error: `Post search limit reached: ${POST_SEARCH.dailyRunLimit} run(s) per day, to keep the LinkedIn account safe. Try again tomorrow.`,
+    });
+  }
+  await db.postSearchLimits.recordPostRun(USER_ID);
+
   res.json({
     ok: true,
-    message: `Post search started — up to ${maxPosts} post(s), drafts queue only`,
+    message: `Post search started — up to ${maxPosts} post(s), drafts queue only. Run ${runs.runCount + 1} of ${POST_SEARCH.dailyRunLimit} today.`,
     previewUrl: buildPostSearchUrl({ keywords, datePosted }),
   });
 

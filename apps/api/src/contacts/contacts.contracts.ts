@@ -16,6 +16,7 @@ import {
 	leadStatusEnum,
 } from "../products/products.contracts";
 import { activityFacetInput, listInput } from "../trpc/list-input";
+import { CONTACT_IO } from "./contacts-io-config";
 
 export const contactListInput = listInput.extend({
 	owner: z.array(z.string()).default([]),
@@ -347,6 +348,40 @@ export const contactImportOutput = z.object({
 	errors: z.array(
 		z.object({
 			line: z.number(),
+			message: z.string(),
+		}),
+	),
+});
+
+export const contactImportLeadsInput = z.object({
+	leadSource: leadSourceEnum.default("COLD_OUTREACH"),
+	leads: z
+		.array(
+			z.object({
+				fullName: z.string().trim().min(1, "A lead needs a name."),
+				email: z.string().trim().default(""),
+				phone: z.string().trim().default(""),
+				title: z.string().trim().default(""),
+				company: z.string().trim().default(""),
+				domain: z.string().trim().default(""),
+			}),
+		)
+		.min(1, "Select at least one lead.")
+		.max(
+			CONTACT_IO.leads.maxRows,
+			`Add at most ${CONTACT_IO.leads.maxRows} leads at a time.`,
+		),
+});
+
+export type ContactImportLeadsInput = z.infer<typeof contactImportLeadsInput>;
+
+export const contactImportLeadsOutput = z.object({
+	created: z.number(),
+	existing: z.number(),
+	failed: z.number(),
+	errors: z.array(
+		z.object({
+			name: z.string(),
 			message: z.string(),
 		}),
 	),
