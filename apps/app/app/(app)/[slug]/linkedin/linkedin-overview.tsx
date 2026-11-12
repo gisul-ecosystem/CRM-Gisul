@@ -16,6 +16,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import NextLink from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
+import { BrowserViewer } from "@/components/linkedin-scraper/browser-viewer";
 import { JobLog } from "@/components/linkedin-scraper/job-log";
 import { ScraperPage } from "@/components/linkedin-scraper/scraper-page";
 import { ConfirmDialog } from "@/components/outreach/confirm-dialog";
@@ -175,7 +176,7 @@ function ConnectionCard({
 				<p className="text-muted-foreground text-xs">
 					{status.inDocker
 						? viewer
-							? "Sign in to LinkedIn in the browser viewer. Use email and password, not Google."
+							? "Click Connect LinkedIn, then sign in in the browser below. Use email and password, not Google."
 							: "The scraper runs in Docker. Set LINKEDIN_SCRAPER_VIEWER_URL to open its browser viewer from here."
 						: "A Chromium window opens on the scraper's computer. Sign in there with email and password, not Google."}
 				</p>
@@ -192,7 +193,7 @@ function ConnectionCard({
 					{viewer ? (
 						<Button asChild variant="outline" size="sm">
 							<a href={viewer} target="_blank" rel="noreferrer">
-								Open browser viewer
+								Open in a new tab
 							</a>
 						</Button>
 					) : null}
@@ -216,6 +217,7 @@ function ConnectionCard({
 						</Button>
 					) : null}
 				</div>
+				{viewer && connecting ? <BrowserViewer src={viewer} /> : null}
 				{status.linkedInJob.logs.length > 0 ? (
 					<JobLog
 						entries={status.linkedInJob.logs.map((msg) => ({ at: null, msg }))}

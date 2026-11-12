@@ -52,7 +52,40 @@ browser ──► CRM app /api/linkedin-scraper/<path>   (apps/app/app/api/linke
   Sign in there.
 - **Scraper in Docker:** Chromium runs inside the container, and noVNC on port
   6080 shows it. Set `LINKEDIN_SCRAPER_VIEWER_URL` to the public address of the
-  scraper's web port, and the overview shows an "Open browser viewer" link. The
+  scraper's web port, and the overview shows an "Open browser viewer" link.
+  The CRM adds `/vnc/vnc_lite.html`, and the scraper proxies it to noVNC.
+- **Embedded viewer.** While Connect LinkedIn runs, the overview shows the
+  viewer in the page. That needs the viewer on the CRM's own origin: an `http`
+  viewer inside an `https` CRM is blocked. Route it through the reverse proxy,
+  and let the proxy ask `GET /api/linkedin-viewer/auth` first (`204` signed in,
+  `401` not). noVNC opens its WebSocket at `/websockify` on the same host.
+  Set `LINKEDIN_SCRAPER_VIEWER_URL="https://<crm-domain>/linkedin-viewer"`.
+
+  ```nginx
+  location = /_linkedin_viewer_auth {
+      internal;
+      proxy_pass http://127.0.0.1:3010/api/linkedin-viewer/auth;
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_set_header Host $host;
+      proxy_set_header Cookie $http_cookie;
+  }
+  location /linkedin-viewer/vnc/ {
+      auth_request /_linkedin_viewer_auth;
+      proxy_pass http://127.0.0.1:6364/vnc/;
+  }
+  location /websockify {
+      auth_request /_linkedin_viewer_auth;
+      proxy_pass http://127.0.0.1:6364;
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      proxy_read_timeout 3600s;
+  }
+  ```
+
+  Only `/vnc/` and `/websockify` pass through. The scraper's `/api/*` stays
+  private. The
   viewer has no password: put it behind your own login.
 - **Sign in with email and password, not Google.** "Back to LinkedIn" moves a
   browser stuck on Google's sign-in back to LinkedIn.
