@@ -5,4 +5,5 @@ module.exports = {
   profiles: require('./profiles'),
   jobs: require('./jobs'),
   sendLimits: require('./send-limits'),
+  postSearchLimits: require('./post-search-limits'),
 };

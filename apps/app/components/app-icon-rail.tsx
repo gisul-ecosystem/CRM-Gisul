@@ -2,6 +2,7 @@
 
 import Activity from "@carbon/icons-react/es/Activity";
 import Analytics from "@carbon/icons-react/es/Analytics";
+import Blog from "@carbon/icons-react/es/Blog";
 import Building from "@carbon/icons-react/es/Building";
 import Close from "@carbon/icons-react/es/Close";
 import Group from "@carbon/icons-react/es/Group";
@@ -160,6 +161,12 @@ const GROUPS: NavGroup[] = [
 				title: "Profiles",
 				href: "/linkedin/profiles",
 				icon: UserProfile,
+				match: "prefix",
+			},
+			{
+				title: "Found posts",
+				href: "/linkedin/posts",
+				icon: Blog,
 				match: "prefix",
 			},
 			{

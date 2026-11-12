@@ -15,6 +15,7 @@ import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { TableCell } from "@crm/ui/components/table";
 import { TablePagination } from "@crm/ui/components/table-pagination";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 import { LeadSheet } from "@/components/leads-pipeline/lead-sheet";
@@ -25,6 +26,7 @@ import {
 	OutreachToolbar,
 	SearchBox,
 } from "@/components/outreach/toolbar";
+import { LEAD_SOURCE_OPTIONS } from "@/lib/lead-fields";
 import { leadsApi } from "@/lib/leads-pipeline/api";
 import { pipelineKeys } from "@/lib/leads-pipeline/cache";
 import {
@@ -41,6 +43,9 @@ import {
 	type ProfileStatus,
 } from "@/lib/leads-pipeline/schemas";
 import { useDebounced } from "@/lib/outreach/use-debounced";
+import { useCrmCache } from "@/lib/trpc/cache";
+import { useTRPC } from "@/lib/trpc/client";
+import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 
 const NO_FILTERS: LeadFilters = {
 	q: "",
@@ -70,6 +75,12 @@ const TOGGLES: readonly { key: Toggle; label: string }[] = [
 	{ key: "perCompany", label: "One per company" },
 ];
 
+type LeadSourceValue = (typeof LEAD_SOURCE_OPTIONS)[number]["value"];
+
+function leadKey(row: Lead): string {
+	return `${row.domain}|${row.full_name}|${row.email}`;
+}
+
 export function LeadsView() {
 	return (
 		<PipelinePage
@@ -87,6 +98,16 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 	const [filters, setFilters] = useState<LeadFilters>(NO_FILTERS);
 	const [page, setPage] = useState(1);
 	const [open, setOpen] = useState<Lead | null>(null);
+	const [selected, setSelected] = useState<ReadonlyMap<string, Lead>>(
+		() => new Map(),
+	);
+	const [leadSource, setLeadSource] = useState<LeadSourceValue>(
+		LEADS_PIPELINE.addToCrm.defaultLeadSource,
+	);
+	const trpc = useTRPC();
+	const cache = useCrmCache();
+	const router = useRouter();
+	const workspaceUrl = useWorkspaceUrl();
 	const q = useDebounced(search, LEADS_PIPELINE.searchDebounceMs);
 	const applied = { ...filters, q };
 	const { pageSize } = LEADS_PIPELINE;
@@ -103,6 +124,57 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 		onSuccess: (filename) => toast.success(`Downloaded ${filename}.`),
 		onError: (error) => toast.error(error.message),
 	});
+
+	const addToCrm = useMutation(
+		trpc.contacts.importLeads.mutationOptions({
+			onSuccess: async (result) => {
+				await Promise.all([cache.contact(), cache.company()]);
+				const parts = [
+					result.created > 0 ? `${result.created} added` : null,
+					result.existing > 0 ? `${result.existing} already in the CRM` : null,
+					result.failed > 0 ? `${result.failed} failed` : null,
+				].filter(Boolean);
+				toast.success(parts.join(" · ") || "Nothing to add.", {
+					action: {
+						label: "Open contacts",
+						onClick: () => router.push(workspaceUrl("/contacts")),
+					},
+				});
+				if (result.errors[0]) {
+					toast.message(
+						`${result.errors[0].name}: ${result.errors[0].message}`,
+					);
+				}
+				setSelected(new Map());
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	const toggle = (rowsToChange: Lead[], on: boolean) => {
+		setSelected((current) => {
+			const next = new Map(current);
+			for (const row of rowsToChange) {
+				if (on) next.set(leadKey(row), row);
+				else next.delete(leadKey(row));
+			}
+			return next;
+		});
+	};
+
+	const { maxLeads } = LEADS_PIPELINE.addToCrm;
+	const submitSelected = () =>
+		addToCrm.mutate({
+			leadSource,
+			leads: [...selected.values()].map((row) => ({
+				fullName: row.full_name,
+				email: row.email,
+				phone: row.phone,
+				title: row.title,
+				company: row.company,
+				domain: row.domain,
+			})),
+		});
 
 	const change = (next: Partial<LeadFilters>) => {
 		setFilters((current) => ({ ...current, ...next }));
@@ -123,6 +195,14 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 
 	const rows = leads.data?.rows ?? [];
 	const total = leads.data?.total ?? 0;
+	const selectable = rows.filter((row) => row.full_name.trim() !== "");
+	const pageSelected = selectable.filter((row) => selected.has(leadKey(row)));
+	const headerState =
+		selectable.length > 0 && pageSelected.length === selectable.length
+			? true
+			: pageSelected.length > 0
+				? "indeterminate"
+				: false;
 
 	return (
 		<div className="flex flex-col gap-4">
@@ -188,6 +268,38 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 				))}
 			</div>
 
+			{selected.size > 0 ? (
+				<div className="flex flex-wrap items-center gap-3">
+					<p className="text-sm">
+						{selected.size} selected
+						{selected.size > maxLeads
+							? ` — add at most ${maxLeads} at a time`
+							: ""}
+					</p>
+					<FilterSelect
+						value={leadSource}
+						onChange={setLeadSource}
+						options={LEAD_SOURCE_OPTIONS}
+						label="Lead source"
+					/>
+					<Button
+						size="sm"
+						disabled={addToCrm.isPending || selected.size > maxLeads}
+						onClick={submitSelected}
+					>
+						{addToCrm.isPending ? "Adding…" : "Add to CRM contacts"}
+					</Button>
+					<Button
+						variant="ghost"
+						size="sm"
+						disabled={addToCrm.isPending}
+						onClick={() => setSelected(new Map())}
+					>
+						Clear selection
+					</Button>
+				</div>
+			) : null}
+
 			{leads.isPending ? (
 				<Skeleton className="h-48 w-full rounded-lg" />
 			) : leads.isError ? (
@@ -208,6 +320,21 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 			) : (
 				<SimpleTable
 					columns={[
+						{
+							id: "select",
+							srLabel: "Select",
+							width: "w-10",
+							header: (
+								<Checkbox
+									aria-label="Select every lead on this page"
+									checked={headerState}
+									disabled={selectable.length === 0}
+									onCheckedChange={(checked) =>
+										toggle(selectable, checked === true)
+									}
+								/>
+							),
+						},
 						{ id: "company", header: "Company" },
 						{ id: "person", header: "Person" },
 						{ id: "email", header: "Email" },
@@ -218,10 +345,21 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 				>
 					{rows.map((row) => (
 						<SimpleTableRow
-							key={`${row.domain}|${row.full_name}|${row.email}`}
+							key={leadKey(row)}
 							clickable
 							onClick={() => setOpen(row)}
 						>
+							<TableCell
+								className="px-3"
+								onClick={(event) => event.stopPropagation()}
+							>
+								<Checkbox
+									aria-label={`Select ${row.full_name || row.company}`}
+									checked={selected.has(leadKey(row))}
+									disabled={row.full_name.trim() === ""}
+									onCheckedChange={(checked) => toggle([row], checked === true)}
+								/>
+							</TableCell>
 							<TableCell className="max-w-56 px-3">
 								<p className="truncate">{row.company || row.domain}</p>
 								<p className="truncate text-muted-foreground text-xs">

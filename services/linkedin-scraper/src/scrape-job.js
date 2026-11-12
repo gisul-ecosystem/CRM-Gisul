@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { ACTION_DELAY_MS, AI_MESSAGES, HEADLESS } = require('./config');
+const { ACTION_DELAY_MS, AI_MESSAGES, HEADLESS, POST_SEARCH } = require('./config');
 const { launchBrowser } = require('./browser');
 const { ensureLinkedInLoggedIn } = require('./linkedin-auth');
 const { collectConnectionLinks } = require('./connections');
@@ -15,6 +15,7 @@ const { userPaths } = require('./paths');
 const {
   ensureDirs,
   sleep,
+  sleepBetween,
   slugFromProfileUrl,
   nameFromSlug,
 } = require('./utils');
@@ -472,7 +473,9 @@ async function runScrapeJob(userId, filters, onProgress) {
         errors: job.errors.slice(-50),
       });
       if (onProgress) onProgress(job);
-      if (!job.stopRequested) await sleep(ACTION_DELAY_MS);
+      if (!job.stopRequested) {
+        await (usingPosts ? sleepBetween(POST_SEARCH.profilePause) : sleep(ACTION_DELAY_MS));
+      }
     }
 
     const allProfiles = await db.profiles.listProfiles(userId, { limit: 5000 });
