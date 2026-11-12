@@ -135,6 +135,7 @@ async function runScrapeJob(userId, filters, onProgress) {
 
   const existingMap = await db.profiles.profilesMapBySlug(userId);
 
+  await log('Opening the browser and checking the LinkedIn session…');
   const { browser, context, page } = await launchBrowser({
     storageStatePath: paths.linkedinSession,
     headless: HEADLESS,
@@ -142,7 +143,10 @@ async function runScrapeJob(userId, filters, onProgress) {
   page.setDefaultTimeout(90000);
 
   try {
-    await ensureLinkedInLoggedIn(page, context, paths.linkedinSession);
+    await ensureLinkedInLoggedIn(page, context, paths.linkedinSession, {
+      log,
+      shouldStop: () => job.stopRequested,
+    });
 
     if (usingImport) {
       await log(`Mode: file import | ${importedConns.length} URL(s) in spreadsheet`);
@@ -508,11 +512,12 @@ async function runScrapeJob(userId, filters, onProgress) {
     );
     return job;
   } catch (err) {
-    job.status = 'failed';
+    job.status = job.stopRequested ? 'stopped' : 'failed';
     job.error = err.message;
     job.finishedAt = new Date().toISOString();
+    await log(`${job.status === 'stopped' ? 'Stopped' : 'Failed'}: ${err.message}`);
     await db.jobs.updateScrapeJob(jobId, {
-      status: 'failed',
+      status: job.status,
       error: err.message,
       finishedAt: job.finishedAt,
     });
