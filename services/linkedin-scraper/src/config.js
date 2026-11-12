@@ -51,6 +51,18 @@ const SEND_BATCH_PAUSE_MS = Math.max(
 );
 const SEND_DAY_TZ = process.env.SEND_DAY_TZ || 'Asia/Kolkata';
 const STOP_CHECK_MS = 1000;
+const POST_SEARCH = {
+  defaultMaxPosts: 30,
+  maxPostsCap: 100,
+  maxScrollRounds: 12,
+  scrollPauseMs: 2500,
+  settleMs: 4000,
+  minIntentScore: 60,
+  maxPostChars: 1500,
+  maxKeywordChars: 300,
+  datePosted: ['past-24h', 'past-week', 'past-month'],
+  defaultDatePosted: 'past-week',
+};
 
 module.exports = {
   ROOT,
@@ -61,6 +73,7 @@ module.exports = {
   HEADLESS,
   ACTION_DELAY_MS,
   STOP_CHECK_MS,
+  POST_SEARCH,
   MAX_CONNECTIONS,
   START_INDEX,
   SEND_MESSAGES,

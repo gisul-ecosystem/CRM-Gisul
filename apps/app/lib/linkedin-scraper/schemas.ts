@@ -10,6 +10,12 @@ export const CONNECTION_TYPE_IDS = [
 ] as const;
 export type ConnectionTypeId = (typeof CONNECTION_TYPE_IDS)[number];
 
+export const FIRST_DEGREE_TYPES: readonly ConnectionTypeId[] = [
+	"all_connections",
+	"connections_search",
+	"first_degree",
+];
+
 export const QUEUE_STATUSES = [
 	"scraped",
 	"queued",
@@ -19,6 +25,13 @@ export const QUEUE_STATUSES = [
 	"cleared",
 ] as const;
 export type QueueStatus = (typeof QUEUE_STATUSES)[number];
+
+export const POST_DATE_WINDOWS = [
+	"past-24h",
+	"past-week",
+	"past-month",
+] as const;
+export type PostDateWindow = (typeof POST_DATE_WINDOWS)[number];
 
 export const JOB_STATUSES = [
 	"idle",
@@ -180,6 +193,19 @@ export const scrapedProfile = z.object({
 	recommendedProduct: text,
 	productName: text,
 	productUrl: text,
+	sourcePost: z
+		.object({
+			url: text,
+			text: text,
+			postedAgo: text,
+			keywords: text,
+			intentScore: count,
+			intentSignal: text,
+			intentReason: text,
+			foundAt: instant,
+		})
+		.nullish()
+		.transform((value) => value ?? null),
 	aiReason: text,
 	aiMessage: text,
 	lastMessage: text,
@@ -284,6 +310,15 @@ export const sentSummary = z.object({
 });
 export type SentSummary = z.infer<typeof sentSummary>;
 
+export type PostSearch = {
+	keywords: string;
+	datePosted: PostDateWindow;
+	maxPosts: number;
+	products: string[];
+	aiMessages: boolean;
+	rescrape: boolean;
+};
+
 export type ScrapeFilters = {
 	connectionType: ConnectionTypeId;
 	keywords: string;
@@ -296,4 +331,5 @@ export type ScrapeFilters = {
 	products: string[];
 	aiMessages: boolean;
 	rescrape: boolean;
+	sendMessages: boolean;
 };

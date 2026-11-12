@@ -33,6 +33,7 @@ import {
 	TabsList,
 	TabsTrigger,
 } from "@crm/ui/components/tabs";
+import { Textarea } from "@crm/ui/components/textarea";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { toast } from "sonner";
@@ -42,10 +43,13 @@ import { LocalDateTime } from "@/components/local-date-time";
 import { Meter } from "@/components/outreach/meter";
 import { scrapeApi, scraperApi } from "@/lib/linkedin-scraper/api";
 import { scraperKeys, useScraperCache } from "@/lib/linkedin-scraper/cache";
-import { JOB_STATUS } from "@/lib/linkedin-scraper/labels";
+import { JOB_STATUS, POST_DATE_WINDOW } from "@/lib/linkedin-scraper/labels";
 import {
 	CONNECTION_TYPE_IDS,
 	type ConnectionTypeId,
+	FIRST_DEGREE_TYPES,
+	POST_DATE_WINDOWS,
+	type PostDateWindow,
 	type ScrapeFilters,
 } from "@/lib/linkedin-scraper/schemas";
 import { LINKEDIN_SCRAPER } from "@/lib/linkedin-scraper/scraper-config";
@@ -116,10 +120,14 @@ function ScrapeBody() {
 						<Tabs defaultValue="search" className="gap-4">
 							<TabsList>
 								<TabsTrigger value="search">LinkedIn search</TabsTrigger>
+								<TabsTrigger value="posts">Posts</TabsTrigger>
 								<TabsTrigger value="import">Import a file</TabsTrigger>
 							</TabsList>
 							<TabsContent value="search">
 								<SearchForm disabled={busy} />
+							</TabsContent>
+							<TabsContent value="posts">
+								<PostsForm disabled={busy} />
 							</TabsContent>
 							<TabsContent value="import">
 								<ImportForm disabled={busy} />
@@ -191,7 +199,7 @@ function ScrapeBody() {
 	);
 }
 
-function useOptionsFields(prefix: string) {
+function useOptionsFields(prefix: string, withCounts = true) {
 	const [options, setOptions] = useState<Options>(DEFAULT_OPTIONS);
 	const products = useQuery({
 		queryKey: scraperKeys.products,
@@ -211,7 +219,7 @@ function useOptionsFields(prefix: string) {
 
 	const fields = (
 		<>
-			<div className="grid gap-4 sm:grid-cols-2">
+			<div className={withCounts ? "grid gap-4 sm:grid-cols-2" : "hidden"}>
 				<Field>
 					<FieldLabel htmlFor={maxId}>How many people</FieldLabel>
 					<Input
@@ -304,6 +312,12 @@ function SearchForm({ disabled }: { disabled: boolean }) {
 	const [company, setCompany] = useState("");
 	const [location, setLocation] = useState("");
 	const [profileUrl, setProfileUrl] = useState("");
+	const [autoSend, setAutoSend] = useState(false);
+	const autoSendId = useId();
+	const canAutoSend =
+		FIRST_DEGREE_TYPES.includes(connectionType) &&
+		!profileUrl.trim() &&
+		options.aiMessages;
 	const types = useQuery({
 		queryKey: scraperKeys.connectionTypes,
 		queryFn: () => scraperApi.connectionTypes(),
@@ -326,6 +340,7 @@ function SearchForm({ disabled }: { disabled: boolean }) {
 				company: company.trim(),
 				location: location.trim(),
 				profileUrl: profileUrl.trim(),
+				sendMessages: autoSend && canAutoSend,
 			}),
 		onSuccess: (result) => {
 			toast.success(result.message);
@@ -415,10 +430,149 @@ function SearchForm({ disabled }: { disabled: boolean }) {
 					</FieldDescription>
 				</Field>
 				{fields}
+				<Field orientation="horizontal">
+					<Checkbox
+						id={autoSendId}
+						checked={autoSend && canAutoSend}
+						disabled={!canAutoSend}
+						onCheckedChange={(checked) => setAutoSend(checked === true)}
+					/>
+					<FieldLabel htmlFor={autoSendId}>
+						Send automatically after the draft
+					</FieldLabel>
+				</Field>
+				<FieldDescription>
+					{canAutoSend
+						? "Each matching connection is messaged right away, within the daily limit. Off: drafts wait in the Queue."
+						: "Only for your connections: choose a 1st-degree option above, no single profile, with AI drafts on."}
+				</FieldDescription>
 			</FieldGroup>
 			<div>
 				<Button type="submit" disabled={disabled || start.isPending}>
-					Start scrape
+					{autoSend && canAutoSend ? "Start scrape and send" : "Start scrape"}
+				</Button>
+			</div>
+		</form>
+	);
+}
+
+function PostsForm({ disabled }: { disabled: boolean }) {
+	const cache = useScraperCache();
+	const { options, fields } = useOptionsFields("posts", false);
+	const [keywords, setKeywords] = useState("");
+	const [datePosted, setDatePosted] = useState<PostDateWindow>(
+		LINKEDIN_SCRAPER.posts.defaultDatePosted,
+	);
+	const [maxPosts, setMaxPosts] = useState<number>(
+		LINKEDIN_SCRAPER.posts.defaultMaxPosts,
+	);
+	const keywordsId = useId();
+	const windowId = useId();
+	const maxId = useId();
+
+	const start = useMutation({
+		mutationFn: () =>
+			scrapeApi.posts({
+				keywords: keywords.trim(),
+				datePosted,
+				maxPosts,
+				products: options.products,
+				aiMessages: options.aiMessages,
+				rescrape: options.rescrape,
+			}),
+		onSuccess: (result) => {
+			toast.success(result.message);
+			void cache.scrape();
+		},
+		onError: (error) => toast.error(error.message),
+	});
+
+	return (
+		<form
+			className="flex flex-col gap-4"
+			onSubmit={(event) => {
+				event.preventDefault();
+				start.mutate();
+			}}
+		>
+			<FieldGroup>
+				<Field>
+					<FieldLabel htmlFor={keywordsId}>Post keywords</FieldLabel>
+					<Textarea
+						id={keywordsId}
+						rows={2}
+						maxLength={LINKEDIN_SCRAPER.posts.maxKeywordChars}
+						value={keywords}
+						onChange={(event) => setKeywords(event.target.value)}
+						placeholder="virtual labs for training"
+					/>
+					<FieldDescription>
+						One search per run. The AI reads each post and keeps only authors
+						who show a need for your products.
+					</FieldDescription>
+					<div className="flex flex-wrap gap-2">
+						{LINKEDIN_SCRAPER.posts.suggestions.map((suggestion) => (
+							<Button
+								key={suggestion}
+								type="button"
+								variant="outline"
+								size="sm"
+								onClick={() => setKeywords(suggestion)}
+							>
+								{suggestion}
+							</Button>
+						))}
+					</div>
+				</Field>
+				<div className="grid gap-4 sm:grid-cols-2">
+					<Field>
+						<FieldLabel htmlFor={windowId}>Posted in</FieldLabel>
+						<Select
+							value={datePosted}
+							onValueChange={(next) => {
+								const match = POST_DATE_WINDOWS.find((id) => id === next);
+								if (match) setDatePosted(match);
+							}}
+						>
+							<SelectTrigger id={windowId}>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{POST_DATE_WINDOWS.map((id) => (
+									<SelectItem key={id} value={id}>
+										{POST_DATE_WINDOW[id]}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</Field>
+					<Field>
+						<FieldLabel htmlFor={maxId}>How many posts</FieldLabel>
+						<Input
+							id={maxId}
+							type="number"
+							min={1}
+							max={LINKEDIN_SCRAPER.posts.maxPosts}
+							value={maxPosts}
+							onChange={(event) => setMaxPosts(Number(event.target.value))}
+						/>
+						<FieldDescription>
+							At most {LINKEDIN_SCRAPER.posts.maxPosts}. Start low.
+						</FieldDescription>
+					</Field>
+				</div>
+				{fields}
+			</FieldGroup>
+			<p className="text-muted-foreground text-xs">
+				Post authors are mostly not your connections. Drafts go to the Queue;
+				nothing is sent from here.
+			</p>
+			<div>
+				<Button
+					type="submit"
+					disabled={disabled || !keywords.trim() || start.isPending}
+				>
+					Search posts
 				</Button>
 			</div>
 		</form>

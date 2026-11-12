@@ -1,5 +1,5 @@
 import type { StatusTone } from "@crm/ui/components/status-indicator";
-import type { JobStatus, QueueStatus } from "./schemas";
+import type { JobStatus, PostDateWindow, QueueStatus } from "./schemas";
 
 export type StatusLabel = { label: string; tone: StatusTone };
 
@@ -11,6 +11,12 @@ export const QUEUE_STATUS = {
 	skipped: { label: "Skipped", tone: "warning" },
 	cleared: { label: "Cleared", tone: "neutral" },
 } as const satisfies Record<QueueStatus, StatusLabel>;
+
+export const POST_DATE_WINDOW = {
+	"past-24h": "Last 24 hours",
+	"past-week": "Last week",
+	"past-month": "Last month",
+} as const satisfies Record<PostDateWindow, string>;
 
 export const JOB_STATUS = {
 	idle: { label: "Idle", tone: "neutral" },

@@ -7,7 +7,8 @@ const { collectConnectionLinks } = require('./connections');
 const { scrapeProfile } = require('./profile');
 const { writeConnectionsExcel } = require('./export');
 const { resolveConnectionType, buildSearchUrl } = require('./search');
-const { generateOutreachMessage } = require('./ai-message');
+const { generateOutreachMessage, assessPostIntent } = require('./ai-message');
+const { collectPosts } = require('./posts');
 const { sendMessageToProfile } = require('./messaging');
 const { getSendBudget, recordSuccessfulSend, maybeBatchPause } = require('./send-limits');
 const { userPaths } = require('./paths');
@@ -107,16 +108,19 @@ async function runScrapeJob(userId, filters, onProgress) {
     });
   }
   const usingImport = importedConns.length > 0;
+  const usingPosts = !usingImport && filters.connectionType === 'post_search';
   filters = {
     ...filters,
     profileUrl: usingImport ? '' : directProfileUrl,
     profileUrls: usingImport ? importedConns : [],
     connectionType: usingImport
       ? 'file_import'
-      : directProfileUrl
+      : usingPosts
+        ? 'post_search'
+        : directProfileUrl
         ? 'single_profile'
         : resolveConnectionType(filters),
-    sendMessages: usingImport ? false : Boolean(filters.sendMessages),
+    sendMessages: usingImport || usingPosts ? false : Boolean(filters.sendMessages),
   };
   job.filters = {
     ...filters,
@@ -142,6 +146,8 @@ async function runScrapeJob(userId, filters, onProgress) {
 
     if (usingImport) {
       await log(`Mode: file import | ${importedConns.length} URL(s) in spreadsheet`);
+    } else if (usingPosts) {
+      await log(`Mode: post search | "${filters.keywords}" | ${filters.datePosted} | up to ${filters.maxResults} post(s)`);
     } else if (directProfileUrl) {
       await log(`Mode: single profile | ${directProfileUrl}`);
     } else {
@@ -163,8 +169,8 @@ async function runScrapeJob(userId, filters, onProgress) {
         await log(`Message framing — ${id}: ${framing.slice(0, 160)}`);
       }
     }
-    if (usingImport) {
-      await log('File import — drafts go to queue only. Nothing is sent until Send to all.');
+    if (usingImport || usingPosts) {
+      await log('Drafts go to queue only. Nothing is sent until Send to all.');
     } else if (autoSend) {
       await log('Auto-send ON — matched profiles will be messaged one-by-one after AI draft');
     } else {
@@ -173,7 +179,60 @@ async function runScrapeJob(userId, filters, onProgress) {
     await log(`MongoDB tracking enabled for owner=${userId}`);
 
     let connections;
-    if (usingImport) {
+    if (usingPosts) {
+      const posts = await collectPosts(page, {
+        keywords: filters.keywords,
+        datePosted: filters.datePosted,
+        maxPosts: filters.maxResults,
+        shouldStop: () => job.stopRequested,
+        log,
+      });
+      connections = [];
+      let checked = 0;
+      for (const post of posts) {
+        if (job.stopRequested) break;
+        if (existingMap[post.slug]?.scrapedAt && !filters.rescrape) continue;
+        checked += 1;
+        let intent;
+        try {
+          intent = await assessPostIntent(post);
+        } catch (err) {
+          await log(`Post check failed for ${post.authorName || post.slug}: ${err.message}`);
+          continue;
+        }
+        const outOfScope =
+          allowedProducts.length > 0 &&
+          intent.productIds.length > 0 &&
+          !intent.productIds.some((id) => allowedProducts.includes(id));
+        if (!intent.intent || outOfScope) {
+          await log(
+            `Post SKIP ${post.authorName || post.slug} score=${intent.score} — ${intent.reason.slice(0, 120)}`
+          );
+          continue;
+        }
+        await log(
+          `Post MATCH ${post.authorName || post.slug} score=${intent.score} → ${intent.productIds.join('+') || 'any'} — "${intent.signal.slice(0, 100)}"`
+        );
+        connections.push({
+          profileUrl: post.profileUrl,
+          listName: post.authorName,
+          subtitle: '',
+          headline: post.authorHeadline,
+          post: {
+            url: post.url,
+            text: post.text,
+            postedAgo: post.postedAgo,
+            keywords: filters.keywords,
+            intentScore: intent.score,
+            intentSignal: intent.signal,
+            intentReason: intent.reason,
+            productIds: intent.productIds,
+            foundAt: new Date().toISOString(),
+          },
+        });
+      }
+      await log(`Post check: ${connections.length} of ${checked} new post author(s) show a need`);
+    } else if (usingImport) {
       connections = importedConns;
       await log(`File import targets: ${connections.length} unique profile URL(s)`);
     } else if (directProfileUrl) {
@@ -279,6 +338,7 @@ async function runScrapeJob(userId, filters, onProgress) {
       const record = {
         ...existingProfile,
         ...profile,
+        ...(conn.post ? { sourcePost: conn.post } : {}),
         listIndex: offset + i,
         connectionType: filters.connectionType,
         searchKeywords: filters.keywords || '',
