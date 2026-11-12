@@ -22,4 +22,22 @@ export const LINKEDIN_SCRAPER = {
 		maxResults: 2000,
 		historyLimit: 20,
 	},
+	posts: {
+		defaultMaxPosts: 30,
+		maxPosts: 100,
+		maxKeywordChars: 300,
+		defaultDatePosted: "past-week",
+		suggestions: [
+			"virtual labs for training",
+			"cloud labs",
+			"hands-on labs",
+			"GPU for AI training",
+			"AI compute",
+			"bare metal servers",
+			"corporate upskilling program",
+			"AI literacy training",
+			"technical assessment platform",
+			"AI interview tool",
+		],
+	},
 } as const;

@@ -4,6 +4,7 @@ const {
   OPENAI_API_KEY,
   OPENAI_MODEL,
   AI_CONFIDENCE_MIN_SCORE,
+  POST_SEARCH,
 } = require('./config');
 const { getProduct, listProducts, parseProductIds } = require('./products');
 const { firstName } = require('./utils');
@@ -462,6 +463,17 @@ When you pitch a product listed here, build the message around this point. It go
 `;
 }
 
+function postBlock(post) {
+  if (!post || !post.text) return '';
+  return `
+## Their recent LinkedIn post (the reason we reach out)
+Posted: ${post.postedAgo || 'recently'}
+Need we saw: ${post.intentSignal || '(see post)'}
+Post: ${String(post.text).slice(0, POST_SEARCH.maxPostChars)}
+Use this post as the hook: refer to it briefly and naturally in the first line. Do not quote it at length.
+`;
+}
+
 function userPrompt(profile, rag, allowed = null, briefs = {}, framing = {}) {
   const p = cleanProfileForAi(profile);
   const geo = detectGeography(p);
@@ -479,7 +491,7 @@ About: ${(p.about || '(empty)').slice(0, 1400)}
 Experience: ${(p.experience || '(empty)').slice(0, 1600)}
 Education: ${p.education || '(empty)'}
 Profile URL: ${p.profileUrl || ''}
-
+${postBlock(p.sourcePost)}
 ## Task
 Step 1: Fit assessment (brands, fitReason, confidence, proceed) — including the targeting brief, if any.
 Step 2: Apply pitch matrix → productId / productIds.
@@ -935,4 +947,50 @@ async function generateOutreachMessage(
   }
 }
 
-module.exports = { generateOutreachMessage, heuristicProductId, buildFallbackMessage };
+function postIntentSystem() {
+  const products = listProducts()
+    .map((p) => `- ${p.id}: ${p.name} — ${p.tagline}. Ideal for: ${(p.idealFor || []).join(', ')}`)
+    .join('\n');
+  return `You sort LinkedIn posts for the sales team of Gisul. Decide whether the AUTHOR of a post has a current, real need that one of these products solves:
+${products}
+
+A need: the author is looking for, building, buying, comparing or struggling with virtual labs, cloud labs, hands-on lab environments for training, GPU or AI compute, private cloud, VMs or bare metal, tech upskilling or corporate training programmes, skill assessments, AI interviews or proctoring.
+Not a need: the author sells a competing product or service, is a job seeker, shares news, tips or opinions without a need, posts a job opening outside these areas, or writes generic motivation.
+
+Answer with JSON only:
+{"intent": true or false, "score": 0-100, "productIds": ["racko", "kanonkode", "aaptor"], "signal": "the exact phrase from the post that shows the need, at most 160 characters", "reason": "one sentence"}`;
+}
+
+async function assessPostIntent(post) {
+  if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY) {
+    return {
+      intent: true,
+      score: POST_SEARCH.minIntentScore,
+      productIds: [],
+      signal: '',
+      reason: 'No AI key: kept because it matched the search',
+    };
+  }
+  const user = `Author: ${post.authorName || '(unknown)'}
+Headline: ${post.authorHeadline || '(empty)'}
+Posted: ${post.postedAgo || '(unknown)'}
+
+Post:
+${String(post.text || '').slice(0, POST_SEARCH.maxPostChars)}`;
+  const system = postIntentSystem();
+  const raw = ANTHROPIC_API_KEY ? await callClaude(system, user) : await callOpenAI(system, user);
+  const parsed = parseJsonContent(raw);
+  const known = new Set(listProducts().map((p) => p.id));
+  const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
+  return {
+    intent: parsed.intent === true && score >= POST_SEARCH.minIntentScore,
+    score,
+    productIds: (Array.isArray(parsed.productIds) ? parsed.productIds : [])
+      .map((id) => String(id).toLowerCase().trim())
+      .filter((id) => known.has(id)),
+    signal: String(parsed.signal || '').slice(0, 160),
+    reason: String(parsed.reason || '').slice(0, 300),
+  };
+}
+
+module.exports = { generateOutreachMessage, heuristicProductId, buildFallbackMessage, assessPostIntent };

@@ -41,6 +41,7 @@ function toProfileDoc(ownerId, slug, record, jobId) {
     messageError: record.messageError || null,
     scrapeError: record.scrapeError || null,
     ragMeta: record.ragMeta || null,
+    sourcePost: record.sourcePost || null,
     scrapedAt: record.scrapedAt || new Date().toISOString(),
     lastJobId: jobId || null,
     updatedAt: new Date(),

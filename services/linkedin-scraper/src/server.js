@@ -4,9 +4,21 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const express = require('express');
-const { ROOT, PORT, MONGODB_URI, MONGODB_DB, OPENAI_API_KEY, ANTHROPIC_API_KEY, SEND_DAY_TZ, OUT_DIR } = require('./config');
+const {
+  ROOT,
+  PORT,
+  MONGODB_URI,
+  MONGODB_DB,
+  OPENAI_API_KEY,
+  ANTHROPIC_API_KEY,
+  SEND_DAY_TZ,
+  OUT_DIR,
+  POST_SEARCH,
+} = require('./config');
 const { CONNECTION_TYPES, buildSearchUrl, resolveConnectionType } = require('./search');
 const { runScrapeJob, getJobStatus, requestScrapeStop } = require('./scrape-job');
+const { buildPostSearchUrl } = require('./posts');
+const FIRST_DEGREE_TYPES = ['all_connections', 'connections_search', 'first_degree'];
 const { runSendQueueJob, getSendJobStatus } = require('./send-queue-job');
 const { startLinkedInConnect, getLinkedInJob, hasLinkedInSession, logoutLinkedIn, rescueLinkedInBrowser } = require('./linkedin-login-job');
 const { listProducts, parseProductIds } = require('./products');
@@ -531,6 +543,14 @@ app.post('/api/scrape/start', async (req, res) => {
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
+  if (filters.sendMessages && (filters.profileUrl || !FIRST_DEGREE_TYPES.includes(filters.connectionType))) {
+    return res.status(400).json({
+      error: 'Auto-send works only for your connections. Choose a 1st-degree search, or turn auto-send off.',
+    });
+  }
+  if (filters.sendMessages && getSendJobStatus(USER_ID).status === 'running') {
+    return res.status(409).json({ error: 'Send job is running — wait until it finishes' });
+  }
   res.json({
     ok: true,
     message: 'Scrape started',
@@ -540,6 +560,73 @@ app.post('/api/scrape/start', async (req, res) => {
 
   runScrapeJob(USER_ID, filters).catch((err) => {
     console.error(`[scrape-job:${USER_ID}]`, err.message);
+  });
+});
+
+app.post('/api/scrape/posts', async (req, res) => {
+  if (getJobStatus(USER_ID).status === 'running') {
+    return res.status(409).json({ error: 'Scrape already running' });
+  }
+  if (getSendJobStatus(USER_ID).status === 'running') {
+    return res.status(409).json({ error: 'Send job is running — wait until it finishes' });
+  }
+
+  const paths = userPaths(USER_ID);
+  if (!hasLinkedInSession(paths.linkedinSession)) {
+    return res.status(401).json({ error: 'Connect LinkedIn first' });
+  }
+
+  const body = req.body || {};
+  const keywords = String(body.keywords || '').replace(/\s+/g, ' ').trim();
+  if (!keywords) {
+    return res.status(400).json({ error: 'Enter keywords to search posts for' });
+  }
+  if (keywords.length > POST_SEARCH.maxKeywordChars) {
+    return res.status(400).json({ error: `Keep keywords under ${POST_SEARCH.maxKeywordChars} characters` });
+  }
+  const datePosted = POST_SEARCH.datePosted.includes(body.datePosted)
+    ? body.datePosted
+    : POST_SEARCH.defaultDatePosted;
+  const maxPosts = Math.min(
+    POST_SEARCH.maxPostsCap,
+    Math.max(1, Number(body.maxPosts) || POST_SEARCH.defaultMaxPosts)
+  );
+
+  try {
+    await db.connectMongo();
+  } catch (err) {
+    return res.status(503).json({
+      error: `MongoDB not available: ${err.message}. Start local MongoDB first.`,
+    });
+  }
+
+  let filters;
+  try {
+    filters = normalizeFilters({
+      maxResults: maxPosts,
+      aiMessages: body.aiMessages,
+      rescrape: body.rescrape,
+      products: body.products,
+      productContext: body.productContext,
+      productFraming: body.productFraming,
+      sendMessages: false,
+    });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  filters.connectionType = 'post_search';
+  filters.keywords = keywords;
+  filters.datePosted = datePosted;
+  filters.sendMessages = false;
+
+  res.json({
+    ok: true,
+    message: `Post search started — up to ${maxPosts} post(s), drafts queue only`,
+    previewUrl: buildPostSearchUrl({ keywords, datePosted }),
+  });
+
+  runScrapeJob(USER_ID, filters).catch((err) => {
+    console.error(`[scrape-posts:${USER_ID}]`, err.message);
   });
 });
 

@@ -237,4 +237,9 @@ async function collectConnectionLinks(page, filters = {}) {
   return collectFromPeopleSearch(page, resolved);
 }
 
-module.exports = { collectConnectionLinks, collectAllConnections, collectFromPeopleSearch };
+module.exports = {
+  collectConnectionLinks,
+  collectAllConnections,
+  collectFromPeopleSearch,
+  gotoAndSettle,
+};

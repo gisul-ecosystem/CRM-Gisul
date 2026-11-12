@@ -10,6 +10,7 @@ import {
 	queueResponse,
 	ragRebuild,
 	resultsResponse,
+	type PostSearch,
 	type ScrapeFilters,
 	scraperStatus,
 	scrapeStarted,
@@ -58,6 +59,11 @@ export const scrapeApi = {
 			form,
 		});
 	},
+	posts: (search: PostSearch) =>
+		scraperJson("/scrape/posts", scrapeStarted, {
+			method: "POST",
+			json: search,
+		}),
 	stop: () => scraperJson("/scrape/stop", okMessage, { method: "POST" }),
 	history: () => scraperJson("/jobs", jobsResponse),
 };

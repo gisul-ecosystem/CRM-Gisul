@@ -114,11 +114,28 @@ browser ──► CRM app /api/linkedin-scraper/<path>   (apps/app/app/api/linke
 | CRM page | Scraper endpoints |
 | --- | --- |
 | Overview | `/status`, `/products`, `/rag/rebuild`, `/linkedin/*` |
-| Search and scrape | `/connection-types`, `/scrape/start`, `/scrape/import`, `/scrape/stop`, `/jobs` |
+| Search and scrape | `/connection-types`, `/scrape/start`, `/scrape/posts`, `/scrape/import`, `/scrape/stop`, `/jobs` |
 | Profiles | `/results`, `/results/download` |
 | Queue | `/queue`, `/queue/:slug`, `/queue/skip`, `/queue/clear`, `/queue/send` |
 | Sent | `/reports/daily-sends/summary`, `/reports/daily-sends` |
 
+- **Auto-send is a switch on the LinkedIn search tab, off by default.** On, each
+  matching person is messaged right after the draft, within `DAILY_SEND_LIMIT`,
+  and the run stops at the limit. It works only for 1st-degree searches, with
+  AI drafts on and no single profile: LinkedIn blocks messages to people who
+  are not connections. The scraper answers `400` to any other auto-send request.
+  Posts and file imports never send.
+- **Posts finds people by what they post.** One keyword search of LinkedIn
+  posts per run, newest first, limited to the last 24 hours, week or month: at
+  most 30 posts by default and 100 at most (`POST_SEARCH` in
+  `services/linkedin-scraper/src/config.js`). The AI reads each post first and
+  keeps only authors who show a need, with a score of at least 60. Only those
+  profiles are opened, so LinkedIn sees few page views. The draft uses the post
+  as its hook. The post is stored on the profile as `sourcePost`, and the
+  profile sheet shows it under "Found from a post". Post runs never send:
+  drafts go to the Queue. Without an AI key, every post author is kept.
+- **Post search reads LinkedIn's page markup.** When LinkedIn changes it, a run
+  finds 0 posts. Fix the selectors in `src/posts.js`.
 - **Stop and save stops a running scrape.** The scraper finishes the profile in
   progress, saves it, writes the Excel export and ends the job as `stopped`.
   Every profile scraped before the stop stays saved. A batch pause during
