@@ -30,6 +30,7 @@ const { ensureDirs, maskUri } = require('./utils');
 const { parseConnectionFile } = require('./import-profiles');
 const multer = require('multer');
 const db = require('./db');
+const { normalizeTemplate, renderTemplate } = require('./message-template');
 
 const USER_ID = 'local';
 const NOVNC_UPSTREAM = { hostname: '127.0.0.1', port: 6080 };
@@ -402,6 +403,31 @@ app.patch('/api/queue/:slug', async (req, res) => {
   }
 });
 
+app.post('/api/queue/template', async (req, res) => {
+  if (getSendJobStatus(USER_ID).status === 'running') {
+    return res.status(409).json({ error: 'Send job is running — wait until it finishes' });
+  }
+  let template;
+  try {
+    template = normalizeTemplate(req.body?.template);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  if (!template) return res.status(400).json({ error: 'Write or upload a template first' });
+  try {
+    await db.connectMongo();
+    const slugs = Array.isArray(req.body?.slugs) ? req.body.slugs.filter(Boolean) : [];
+    const queued = await db.profiles.listQueue(USER_ID, { status: 'queued', limit: 2000 });
+    const targets = slugs.length ? queued.filter((item) => slugs.includes(item.slug)) : queued;
+    for (const item of targets) {
+      await db.profiles.updateQueuedMessage(USER_ID, item.slug, renderTemplate(template, item));
+    }
+    res.json({ ok: true, message: `Template applied to ${targets.length} queued draft(s)` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/queue/skip', async (req, res) => {
   try {
     await db.connectMongo();
@@ -609,6 +635,7 @@ app.post('/api/scrape/posts', async (req, res) => {
       products: body.products,
       productContext: body.productContext,
       productFraming: body.productFraming,
+      messageTemplate: body.messageTemplate,
       sendMessages: false,
     });
   } catch (err) {
@@ -686,6 +713,7 @@ app.post('/api/scrape/import', upload.single('file'), async (req, res) => {
       products: req.body?.products,
       productContext: req.body?.productContext,
       productFraming: req.body?.productFraming,
+      messageTemplate: req.body?.messageTemplate,
       sendMessages: false,
     });
   } catch (err) {
@@ -770,6 +798,7 @@ function normalizeFilters(raw) {
     ),
     productContext: normalizeProductContext(raw.productContext),
     productFraming: normalizeProductContext(raw.productFraming),
+    messageTemplate: normalizeTemplate(raw.messageTemplate),
   };
   if (raw.profileUrl && !profileUrl) {
     throw new Error('Invalid LinkedIn profile URL. Use https://www.linkedin.com/in/username');

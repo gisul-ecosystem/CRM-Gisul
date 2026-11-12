@@ -44,7 +44,12 @@ export const scrapeApi = {
 		file: File,
 		options: Pick<
 			ScrapeFilters,
-			"maxResults" | "startIndex" | "products" | "aiMessages" | "rescrape"
+			| "maxResults"
+			| "startIndex"
+			| "products"
+			| "aiMessages"
+			| "rescrape"
+			| "messageTemplate"
 		>,
 	) => {
 		const form = new FormData();
@@ -54,6 +59,7 @@ export const scrapeApi = {
 		form.set("products", options.products.join(","));
 		form.set("aiMessages", String(options.aiMessages));
 		form.set("rescrape", String(options.rescrape));
+		form.set("messageTemplate", options.messageTemplate);
 		return scraperJson("/scrape/import", importStarted, {
 			method: "POST",
 			form,
@@ -89,6 +95,11 @@ export const queueApi = {
 		scraperJson("/queue/clear", clearResult, {
 			method: "POST",
 			json: { slugs },
+		}),
+	applyTemplate: (template: string, slugs: string[] = []) =>
+		scraperJson("/queue/template", okMessage, {
+			method: "POST",
+			json: { template, slugs },
 		}),
 	send: (slugs: string[]) =>
 		scraperJson("/queue/send", okMessage, {

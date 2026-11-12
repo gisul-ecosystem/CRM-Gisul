@@ -22,6 +22,11 @@ export const LINKEDIN_SCRAPER = {
 		maxResults: 2000,
 		historyLimit: 20,
 	},
+	template: {
+		maxChars: 2000,
+		placeholders: ["firstName", "name", "company", "title", "location"],
+		fileAccept: ".txt,.md,text/plain",
+	},
 	posts: {
 		defaultMaxPosts: 10,
 		maxPosts: 25,

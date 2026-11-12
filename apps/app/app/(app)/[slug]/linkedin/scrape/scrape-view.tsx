@@ -38,6 +38,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 import { JobLog } from "@/components/linkedin-scraper/job-log";
+import { MessageTemplateField } from "@/components/linkedin-scraper/message-template-field";
 import { ScraperPage } from "@/components/linkedin-scraper/scraper-page";
 import { LocalDateTime } from "@/components/local-date-time";
 import { Meter } from "@/components/outreach/meter";
@@ -58,22 +59,36 @@ import { COUNT, DATE_TIME } from "@/lib/outreach/format";
 
 type Options = Pick<
 	ScrapeFilters,
-	"maxResults" | "startIndex" | "products" | "aiMessages" | "rescrape"
+	| "maxResults"
+	| "startIndex"
+	| "products"
+	| "aiMessages"
+	| "rescrape"
+	| "messageTemplate"
 >;
 
-const DEFAULT_OPTIONS: Options = {
+type BaseOptions = Omit<Options, "aiMessages" | "messageTemplate">;
+
+const DEFAULT_OPTIONS: BaseOptions = {
 	maxResults: LINKEDIN_SCRAPER.scrape.defaultMaxResults,
 	startIndex: 0,
 	products: [],
-	aiMessages: true,
 	rescrape: false,
 };
+
+const MESSAGE_MODES = [
+	{ value: "ai", label: "AI draft for each person" },
+	{ value: "template", label: "Same template for everyone" },
+	{ value: "none", label: "No message, scrape only" },
+] as const;
+
+type MessageMode = (typeof MESSAGE_MODES)[number]["value"];
 
 export function ScrapeView() {
 	return (
 		<ScraperPage
 			title="Search and scrape"
-			description="Find people on LinkedIn, read their profiles, and queue an AI draft for each one. Nothing is sent from here."
+			description="Find people on LinkedIn, read their profiles, and queue an AI draft or your own template for each one."
 		>
 			<ScrapeBody />
 		</ScraperPage>
@@ -200,7 +215,18 @@ function ScrapeBody() {
 }
 
 function useOptionsFields(prefix: string, withCounts = true) {
-	const [options, setOptions] = useState<Options>(DEFAULT_OPTIONS);
+	const [base, setOptions] = useState<BaseOptions>(DEFAULT_OPTIONS);
+	const [mode, setMode] = useState<MessageMode>("ai");
+	const [template, setTemplate] = useState("");
+	const [templateUsesAi, setTemplateUsesAi] = useState(true);
+	const modeId = useId();
+	const fitId = useId();
+	const options: Options = {
+		...base,
+		aiMessages: mode === "ai" || (mode === "template" && templateUsesAi),
+		messageTemplate: mode === "template" ? template.trim() : "",
+	};
+	const ready = mode !== "template" || template.trim() !== "";
 	const products = useQuery({
 		queryKey: scraperKeys.products,
 		queryFn: () => scraperApi.products(),
@@ -270,19 +296,49 @@ function useOptionsFields(prefix: string, withCounts = true) {
 					Tick none to let the AI choose from every product.
 				</FieldDescription>
 			</Field>
-			<Field orientation="horizontal">
-				<Checkbox
-					checked={options.aiMessages}
-					onCheckedChange={(checked) =>
-						setOptions((current) => ({
-							...current,
-							aiMessages: checked === true,
-						}))
-					}
-					aria-label="Write an AI draft for each person"
-				/>
-				<FieldLabel>Write an AI draft for each person</FieldLabel>
+			<Field>
+				<FieldLabel htmlFor={modeId}>Message</FieldLabel>
+				<Select
+					value={mode}
+					onValueChange={(next) => {
+						const match = MESSAGE_MODES.find((item) => item.value === next);
+						if (match) setMode(match.value);
+					}}
+				>
+					<SelectTrigger id={modeId}>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{MESSAGE_MODES.map((item) => (
+							<SelectItem key={item.value} value={item.value}>
+								{item.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+				<FieldDescription>
+					{mode === "ai"
+						? "The AI picks who fits and writes a personal draft for each one."
+						: mode === "template"
+							? "Everyone gets your template, with their name and company filled in."
+							: "Profiles are read and saved. No draft is written."}
+				</FieldDescription>
 			</Field>
+			{mode === "template" ? (
+				<>
+					<MessageTemplateField value={template} onChange={setTemplate} />
+					<Field orientation="horizontal">
+						<Checkbox
+							id={fitId}
+							checked={templateUsesAi}
+							onCheckedChange={(checked) => setTemplateUsesAi(checked === true)}
+						/>
+						<FieldLabel htmlFor={fitId}>
+							Let the AI skip people who do not fit
+						</FieldLabel>
+					</Field>
+				</>
+			) : null}
 			<Field orientation="horizontal">
 				<Checkbox
 					checked={options.rescrape}
@@ -299,12 +355,12 @@ function useOptionsFields(prefix: string, withCounts = true) {
 		</>
 	);
 
-	return { options, fields };
+	return { options, fields, ready };
 }
 
 function SearchForm({ disabled }: { disabled: boolean }) {
 	const cache = useScraperCache();
-	const { options, fields } = useOptionsFields("search");
+	const { options, fields, ready } = useOptionsFields("search");
 	const [connectionType, setConnectionType] =
 		useState<ConnectionTypeId>("all_connections");
 	const [keywords, setKeywords] = useState("");
@@ -444,11 +500,11 @@ function SearchForm({ disabled }: { disabled: boolean }) {
 				<FieldDescription>
 					{canAutoSend
 						? "Each matching connection is messaged right away, within the daily limit. Off: drafts wait in the Queue."
-						: "Only for your connections: choose a 1st-degree option above, no single profile, with AI drafts on."}
+						: "Only for your connections: choose a 1st-degree option above, no single profile, with AI on (an AI draft, or a template with the AI fit check)."}
 				</FieldDescription>
 			</FieldGroup>
 			<div>
-				<Button type="submit" disabled={disabled || start.isPending}>
+				<Button type="submit" disabled={disabled || !ready || start.isPending}>
 					{autoSend && canAutoSend ? "Start scrape and send" : "Start scrape"}
 				</Button>
 			</div>
@@ -458,7 +514,7 @@ function SearchForm({ disabled }: { disabled: boolean }) {
 
 function PostsForm({ disabled }: { disabled: boolean }) {
 	const cache = useScraperCache();
-	const { options, fields } = useOptionsFields("posts", false);
+	const { options, fields, ready } = useOptionsFields("posts", false);
 	const [keywords, setKeywords] = useState("");
 	const [datePosted, setDatePosted] = useState<PostDateWindow>(
 		LINKEDIN_SCRAPER.posts.defaultDatePosted,
@@ -479,6 +535,7 @@ function PostsForm({ disabled }: { disabled: boolean }) {
 				products: options.products,
 				aiMessages: options.aiMessages,
 				rescrape: options.rescrape,
+				messageTemplate: options.messageTemplate,
 			}),
 		onSuccess: (result) => {
 			toast.success(result.message);
@@ -570,7 +627,7 @@ function PostsForm({ disabled }: { disabled: boolean }) {
 			<div>
 				<Button
 					type="submit"
-					disabled={disabled || !keywords.trim() || start.isPending}
+					disabled={disabled || !keywords.trim() || !ready || start.isPending}
 				>
 					Search posts
 				</Button>
@@ -581,7 +638,7 @@ function PostsForm({ disabled }: { disabled: boolean }) {
 
 function ImportForm({ disabled }: { disabled: boolean }) {
 	const cache = useScraperCache();
-	const { options, fields } = useOptionsFields("import");
+	const { options, fields, ready } = useOptionsFields("import");
 	const [file, setFile] = useState<File | null>(null);
 	const fileId = useId();
 
@@ -621,7 +678,10 @@ function ImportForm({ disabled }: { disabled: boolean }) {
 				{fields}
 			</FieldGroup>
 			<div>
-				<Button type="submit" disabled={disabled || !file || start.isPending}>
+				<Button
+					type="submit"
+					disabled={disabled || !file || !ready || start.isPending}
+				>
 					Import and scrape
 				</Button>
 			</div>

@@ -9,6 +9,7 @@ const { writeConnectionsExcel } = require('./export');
 const { resolveConnectionType, buildSearchUrl } = require('./search');
 const { generateOutreachMessage, assessPostIntent } = require('./ai-message');
 const { collectPosts } = require('./posts');
+const { renderTemplate } = require('./message-template');
 const { sendMessageToProfile } = require('./messaging');
 const { getSendBudget, recordSuccessfulSend, maybeBatchPause } = require('./send-limits');
 const { userPaths } = require('./paths');
@@ -129,6 +130,7 @@ async function runScrapeJob(userId, filters, onProgress) {
   };
 
   const useAi = filters.aiMessages ?? AI_MESSAGES;
+  const messageTemplate = String(filters.messageTemplate || '');
   const autoSend = Boolean(filters.sendMessages);
 
   const startIndex = Math.max(0, Number(filters.startIndex || 0));
@@ -174,6 +176,11 @@ async function runScrapeJob(userId, filters, onProgress) {
         await log(`Message framing — ${id}: ${framing.slice(0, 160)}`);
       }
     }
+    await log(
+      messageTemplate
+        ? `Message: your template for everyone${useAi ? ' the AI keeps' : ''} (${messageTemplate.length} characters)`
+        : 'Message: AI draft for each person'
+    );
     if (usingImport || usingPosts) {
       await log('Drafts go to queue only. Nothing is sent until Send to all.');
     } else if (autoSend) {
@@ -373,6 +380,9 @@ async function runScrapeJob(userId, filters, onProgress) {
             productContext,
             productFraming,
           });
+          if (messageTemplate && outreach.relevant) {
+            outreach.message = renderTemplate(messageTemplate, record);
+          }
           record.relevant = outreach.relevant;
           record.relevanceScore = outreach.relevanceScore;
           record.matchSignals = outreach.matchSignals || [];
@@ -455,6 +465,12 @@ async function runScrapeJob(userId, filters, onProgress) {
           record.aiError = err.message;
           await log(`[${i + 1}] AI error: ${err.message}`);
         }
+      } else if (messageTemplate && !record.scrapeError) {
+        record.aiMessage = renderTemplate(messageTemplate, record);
+        record.lastMessage = record.aiMessage.slice(0, 1200);
+        record.queueStatus = 'queued';
+        job.queued = (job.queued || 0) + 1;
+        await log(`[${i + 1}] TEMPLATE QUEUE → ${record.name || slug}`);
       }
 
       // Persist after AI (+ optional auto-send)

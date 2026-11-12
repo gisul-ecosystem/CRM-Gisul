@@ -52,12 +52,17 @@ async function extractPosts(page, maxChars) {
     }
 
     const ACTIVITY_RE = /(?:activity|ugcPost|share)[-:](\d{10,})/;
+    const BUTTONS = 'button, [role="button"]';
     const label = (el) => `${el.getAttribute('aria-label') || ''} ${clean(el.innerText)}`.trim();
-    const isLike = (el) => /^(react\b|like\b)/i.test(label(el));
+    const isLike = (el) =>
+      [el.getAttribute('aria-label') || '', clean(el.innerText)].some((value) =>
+        /^(like|react|reaction)\b/i.test(value.trim())
+      );
     const inSocialBar = (button) => {
       let bar = button.parentElement;
-      for (let depth = 0; bar && bar !== root && depth < 3; depth += 1) {
-        const labels = Array.from(bar.querySelectorAll('button')).map(label);
+      for (let depth = 0; bar && bar !== root && depth < 6; depth += 1) {
+        const labels = Array.from(bar.querySelectorAll(BUTTONS)).map(label);
+        if (labels.some((l) => /^reply\b/i.test(l))) return false;
         if (labels.some((l) => /comment/i.test(l)) && labels.some((l) => /repost|share|send/i.test(l))) {
           return true;
         }
@@ -65,7 +70,7 @@ async function extractPosts(page, maxChars) {
       }
       return false;
     };
-    const likeButtons = Array.from(root.querySelectorAll('button')).filter(
+    const likeButtons = Array.from(root.querySelectorAll(BUTTONS)).filter(
       (b) => isLike(b) && inSocialBar(b)
     );
     const likesIn = (el) => likeButtons.filter((b) => el.contains(b)).length;
@@ -132,7 +137,7 @@ async function extractPosts(page, maxChars) {
       if (!text) {
         let best = '';
         for (const el of box.querySelectorAll('[dir="ltr"], .break-words, p, span')) {
-          if (ownerLinks.some((l) => l.contains(el)) || el.querySelector('button') || !beforeLike(el)) continue;
+          if (ownerLinks.some((l) => l.contains(el)) || el.querySelector(BUTTONS) || !beforeLike(el)) continue;
           const value = clean(el.innerText);
           if (value.length > best.length && value.length < 4000) best = value;
         }
