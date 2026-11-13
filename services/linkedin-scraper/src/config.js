@@ -67,6 +67,11 @@ const POST_SEARCH = {
   datePosted: ['past-24h', 'past-week', 'past-month'],
   defaultDatePosted: 'past-week',
 };
+const SCRAPER_USERS = {
+  header: 'x-crm-user-id',
+  fallback: 'local',
+  idPattern: /^[A-Za-z0-9_-]{1,64}$/,
+};
 const MESSAGE_TEMPLATE = {
   maxChars: 2000,
   placeholders: ['firstName', 'name', 'company', 'title', 'location'],
@@ -84,6 +89,7 @@ module.exports = {
   STOP_CHECK_MS,
   POST_SEARCH,
   MESSAGE_TEMPLATE,
+  SCRAPER_USERS,
   MAX_CONNECTIONS,
   START_INDEX,
   SEND_MESSAGES,

@@ -144,7 +144,12 @@ async function startLinkedInConnect(userId) {
   return job;
 }
 
+function runningUsers() {
+  return [...linkedinJobs].filter(([, job]) => job?.status === 'running').map(([userId]) => userId);
+}
+
 module.exports = {
+  runningUsers,
   startLinkedInConnect,
   getLinkedInJob,
   hasLinkedInSession,

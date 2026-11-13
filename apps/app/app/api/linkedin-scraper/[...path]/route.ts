@@ -1,6 +1,11 @@
 import { connection } from "next/server";
 import { bufferedProxyResponse } from "@/lib/api-proxy-response";
-import { scraperUrl, upstreamPath } from "@/lib/linkedin-scraper/bridge";
+import {
+	scraperOwnerId,
+	scraperUrl,
+	upstreamPath,
+} from "@/lib/linkedin-scraper/bridge";
+import { LINKEDIN_SCRAPER } from "@/lib/linkedin-scraper/scraper-config";
 import { getSession } from "@/lib/session";
 
 const DROPPED_REQUEST_HEADERS = [
@@ -43,6 +48,7 @@ async function handler(request: Request): Promise<Response> {
 
 	const headers = new Headers(request.headers);
 	for (const header of DROPPED_REQUEST_HEADERS) headers.delete(header);
+	headers.set(LINKEDIN_SCRAPER.proxy.userHeader, scraperOwnerId(session.user));
 
 	const body =
 		request.method === "GET" || request.method === "HEAD"

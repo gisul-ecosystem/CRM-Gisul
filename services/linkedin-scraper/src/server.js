@@ -14,13 +14,21 @@ const {
   SEND_DAY_TZ,
   OUT_DIR,
   POST_SEARCH,
+  SCRAPER_USERS,
 } = require('./config');
 const { CONNECTION_TYPES, buildSearchUrl, resolveConnectionType } = require('./search');
-const { runScrapeJob, getJobStatus, requestScrapeStop } = require('./scrape-job');
+const { runScrapeJob, getJobStatus, requestScrapeStop, runningUsers: scrapeUsers } = require('./scrape-job');
 const { buildPostSearchUrl } = require('./posts');
 const FIRST_DEGREE_TYPES = ['all_connections', 'connections_search', 'first_degree'];
-const { runSendQueueJob, getSendJobStatus } = require('./send-queue-job');
-const { startLinkedInConnect, getLinkedInJob, hasLinkedInSession, logoutLinkedIn, rescueLinkedInBrowser } = require('./linkedin-login-job');
+const { runSendQueueJob, getSendJobStatus, runningUsers: sendUsers } = require('./send-queue-job');
+const {
+  startLinkedInConnect,
+  getLinkedInJob,
+  hasLinkedInSession,
+  logoutLinkedIn,
+  rescueLinkedInBrowser,
+  runningUsers: loginUsers,
+} = require('./linkedin-login-job');
 const { listProducts, parseProductIds } = require('./products');
 const { userPaths } = require('./paths');
 const { getRagStatus, buildIndex } = require('./rag/index');
@@ -32,7 +40,14 @@ const multer = require('multer');
 const db = require('./db');
 const { normalizeTemplate, renderTemplate } = require('./message-template');
 
-const USER_ID = 'local';
+const BROWSER_BUSY = {
+  error: "The LinkedIn browser is busy with another person's job. Try again when it finishes.",
+  code: 'BROWSER_BUSY',
+};
+
+function browserBusyFor(userId) {
+  return [...scrapeUsers(), ...sendUsers(), ...loginUsers()].some((other) => other !== userId);
+}
 const NOVNC_UPSTREAM = { hostname: '127.0.0.1', port: 6080 };
 const BROWSER_VIEWER_PATH = '/vnc/vnc_lite.html?autoconnect=1&scale=true';
 const upload = multer({
@@ -85,6 +100,14 @@ const NOVNC_FIT_CSS = `
 
 const app = express();
 app.use(express.json());
+app.use('/api', (req, res, next) => {
+  const raw = String(req.get(SCRAPER_USERS.header) || '').trim();
+  if (raw && !SCRAPER_USERS.idPattern.test(raw)) {
+    return res.status(400).json({ error: 'Invalid user id' });
+  }
+  req.userId = raw || SCRAPER_USERS.fallback;
+  return next();
+});
 app.use(express.static(path.join(ROOT, 'public')));
 
 /** Same-origin proxy so the VNC iframe works reliably (avoids broken cross-port embeds). */
@@ -197,11 +220,11 @@ function attachNovncWsProxy(server) {
   });
 }
 
-app.get('/api/connection-types', (_req, res) => {
+app.get('/api/connection-types', (req, res) => {
   res.json(CONNECTION_TYPES);
 });
 
-app.get('/api/products', (_req, res) => {
+app.get('/api/products', (req, res) => {
   res.json({
     products: listProducts(),
     aiConfigured: Boolean(ANTHROPIC_API_KEY || OPENAI_API_KEY),
@@ -210,7 +233,7 @@ app.get('/api/products', (_req, res) => {
   });
 });
 
-app.post('/api/rag/rebuild', (_req, res) => {
+app.post('/api/rag/rebuild', (req, res) => {
   const index = buildIndex();
   res.json({
     ok: true,
@@ -221,9 +244,9 @@ app.post('/api/rag/rebuild', (_req, res) => {
   });
 });
 
-app.get('/api/status', async (_req, res) => {
+app.get('/api/status', async (req, res) => {
   try {
-    const paths = userPaths(USER_ID);
+    const paths = userPaths(req.userId);
     const linkedInConnected = hasLinkedInSession(paths.linkedinSession);
     let totalProfiles = 0;
     let queueCount = 0;
@@ -231,11 +254,11 @@ app.get('/api/status', async (_req, res) => {
     let mongoOk = true;
     try {
       await db.connectMongo();
-      totalProfiles = await db.profiles.countProfiles(USER_ID);
-      queueCount = await db.profiles.countQueue(USER_ID);
-      user = await db.users.getUser(USER_ID);
+      totalProfiles = await db.profiles.countProfiles(req.userId);
+      queueCount = await db.profiles.countQueue(req.userId);
+      user = await db.users.getUser(req.userId);
       if (linkedInConnected) {
-        await db.users.markLinkedInConnected(USER_ID, true);
+        await db.users.markLinkedInConnected(req.userId, true);
       }
     } catch (err) {
       mongoOk = false;
@@ -244,16 +267,16 @@ app.get('/api/status', async (_req, res) => {
 
     let sendBudget = null;
     try {
-      sendBudget = await getSendBudget(USER_ID);
+      sendBudget = await getSendBudget(req.userId);
     } catch {
       sendBudget = null;
     }
 
     res.json({
       linkedInConnected,
-      linkedInJob: getLinkedInJob(USER_ID),
-      scrapeJob: getJobStatus(USER_ID),
-      sendJob: getSendJobStatus(USER_ID),
+      linkedInJob: getLinkedInJob(req.userId),
+      scrapeJob: getJobStatus(req.userId),
+      sendJob: getSendJobStatus(req.userId),
       sendBudget,
       totalProfiles,
       queueCount,
@@ -267,25 +290,26 @@ app.get('/api/status', async (_req, res) => {
   }
 });
 
-app.post('/api/linkedin/connect', async (_req, res) => {
+app.post('/api/linkedin/connect', async (req, res) => {
+  if (browserBusyFor(req.userId)) return res.status(409).json(BROWSER_BUSY);
   try {
     await db.connectMongo();
-    await db.users.upsertUser({ userId: USER_ID, name: 'Local operator' });
-    const job = await startLinkedInConnect(USER_ID);
+    await db.users.upsertUser({ userId: req.userId, name: req.userId === SCRAPER_USERS.fallback ? 'Local operator' : 'CRM user' });
+    const job = await startLinkedInConnect(req.userId);
     res.json({ ok: true, job });
   } catch (err) {
     res.status(409).json({ error: err.message });
   }
 });
 
-app.post('/api/linkedin/logout', async (_req, res) => {
+app.post('/api/linkedin/logout', async (req, res) => {
   try {
-    const scrape = getJobStatus(USER_ID);
-    const send = getSendJobStatus(USER_ID);
+    const scrape = getJobStatus(req.userId);
+    const send = getSendJobStatus(req.userId);
     if (scrape?.status === 'running' || send?.status === 'running') {
       return res.status(409).json({ error: 'Stop the running scrape/send job before logging out' });
     }
-    const result = await logoutLinkedIn(USER_ID);
+    const result = await logoutLinkedIn(req.userId);
     res.json({
       ok: true,
       linkedInConnected: false,
@@ -299,9 +323,9 @@ app.post('/api/linkedin/logout', async (_req, res) => {
   }
 });
 
-app.post('/api/linkedin/back', async (_req, res) => {
+app.post('/api/linkedin/back', async (req, res) => {
   try {
-    const result = await rescueLinkedInBrowser(USER_ID);
+    const result = await rescueLinkedInBrowser(req.userId);
     res.json({
       ok: true,
       ...result,
@@ -314,20 +338,20 @@ app.post('/api/linkedin/back', async (_req, res) => {
   }
 });
 
-app.get('/api/linkedin/status', async (_req, res) => {
-  const paths = userPaths(USER_ID);
+app.get('/api/linkedin/status', async (req, res) => {
+  const paths = userPaths(req.userId);
   const connected = hasLinkedInSession(paths.linkedinSession);
   if (connected) {
     try {
       await db.connectMongo();
-      await db.users.markLinkedInConnected(USER_ID, true);
+      await db.users.markLinkedInConnected(req.userId, true);
     } catch {
       /* ignore */
     }
   }
   res.json({
     connected,
-    job: getLinkedInJob(USER_ID),
+    job: getLinkedInJob(req.userId),
   });
 });
 
@@ -343,11 +367,11 @@ app.get('/api/preview-url', (req, res) => {
   }
 });
 
-app.get('/api/results', async (_req, res) => {
+app.get('/api/results', async (req, res) => {
   try {
     await db.connectMongo();
     const { nameFromSlug } = require('./utils');
-    const profiles = await db.profiles.listProfiles(USER_ID, { limit: 1000 });
+    const profiles = await db.profiles.listProfiles(req.userId, { limit: 1000 });
     res.json({
       profiles: profiles.map((p) => ({
         ...p,
@@ -360,30 +384,30 @@ app.get('/api/results', async (_req, res) => {
   }
 });
 
-app.get('/api/jobs', async (_req, res) => {
+app.get('/api/jobs', async (req, res) => {
   try {
     await db.connectMongo();
-    const jobs = await db.jobs.listScrapeJobs(USER_ID, { limit: 50 });
+    const jobs = await db.jobs.listScrapeJobs(req.userId, { limit: 50 });
     res.json({ jobs });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get('/api/users', async (_req, res) => {
+app.get('/api/users', async (req, res) => {
   try {
     await db.connectMongo();
-    const users = await db.users.listUsers();
-    res.json({ users });
+    const user = await db.users.getUser(req.userId);
+    res.json({ users: user ? [user] : [] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get('/api/queue', async (_req, res) => {
+app.get('/api/queue', async (req, res) => {
   try {
     await db.connectMongo();
-    const items = await db.profiles.listQueue(USER_ID, { status: 'queued', limit: 2000 });
+    const items = await db.profiles.listQueue(req.userId, { status: 'queued', limit: 2000 });
     res.json({ items, count: items.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -395,7 +419,7 @@ app.patch('/api/queue/:slug', async (req, res) => {
     await db.connectMongo();
     const message = String(req.body?.message || '').trim();
     if (!message) return res.status(400).json({ error: 'message is required' });
-    const item = await db.profiles.updateQueuedMessage(USER_ID, req.params.slug, message);
+    const item = await db.profiles.updateQueuedMessage(req.userId, req.params.slug, message);
     if (!item) return res.status(404).json({ error: 'Profile not found' });
     res.json({ item });
   } catch (err) {
@@ -404,7 +428,7 @@ app.patch('/api/queue/:slug', async (req, res) => {
 });
 
 app.post('/api/queue/template', async (req, res) => {
-  if (getSendJobStatus(USER_ID).status === 'running') {
+  if (getSendJobStatus(req.userId).status === 'running') {
     return res.status(409).json({ error: 'Send job is running — wait until it finishes' });
   }
   let template;
@@ -417,10 +441,10 @@ app.post('/api/queue/template', async (req, res) => {
   try {
     await db.connectMongo();
     const slugs = Array.isArray(req.body?.slugs) ? req.body.slugs.filter(Boolean) : [];
-    const queued = await db.profiles.listQueue(USER_ID, { status: 'queued', limit: 2000 });
+    const queued = await db.profiles.listQueue(req.userId, { status: 'queued', limit: 2000 });
     const targets = slugs.length ? queued.filter((item) => slugs.includes(item.slug)) : queued;
     for (const item of targets) {
-      await db.profiles.updateQueuedMessage(USER_ID, item.slug, renderTemplate(template, item));
+      await db.profiles.updateQueuedMessage(req.userId, item.slug, renderTemplate(template, item));
     }
     res.json({ ok: true, message: `Template applied to ${targets.length} queued draft(s)` });
   } catch (err) {
@@ -433,7 +457,7 @@ app.post('/api/queue/skip', async (req, res) => {
     await db.connectMongo();
     const slugs = Array.isArray(req.body?.slugs) ? req.body.slugs : [];
     for (const slug of slugs) {
-      await db.profiles.markQueueSkipped(USER_ID, slug);
+      await db.profiles.markQueueSkipped(req.userId, slug);
     }
     res.json({ ok: true, skipped: slugs.length });
   } catch (err) {
@@ -443,13 +467,13 @@ app.post('/api/queue/skip', async (req, res) => {
 
 app.post('/api/queue/clear', async (req, res) => {
   try {
-    if (getSendJobStatus(USER_ID).status === 'running') {
+    if (getSendJobStatus(req.userId).status === 'running') {
       return res.status(409).json({ error: 'Send job is running — wait until it finishes' });
     }
     await db.connectMongo();
     const slugs = Array.isArray(req.body?.slugs) ? req.body.slugs.filter(Boolean) : [];
     const [product = ''] = parseProductIds(String(req.body?.product || ''));
-    const cleared = await db.profiles.clearQueue(USER_ID, { slugs, product });
+    const cleared = await db.profiles.clearQueue(req.userId, { slugs, product });
     res.json({ ok: true, cleared, message: `Cleared ${cleared} queued draft(s)` });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -457,14 +481,15 @@ app.post('/api/queue/clear', async (req, res) => {
 });
 
 app.post('/api/queue/send', async (req, res) => {
-  if (getSendJobStatus(USER_ID).status === 'running') {
+  if (browserBusyFor(req.userId)) return res.status(409).json(BROWSER_BUSY);
+  if (getSendJobStatus(req.userId).status === 'running') {
     return res.status(409).json({ error: 'Send job already running' });
   }
-  if (getJobStatus(USER_ID).status === 'running') {
+  if (getJobStatus(req.userId).status === 'running') {
     return res.status(409).json({ error: 'Scrape is running — wait until it finishes' });
   }
 
-  const paths = userPaths(USER_ID);
+  const paths = userPaths(req.userId);
   if (!hasLinkedInSession(paths.linkedinSession)) {
     return res.status(401).json({ error: 'Connect LinkedIn first' });
   }
@@ -478,17 +503,17 @@ app.post('/api/queue/send', async (req, res) => {
   const slugs = Array.isArray(req.body?.slugs) ? req.body.slugs.filter(Boolean) : [];
   res.json({ ok: true, message: 'Send started', slugs });
 
-  runSendQueueJob(USER_ID, { slugs }).catch((err) => {
-    console.error(`[send-queue:${USER_ID}]`, err.message);
+  runSendQueueJob(req.userId, { slugs }).catch((err) => {
+    console.error(`[send-queue:${req.userId}]`, err.message);
   });
 });
 
-app.get('/api/queue/send-status', (_req, res) => {
-  res.json(getSendJobStatus(USER_ID));
+app.get('/api/queue/send-status', (req, res) => {
+  res.json(getSendJobStatus(req.userId));
 });
 
-app.get('/api/results/download', async (_req, res) => {
-  const paths = userPaths(USER_ID);
+app.get('/api/results/download', async (req, res) => {
+  const paths = userPaths(req.userId);
   if (!fs.existsSync(paths.excel)) {
     return res.status(404).json({ error: 'No export yet. Run a search first.' });
   }
@@ -498,19 +523,19 @@ app.get('/api/results/download', async (_req, res) => {
 app.get('/api/reports/daily-sends', async (req, res) => {
   try {
     await db.connectMongo();
-    const budget = await getSendBudget(USER_ID);
+    const budget = await getSendBudget(req.userId);
     const date = String(req.query.date || budget.date || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: 'Use date=YYYY-MM-DD' });
     }
 
-    const sent = await db.profiles.listSentOnDate(USER_ID, date, SEND_DAY_TZ);
+    const sent = await db.profiles.listSentOnDate(req.userId, date, SEND_DAY_TZ);
     ensureDirs(OUT_DIR);
     const filePath = path.join(OUT_DIR, `daily-sends-${date}.xlsx`);
     await writeDailySendReportExcel(sent, filePath, {
       date,
       timeZone: SEND_DAY_TZ,
-      ownerId: USER_ID,
+      ownerId: req.userId,
       dailyLimit: budget.limit,
       dailySentCounter: budget.date === date ? budget.sent : sent.length,
     });
@@ -524,9 +549,9 @@ app.get('/api/reports/daily-sends', async (req, res) => {
 app.get('/api/reports/daily-sends/summary', async (req, res) => {
   try {
     await db.connectMongo();
-    const budget = await getSendBudget(USER_ID);
+    const budget = await getSendBudget(req.userId);
     const date = String(req.query.date || budget.date || '').trim();
-    const sent = await db.profiles.listSentOnDate(USER_ID, date, SEND_DAY_TZ);
+    const sent = await db.profiles.listSentOnDate(req.userId, date, SEND_DAY_TZ);
     res.json({
       date,
       timeZone: SEND_DAY_TZ,
@@ -546,11 +571,12 @@ app.get('/api/reports/daily-sends/summary', async (req, res) => {
 });
 
 app.post('/api/scrape/start', async (req, res) => {
-  if (getJobStatus(USER_ID).status === 'running') {
+  if (browserBusyFor(req.userId)) return res.status(409).json(BROWSER_BUSY);
+  if (getJobStatus(req.userId).status === 'running') {
     return res.status(409).json({ error: 'Scrape already running' });
   }
 
-  const paths = userPaths(USER_ID);
+  const paths = userPaths(req.userId);
   if (!hasLinkedInSession(paths.linkedinSession)) {
     return res.status(401).json({ error: 'Connect LinkedIn first' });
   }
@@ -574,7 +600,7 @@ app.post('/api/scrape/start', async (req, res) => {
       error: 'Auto-send works only for your connections. Choose a 1st-degree search, or turn auto-send off.',
     });
   }
-  if (filters.sendMessages && getSendJobStatus(USER_ID).status === 'running') {
+  if (filters.sendMessages && getSendJobStatus(req.userId).status === 'running') {
     return res.status(409).json({ error: 'Send job is running — wait until it finishes' });
   }
   res.json({
@@ -584,20 +610,21 @@ app.post('/api/scrape/start', async (req, res) => {
     previewUrl: filters.profileUrl || buildSearchUrl(filters),
   });
 
-  runScrapeJob(USER_ID, filters).catch((err) => {
-    console.error(`[scrape-job:${USER_ID}]`, err.message);
+  runScrapeJob(req.userId, filters).catch((err) => {
+    console.error(`[scrape-job:${req.userId}]`, err.message);
   });
 });
 
 app.post('/api/scrape/posts', async (req, res) => {
-  if (getJobStatus(USER_ID).status === 'running') {
+  if (browserBusyFor(req.userId)) return res.status(409).json(BROWSER_BUSY);
+  if (getJobStatus(req.userId).status === 'running') {
     return res.status(409).json({ error: 'Scrape already running' });
   }
-  if (getSendJobStatus(USER_ID).status === 'running') {
+  if (getSendJobStatus(req.userId).status === 'running') {
     return res.status(409).json({ error: 'Send job is running — wait until it finishes' });
   }
 
-  const paths = userPaths(USER_ID);
+  const paths = userPaths(req.userId);
   if (!hasLinkedInSession(paths.linkedinSession)) {
     return res.status(401).json({ error: 'Connect LinkedIn first' });
   }
@@ -646,13 +673,13 @@ app.post('/api/scrape/posts', async (req, res) => {
   filters.datePosted = datePosted;
   filters.sendMessages = false;
 
-  const runs = await db.postSearchLimits.getDailyPostRuns(USER_ID);
+  const runs = await db.postSearchLimits.getDailyPostRuns(req.userId);
   if (runs.runCount >= POST_SEARCH.dailyRunLimit) {
     return res.status(429).json({
       error: `Post search limit reached: ${POST_SEARCH.dailyRunLimit} run(s) per day, to keep the LinkedIn account safe. Try again tomorrow.`,
     });
   }
-  await db.postSearchLimits.recordPostRun(USER_ID);
+  await db.postSearchLimits.recordPostRun(req.userId);
 
   res.json({
     ok: true,
@@ -660,20 +687,21 @@ app.post('/api/scrape/posts', async (req, res) => {
     previewUrl: buildPostSearchUrl({ keywords, datePosted }),
   });
 
-  runScrapeJob(USER_ID, filters).catch((err) => {
-    console.error(`[scrape-posts:${USER_ID}]`, err.message);
+  runScrapeJob(req.userId, filters).catch((err) => {
+    console.error(`[scrape-posts:${req.userId}]`, err.message);
   });
 });
 
 app.post('/api/scrape/import', upload.single('file'), async (req, res) => {
-  if (getJobStatus(USER_ID).status === 'running') {
+  if (browserBusyFor(req.userId)) return res.status(409).json(BROWSER_BUSY);
+  if (getJobStatus(req.userId).status === 'running') {
     return res.status(409).json({ error: 'Scrape already running' });
   }
-  if (getSendJobStatus(USER_ID).status === 'running') {
+  if (getSendJobStatus(req.userId).status === 'running') {
     return res.status(409).json({ error: 'Send job is running — wait until it finishes' });
   }
 
-  const paths = userPaths(USER_ID);
+  const paths = userPaths(req.userId);
   if (!hasLinkedInSession(paths.linkedinSession)) {
     return res.status(401).json({ error: 'Connect LinkedIn first' });
   }
@@ -740,20 +768,20 @@ app.post('/api/scrape/import', upload.single('file'), async (req, res) => {
     },
   });
 
-  runScrapeJob(USER_ID, filters).catch((err) => {
-    console.error(`[scrape-import:${USER_ID}]`, err.message);
+  runScrapeJob(req.userId, filters).catch((err) => {
+    console.error(`[scrape-import:${req.userId}]`, err.message);
   });
 });
 
-app.post('/api/scrape/stop', (_req, res) => {
-  if (!requestScrapeStop(USER_ID)) {
+app.post('/api/scrape/stop', (req, res) => {
+  if (!requestScrapeStop(req.userId)) {
     return res.status(409).json({ error: 'No scrape is running' });
   }
   res.json({ ok: true, message: 'Stopping — the current profile finishes, then everything scraped so far is saved' });
 });
 
-app.get('/api/job', (_req, res) => {
-  res.json(getJobStatus(USER_ID));
+app.get('/api/job', (req, res) => {
+  res.json(getJobStatus(req.userId));
 });
 
 /** { racko: "…" } per-product text (targeting brief / message framing) — object or JSON string (multipart import). */
@@ -810,7 +838,7 @@ function normalizeFilters(raw) {
 async function main() {
   try {
     await db.connectMongo();
-    await db.users.upsertUser({ userId: USER_ID, name: 'Local operator' });
+    await db.users.upsertUser({ userId: SCRAPER_USERS.fallback, name: 'Local operator' });
     db.startAtlasBackup();
   } catch (err) {
     console.warn(`[mongo] Could not connect on startup: ${err.message}`);

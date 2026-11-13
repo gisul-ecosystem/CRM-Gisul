@@ -546,4 +546,8 @@ async function runScrapeJob(userId, filters, onProgress) {
   }
 }
 
-module.exports = { runScrapeJob, getJobStatus, requestScrapeStop };
+function runningUsers() {
+  return [...activeJobs].filter(([, job]) => job?.status === 'running').map(([userId]) => userId);
+}
+
+module.exports = { runningUsers, runScrapeJob, getJobStatus, requestScrapeStop };

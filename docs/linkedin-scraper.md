@@ -36,6 +36,23 @@ browser ──► CRM app /api/linkedin-scraper/<path>   (apps/app/app/api/linke
 
 - **Every signed-in CRM user has full access.** There is no role check: members
   can scrape, edit drafts and send.
+- **Each CRM user is their own scraper user.** The proxy sets `x-crm-user-id` to
+  the signed-in user's id and replaces any value the browser sent; the scraper
+  reads it in one `/api` middleware (`SCRAPER_USERS` in `src/config.js`). Each
+  user has their own LinkedIn session (`.auth/<id>/`), exports (`output/<id>/`),
+  profiles, queue, jobs, daily send limit and daily post searches (`ownerId` in
+  MongoDB). A request without the header is the owner `local`, for a scraper
+  run on its own.
+- **Data from before users were separated belongs to `local`.** Set
+  `LINKEDIN_SCRAPER_LEGACY_OWNER_EMAIL` to the CRM user who keeps it and the
+  LinkedIn account already connected; that user's requests go to `local`.
+  Unset, the data stays in MongoDB but no CRM user reaches it.
+- **One browser job at a time across users.** There is one Chromium screen and
+  one viewer. While one user's connect, scrape, post search, import or send
+  runs, another user's start gets `409 BROWSER_BUSY`. Anyone who opens the viewer
+  at that moment sees the other user's browser.
+- **The header is trusted, so the scraper must stay private.** Anyone who
+  reaches port 6363 directly can act as any user. Only the CRM may reach it.
 - **The scraper has no login of its own.** The CRM session is the only gate. Keep
   the scraper's port on a private network that only the CRM reaches.
 - **The browser never calls the scraper.** `LINKEDIN_SCRAPER_URL` is server-side
