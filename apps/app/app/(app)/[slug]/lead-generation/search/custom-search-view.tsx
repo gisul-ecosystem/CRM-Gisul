@@ -21,6 +21,13 @@ import {
 	FieldLabel,
 } from "@crm/ui/components/field";
 import { Input } from "@crm/ui/components/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@crm/ui/components/select";
 import { SimpleTable, SimpleTableRow } from "@crm/ui/components/simple-table";
 import { Skeleton } from "@crm/ui/components/skeleton";
 import { TableCell } from "@crm/ui/components/table";
@@ -36,13 +43,20 @@ import { LocalDateTime } from "@/components/local-date-time";
 import { customSearchApi } from "@/lib/leads-pipeline/api";
 import { pipelineKeys, usePipelineCache } from "@/lib/leads-pipeline/cache";
 import { LEADS_PIPELINE } from "@/lib/leads-pipeline/pipeline-config";
-import type {
-	CustomSearchInput,
-	CustomSearchList,
-	ProfileStatus,
+import {
+	type CustomSearchInput,
+	type CustomSearchList,
+	type ProfileStatus,
+	SEARCH_MODES,
+	type SearchMode,
 } from "@/lib/leads-pipeline/schemas";
 import { COUNT, DATE_TIME } from "@/lib/outreach/format";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
+
+const SEARCH_MODE_LABELS: Record<SearchMode, string> = {
+	browser: "Google in the search browser",
+	api: "Search API (Serper, then Tavily)",
+};
 
 function lines(value: string): string[] {
 	return value
@@ -157,6 +171,7 @@ function SearchForm({
 	const [mustHave, setMustHave] = useState("");
 	const [exclude, setExclude] = useState("");
 	const [companies, setCompanies] = useState(limits.default_companies);
+	const [searchWith, setSearchWith] = useState<SearchMode>("browser");
 	const [preview, setPreview] = useState<string[] | null>(null);
 	const ids = {
 		name: useId(),
@@ -165,6 +180,7 @@ function SearchForm({
 		must: useId(),
 		exclude: useId(),
 		companies: useId(),
+		searchWith: useId(),
 	};
 
 	const input = (): CustomSearchInput => ({
@@ -175,6 +191,7 @@ function SearchForm({
 		mustHave: words(mustHave),
 		exclude: words(exclude),
 		companies,
+		searchWith,
 	});
 
 	const showPreview = useMutation({
@@ -305,6 +322,34 @@ function SearchForm({
 							<FieldDescription>
 								At most {limits.max_companies}. Each company takes about a
 								minute to read and check.
+							</FieldDescription>
+						</Field>
+						<Field>
+							<FieldLabel htmlFor={ids.searchWith}>Search with</FieldLabel>
+							<Select
+								value={searchWith}
+								onValueChange={(next) => {
+									const match = SEARCH_MODES.find((mode) => mode === next);
+									if (match) setSearchWith(match);
+								}}
+							>
+								<SelectTrigger id={ids.searchWith}>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{SEARCH_MODES.map((mode) => (
+										<SelectItem key={mode} value={mode}>
+											{SEARCH_MODE_LABELS[mode]}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+							<FieldDescription>
+								{searchWith === "browser"
+									? 'Chromium opens google.com and types each search. If Google asks "I\'m not a robot", tick it in the Search browser below; after 5 minutes it moves on to DuckDuckGo, then the search API.'
+									: "Serper (Google results), then Tavily. The browser is the fallback when both are out of credit."}{" "}
+								Websites named in the search, and Racko, KanonKode, Aaptor and
+								Gisul, are never returned.
 							</FieldDescription>
 						</Field>
 					</FieldGroup>
