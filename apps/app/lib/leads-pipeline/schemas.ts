@@ -136,6 +136,58 @@ export const pipelineSettings = z.object({
 	earlyExempt: choice.nullable(),
 });
 
+const customSearch = z.object({
+	name: z.string(),
+	slug: z.string(),
+	what: z.array(z.string()),
+	where: z.array(z.string()),
+	mustHave: z.array(z.string()),
+	exclude: z.array(z.string()),
+	companies: z.number(),
+	queries: z.array(z.string()),
+	startedAt: z.string(),
+	found: z.number().nullable(),
+	searched: z
+		.number()
+		.nullish()
+		.transform((value) => value ?? null),
+});
+
+export const customSearchList = z.object({
+	profile: leadProfile,
+	running: z.boolean(),
+	searches: z.array(customSearch),
+	limits: z.object({
+		max_name_chars: z.number(),
+		max_what: z.number(),
+		max_where: z.number(),
+		max_words: z.number(),
+		max_term_chars: z.number(),
+		max_queries: z.number(),
+		max_companies: z.number(),
+		default_companies: z.number(),
+	}),
+});
+
+export const customSearchPreview = z.object({
+	queries: z.array(z.string()),
+	slug: z.string(),
+	maxQueries: z.number(),
+});
+
+export type CustomSearch = z.infer<typeof customSearch>;
+export type CustomSearchList = z.infer<typeof customSearchList>;
+
+export type CustomSearchInput = {
+	profile: LeadProfile;
+	name: string;
+	what: string[];
+	where: string[];
+	mustHave: string[];
+	exclude: string[];
+	companies: number;
+};
+
 export type ProfileStatus = z.infer<typeof profileStatus>;
 export type PipelineStatus = z.infer<typeof pipelineStatus>;
 export type Lead = z.infer<typeof lead>;
@@ -148,6 +200,7 @@ export type LeadFilters = {
 	intent: LeadIntent | null;
 	segment: string | null;
 	country: string | null;
+	source: string | null;
 	latest: boolean;
 	perCompany: boolean;
 };

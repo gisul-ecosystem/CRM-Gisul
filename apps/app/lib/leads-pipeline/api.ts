@@ -4,6 +4,9 @@ import {
 	pipelineJson,
 } from "./client";
 import {
+	type CustomSearchInput,
+	customSearchList,
+	customSearchPreview,
 	type LeadFilters,
 	type LeadProfile,
 	leadsPage,
@@ -26,6 +29,7 @@ function filterQuery(
 		intent: filters.intent,
 		segment: filters.segment,
 		country: filters.country,
+		source: filters.source,
 		latest: filters.latest,
 		per_company: filters.perCompany,
 	};
@@ -56,6 +60,21 @@ export const leadsApi = {
 		}),
 	download: (profile: LeadProfile, filters: LeadFilters) =>
 		downloadFromPipeline("/download", filterQuery(profile, filters)),
+};
+
+export const customSearchApi = {
+	list: (profile: LeadProfile) =>
+		pipelineJson("/custom-search", customSearchList, { query: { profile } }),
+	preview: (input: CustomSearchInput) =>
+		pipelineJson("/custom-search/preview", customSearchPreview, {
+			method: "POST",
+			json: input,
+		}),
+	start: (input: CustomSearchInput) =>
+		pipelineJson("/custom-search", okMessage, {
+			method: "POST",
+			json: input,
+		}),
 };
 
 export const settingsApi = {

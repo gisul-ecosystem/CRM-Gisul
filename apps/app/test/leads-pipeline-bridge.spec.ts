@@ -1,13 +1,41 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { pipelineUrl, upstreamPath } from "../lib/leads-pipeline/bridge";
+import {
+	pipelineUrl,
+	pipelineViewerSrc,
+	upstreamPath,
+} from "../lib/leads-pipeline/bridge";
 import { pipelineHref } from "../lib/leads-pipeline/client";
 import { pipelineStatus } from "../lib/leads-pipeline/schemas";
 
 const saved = process.env.LEADS_PIPELINE_URL;
+const savedViewer = process.env.LEADS_PIPELINE_VIEWER_URL;
 
 afterEach(() => {
 	if (saved === undefined) delete process.env.LEADS_PIPELINE_URL;
 	else process.env.LEADS_PIPELINE_URL = saved;
+	if (savedViewer === undefined) delete process.env.LEADS_PIPELINE_VIEWER_URL;
+	else process.env.LEADS_PIPELINE_VIEWER_URL = savedViewer;
+});
+
+describe("pipelineViewerSrc", () => {
+	it("points noVNC's socket under the proxy path", () => {
+		process.env.LEADS_PIPELINE_VIEWER_URL =
+			"https://crm.example.com/leads-viewer/";
+		expect(pipelineViewerSrc()).toBe(
+			"https://crm.example.com/leads-viewer/vnc_lite.html?autoconnect=1&scale=true&path=leads-viewer%2Fwebsockify",
+		);
+	});
+
+	it("uses the root socket for a tunnel and treats blank or junk as unset", () => {
+		process.env.LEADS_PIPELINE_VIEWER_URL = "http://localhost:6082";
+		expect(pipelineViewerSrc()).toBe(
+			"http://localhost:6082/vnc_lite.html?autoconnect=1&scale=true&path=websockify",
+		);
+		process.env.LEADS_PIPELINE_VIEWER_URL = " ";
+		expect(pipelineViewerSrc()).toBeNull();
+		process.env.LEADS_PIPELINE_VIEWER_URL = "not a url";
+		expect(pipelineViewerSrc()).toBeNull();
+	});
 });
 
 describe("pipeline configuration", () => {

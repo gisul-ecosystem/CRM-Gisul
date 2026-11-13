@@ -6,6 +6,11 @@ export const LEADS_PIPELINE = {
 		crmPrefix: "/api/leads-pipeline",
 		upstreamPrefix: "/api",
 	},
+	viewer: {
+		page: "vnc_lite.html",
+		params: { autoconnect: "1", scale: "true" },
+		socketPath: "websockify",
+	},
 	refresh: {
 		runningMs: 5 * SECOND_MS,
 		idleMs: 30 * SECOND_MS,

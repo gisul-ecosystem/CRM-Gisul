@@ -16,6 +16,7 @@ import { TableCell } from "@crm/ui/components/table";
 import { TablePagination } from "@crm/ui/components/table-pagination";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { useQueryState } from "nuqs";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 import { LeadSheet } from "@/components/leads-pipeline/lead-sheet";
@@ -27,7 +28,7 @@ import {
 	SearchBox,
 } from "@/components/outreach/toolbar";
 import { LEAD_SOURCE_OPTIONS } from "@/lib/lead-fields";
-import { leadsApi } from "@/lib/leads-pipeline/api";
+import { customSearchApi, leadsApi } from "@/lib/leads-pipeline/api";
 import { pipelineKeys } from "@/lib/leads-pipeline/cache";
 import {
 	intentTone,
@@ -54,6 +55,7 @@ const NO_FILTERS: LeadFilters = {
 	intent: null,
 	segment: null,
 	country: null,
+	source: null,
 	latest: false,
 	perCompany: false,
 };
@@ -109,7 +111,8 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 	const router = useRouter();
 	const workspaceUrl = useWorkspaceUrl();
 	const q = useDebounced(search, LEADS_PIPELINE.searchDebounceMs);
-	const applied = { ...filters, q };
+	const [source, setSource] = useQueryState("source");
+	const applied = { ...filters, q, source };
 	const { pageSize } = LEADS_PIPELINE;
 
 	const leads = useQuery({
@@ -193,6 +196,26 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 		...status.countries.map((country) => ({ value: country, label: country })),
 	];
 
+	const searches = useQuery({
+		queryKey: pipelineKeys.customSearches(status.profile),
+		queryFn: () => customSearchApi.list(status.profile),
+		refetchInterval: LEADS_PIPELINE.refresh.idleMs,
+	});
+	const searchOptions = [
+		{ value: ALL, label: "Every source" },
+		...[
+			...new Map(
+				(searches.data?.searches ?? []).map((search) => [
+					search.slug,
+					search.name,
+				]),
+			),
+		].map(([value, label]) => ({ value, label: `Search: ${label}` })),
+	];
+	if (source && !searchOptions.some((option) => option.value === source)) {
+		searchOptions.push({ value: source, label: source });
+	}
+
 	const rows = leads.data?.rows ?? [];
 	const total = leads.data?.total ?? 0;
 	const selectable = rows.filter((row) => row.full_name.trim() !== "");
@@ -240,6 +263,15 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 					}
 					options={countryOptions}
 					label="Country"
+				/>
+				<FilterSelect
+					value={source ?? ALL}
+					onChange={(value) => {
+						void setSource(value === ALL ? null : value);
+						setPage(1);
+					}}
+					options={searchOptions}
+					label="Search"
 				/>
 				<Button
 					variant="outline"

@@ -15,6 +15,20 @@ for profile in training competitors; do
         echo "created $target"
     fi
 done
+start_viewer() {
+    Xvfb :99 -screen 0 1440x900x24 -ac -noreset >/tmp/xvfb.log 2>&1 &
+    sleep 1
+    mkdir -p "$HOME/.fluxbox"
+    printf 'session.screen0.toolbar.visible: false\n' > "$HOME/.fluxbox/init"
+    fluxbox >/tmp/fluxbox.log 2>&1 &
+    x11vnc -display :99 -forever -shared -nopw -xkb -noxdamage -rfbport 5900 -localhost \
+        -o /tmp/x11vnc.log >/tmp/x11vnc.out 2>&1 &
+    websockify --web=/usr/share/novnc 0.0.0.0:6080 localhost:5900 >/tmp/novnc.log 2>&1 &
+    echo "browser viewer on port 6080 (vnc_lite.html), display $DISPLAY"
+}
+if [ "$1" = "web" ] && [ -n "$DISPLAY" ] && command -v Xvfb >/dev/null 2>&1; then
+    start_viewer
+fi
 case "$1" in
     web) exec python -m leads.web ;;          # API for the CRM + daily schedule (default)
     *)   exec python -m leads "$@" ;;         # e.g.  docker compose run --rm leads-pipeline run --batch 20
