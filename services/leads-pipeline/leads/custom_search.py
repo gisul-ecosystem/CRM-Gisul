@@ -1,4 +1,3 @@
-import itertools
 import json
 import re
 from datetime import datetime
@@ -18,6 +17,7 @@ CUSTOM_SEARCH = {
     "pause_seconds": (4, 9),
     "page_timeout_ms": 30000,
     "settle_ms": 1500,
+    "read_retries": 3,
     "check_wait_seconds": 300,
     "check_poll_ms": 3000,
     "browser_profile_dir": "search-browser",
@@ -80,7 +80,13 @@ def slug_of(name: str) -> str:
 def build_queries(what: List[str], where: List[str]) -> List[str]:
     if not where:
         return list(what)
-    return [f"{w} in {p}" for w, p in itertools.product(what, where)]
+    queries = []
+    for w in what:
+        if any(p.lower() in w.lower() for p in where):
+            queries.append(w)
+        else:
+            queries.extend(f"{w} in {p}" for p in where)
+    return list(dict.fromkeys(queries))
 
 
 def parse_spec(data: dict) -> Dict:
