@@ -17,36 +17,56 @@ from .search import SEA_SKIP, SWITCH, _lists, name_from_title, providers, run_qu
 
 log = logging.getLogger(__name__)
 
+GOOGLE_ROWS = """() => {
+    const out = [];
+    const seen = new Set();
+    for (const h3 of document.querySelectorAll('#search a h3, #rso a h3')) {
+        const a = h3.closest('a');
+        if (!a || !a.href || seen.has(a.href)) continue;
+        seen.add(a.href);
+        const box = a.closest('div.MjjYud, div.g, div[data-hveid]') || a.parentElement;
+        const snippet = box ? box.querySelector('.VwiC3b, [data-sncf], div[style*="-webkit-line-clamp"]') : null;
+        out.push({url: a.href, title: h3.innerText, snippet: snippet ? snippet.innerText : ''});
+    }
+    return out;
+}"""
+
 ENGINES = {
+    "google": {
+        "home": "https://www.google.com/?hl=en",
+        "box": 'textarea[name="q"], input[name="q"]',
+        "rows": GOOGLE_ROWS,
+        "next": "a#pnnext",
+    },
     "duckduckgo": {
         "url": "https://html.duckduckgo.com/html/?q={q}",
-        "rows": """els => els.map(e => {
+        "rows": """() => Array.from(document.querySelectorAll('.result')).map(e => {
             const a = e.querySelector('a.result__a');
             const p = e.querySelector('.result__snippet');
             return {url: a ? a.href : '', title: a ? a.innerText : '', snippet: p ? p.innerText : ''};
         })""",
-        "selector": ".result",
     },
     "bing": {
         "url": "https://www.bing.com/search?setlang=en&count={count}&q={q}",
-        "rows": """els => els.map(e => {
+        "rows": """() => Array.from(document.querySelectorAll('li.b_algo')).map(e => {
             const a = e.querySelector('h2 a');
             const p = e.querySelector('.b_caption p, p');
             return {url: a ? a.href : '', title: a ? a.innerText : '', snippet: p ? p.innerText : ''};
         })""",
-        "selector": "li.b_algo",
     },
 }
-ENGINE_DOMAINS = {"bing.com", "duckduckgo.com", "microsoft.com", "msn.com"}
+CONSENT_BUTTONS = ("Accept all", "I agree", "Reject all")
+ENGINE_DOMAINS = {"google.com", "bing.com", "duckduckgo.com", "microsoft.com", "msn.com", "youtube.com"}
 BLOCK_WORDS = ("captcha", "unusual traffic", "verify you are human", "are you a robot", "anomaly",
-               "if this persists")
-STOP_WORDS = {"in", "the", "and", "for", "with", "of", "a", "an", "near", "best", "top"}
+               "if this persists", "not a robot")
+STOP_WORDS = {"in", "the", "and", "for", "with", "of", "a", "an", "near", "best", "top", "like"}
 
 
 def real_url(url: str) -> str:
     parsed = urlparse(url)
     query = parse_qs(parsed.query)
-    if parsed.hostname and parsed.hostname.endswith("bing.com") and parsed.path.startswith("/ck/"):
+    host = parsed.hostname or ""
+    if host.endswith("bing.com") and parsed.path.startswith("/ck/"):
         token = (query.get("u") or [""])[0]
         if token.startswith("a1"):
             raw = token[2:]
@@ -55,8 +75,10 @@ def real_url(url: str) -> str:
             except (ValueError, UnicodeDecodeError):
                 return ""
         return ""
-    if parsed.hostname and parsed.hostname.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
+    if host.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
         return (query.get("uddg") or [""])[0]
+    if host.endswith("google.com") and parsed.path == "/url":
+        return (query.get("q") or query.get("url") or [""])[0]
     return url
 
 
@@ -73,6 +95,10 @@ def matches(text: str, must: List[str], exclude: List[str]) -> bool:
     if any(word.lower() in low for word in exclude):
         return False
     return not must or any(word.lower() in low for word in must)
+
+
+def skipped_domain(domain: str, skip_domains) -> bool:
+    return any(domain == d or domain.endswith(f".{d}") for d in skip_domains)
 
 
 class BrowserSearch:
@@ -103,36 +129,86 @@ class BrowserSearch:
             self.close()
             return False
 
-    def _read(self, spec: Dict, q: str):
+    def _read(self, engine: str, q: str):
+        rows = self._page.evaluate(ENGINES[engine]["rows"]) or []
+        if rows and related(rows, q):
+            return "rows", rows
+        url = self._page.url.lower()
         body = (self._page.inner_text("body") or "").lower()
-        if any(word in body for word in BLOCK_WORDS) or "captcha" in self._page.url.lower():
+        if "/sorry/" in url or "captcha" in url or any(word in body for word in BLOCK_WORDS):
             return "check", None
-        rows = self._page.eval_on_selector_all(spec["selector"], spec["rows"])
-        return ("rows", rows) if related(rows, q) else ("unrelated", None)
+        return ("rows", rows) if not rows else ("unrelated", None)
+
+    def _consent(self) -> None:
+        for label in CONSENT_BUTTONS:
+            button = self._page.get_by_role("button", name=label)
+            try:
+                if button.count() and button.first.is_visible():
+                    button.first.click(timeout=3000)
+                    self._page.wait_for_timeout(CUSTOM_SEARCH["settle_ms"])
+                    return
+            except Exception:
+                return
+
+    def _open(self, engine: str, q: str) -> None:
+        spec = ENGINES[engine]
+        if "home" in spec:
+            self._page.goto(spec["home"], wait_until="domcontentloaded")
+            self._page.wait_for_timeout(CUSTOM_SEARCH["settle_ms"])
+            self._consent()
+            box = self._page.locator(spec["box"]).first
+            box.fill(q)
+            box.press("Enter")
+            self._page.wait_for_load_state("domcontentloaded")
+        else:
+            url = spec["url"].format(q=quote_plus(q), count=CUSTOM_SEARCH["results_per_query"])
+            self._page.goto(url, wait_until="domcontentloaded")
+        self._page.wait_for_timeout(CUSTOM_SEARCH["settle_ms"])
+
+    def _wait_for_person(self, engine: str, q: str) -> Optional[List[Dict]]:
+        wait = CUSTOM_SEARCH["check_wait_seconds"]
+        log.warning("custom search: %s shows a check. Solve it in the browser viewer on the Custom search "
+                    "page; waiting up to %d s", engine, wait)
+        end = time.time() + wait
+        while time.time() < end:
+            self._page.wait_for_timeout(CUSTOM_SEARCH["check_poll_ms"])
+            if "q=" not in self._page.url:
+                continue
+            state, rows = self._read(engine, q)
+            if state == "rows" and rows:
+                log.info("custom search: check passed, searching goes on")
+                return rows
+        log.warning("custom search: nobody solved the %s check in time", engine)
+        return None
+
+    def _more_pages(self, engine: str, q: str, rows: List[Dict]) -> List[Dict]:
+        selector = ENGINES[engine].get("next")
+        for _ in range(CUSTOM_SEARCH["google_pages"] - 1):
+            if not selector:
+                break
+            link = self._page.locator(selector).first
+            if not link.count():
+                break
+            link.click()
+            self._page.wait_for_load_state("domcontentloaded")
+            self._page.wait_for_timeout(CUSTOM_SEARCH["settle_ms"])
+            state, more = self._read(engine, q)
+            if state != "rows" or not more:
+                break
+            rows = rows + more
+        return rows
 
     def search(self, engine: str, q: str) -> Optional[List[Dict]]:
-        spec = ENGINES[engine]
-        url = spec["url"].format(q=quote_plus(q), count=CUSTOM_SEARCH["results_per_query"])
         try:
-            self._page.goto(url, wait_until="domcontentloaded")
-            self._page.wait_for_timeout(CUSTOM_SEARCH["settle_ms"])
-            state, rows = self._read(spec, q)
-            if state != "check" or not self.headed:
-                return rows
-            wait = CUSTOM_SEARCH["check_wait_seconds"]
-            log.warning("custom search: %s shows a check. Solve it in the browser viewer on the Custom search "
-                        "page; waiting up to %d s", engine, wait)
-            end = time.time() + wait
-            while time.time() < end:
-                self._page.wait_for_timeout(CUSTOM_SEARCH["check_poll_ms"])
-                if "q=" not in self._page.url:
-                    continue
-                state, rows = self._read(spec, q)
-                if state == "rows":
-                    log.info("custom search: check passed, searching goes on")
-                    return rows
-            log.warning("custom search: nobody solved the %s check in time", engine)
-            return None
+            self._open(engine, q)
+            state, rows = self._read(engine, q)
+            if state == "check" and self.headed:
+                rows = self._wait_for_person(engine, q)
+            elif state != "rows":
+                return None
+            if rows is None:
+                return None
+            return self._more_pages(engine, q, rows)
         except Exception as e:
             log.warning("custom search: %s failed for %r: %s", engine, q, e)
             return []
@@ -159,17 +235,23 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int) -> List[Ca
         return []
     want = min(limit, int(spec.get("companies") or limit))
     must, exclude = spec.get("mustHave") or [], spec.get("exclude") or []
-    skip = _lists(getattr(s, "profile", "gpu"))[2] | SEA_SKIP
+    skip = _lists(getattr(s, "profile", "gpu"))[2] | SEA_SKIP | ENGINE_DOMAINS
+    skip_domains = list(dict.fromkeys([*CUSTOM_SEARCH["own_domains"], *(spec.get("skipDomains") or []),
+                                       *CUSTOM_SEARCH["listing_domains"]]))
+    mode = spec.get("searchWith") or CUSTOM_SEARCH["default_mode"]
     apis = providers(s)
-    log.info("custom search %r: %d searches, up to %d companies, using %s", spec["name"], len(spec["queries"]),
-             want, apis[0][0] if apis else "the browser (DuckDuckGo, then Bing)")
+    log.info("custom search %r: %d searches, up to %d companies, with %s; never returns %s", spec["name"],
+             len(spec["queries"]), want,
+             "the browser (Google, then DuckDuckGo, then Bing)" if mode == "browser" or not apis
+             else f"the search API ({', '.join(name for name, _ in apis)})",
+             ", ".join(d for d in skip_domains if d not in CUSTOM_SEARCH["listing_domains"]))
 
     browser = BrowserSearch(s.data_dir / CUSTOM_SEARCH["browser_profile_dir"])
     engines = list(ENGINES)
-    browser_ready = None
+    state = {"browser": None}
 
-    def rows_for(q: str):
-        nonlocal apis, engines, browser_ready
+    def from_api(q: str):
+        nonlocal apis
         while apis:
             name, key = apis[0]
             status, rows = run_query(name, key, fetcher, q)
@@ -181,17 +263,30 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int) -> List[Ca
                 continue
             log.warning("custom search %r via %s failed: HTTP %s", q, name, status)
             return name, []
-        if browser_ready is None:
-            browser_ready = browser.start()
-        if not browser_ready:
+        return "", None
+
+    def from_browser(q: str):
+        nonlocal engines
+        if state["browser"] is None:
+            state["browser"] = browser.start()
+        if not state["browser"]:
             return "", None
         while engines:
             rows = browser.search(engines[0], q)
             if rows is not None:
                 return engines[0], rows
-            log.warning("custom search: %s blocked the automated browser (CAPTCHA, error page or unrelated "
-                        "results)", engines[0])
+            log.warning("custom search: %s blocked the automated browser (check not solved, error page or "
+                        "unrelated results)", engines[0])
             engines = engines[1:]
+        return "", None
+
+    order = (from_browser, from_api) if mode == "browser" else (from_api, from_browser)
+
+    def rows_for(q: str):
+        for fetch_rows in order:
+            via, rows = fetch_rows(q)
+            if rows is not None:
+                return via, rows
         return "", None
 
     out: List[Candidate] = []
@@ -203,16 +298,14 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int) -> List[Ca
                 break
             via, rows = rows_for(q)
             if rows is None:
-                log.warning("custom search: every search engine blocked the automated browser, so the rest of "
-                            "the searches stop. Set SERPER_API_KEY (2,500 free searches) in Settings for "
-                            "reliable custom searches.")
+                log.warning("custom search: every engine and search API failed, so the rest of the searches stop")
                 break
             searched += 1
             new = 0
             for r in rows:
                 url = real_url(r.get("url", ""))
                 d = extract_domain(url)
-                if not d or d in seen or d in skip or d in ENGINE_DOMAINS or is_blocked(d):
+                if not d or d in seen or d in skip or is_blocked(d) or skipped_domain(d, skip_domains):
                     continue
                 if not matches(f"{r.get('title', '')} {r.get('snippet', '')}", must, exclude):
                     continue
@@ -223,7 +316,7 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int) -> List[Ca
                                      source_ref=f"custom:{q}"))
                 if len(out) >= want:
                     break
-            log.info("custom search %r via %s: %d new websites", q, via, new)
+            log.info("custom search %r via %s: %d results, %d new websites", q, via, len(rows), new)
             time.sleep(random.uniform(*CUSTOM_SEARCH["pause_seconds"]))
     finally:
         browser.close()

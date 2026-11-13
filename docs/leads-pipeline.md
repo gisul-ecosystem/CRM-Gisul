@@ -97,12 +97,18 @@ browser ──► CRM app /api/leads-pipeline/<path>   (apps/app/app/api/leads-p
   What is searched in each place: at most 30 searches and 200 companies per run
   (`CUSTOM_SEARCH` in `leads/custom_search.py`). Preview shows the searches
   before a run.
-- **It searches with an API key when one is set, else in its own browser.**
-  With `SERPER_API_KEY`, `TAVILY_API_KEY` or `BRAVE_API_KEY` it uses that API.
-  Without one, the `custom` source (`leads/sources/custom.py`) opens Chromium
-  through Playwright: DuckDuckGo's HTML page first, Bing second. It waits 4 to 9
-  seconds between searches. A CAPTCHA, an error page or results unrelated to
-  the query count as blocked: no junk company is saved.
+- **Search with: Google in the search browser (default), or the search API.**
+  Browser: Chromium opens google.com, types the search in the box, reads up to 2
+  result pages (title, link, summary), then DuckDuckGo and Bing as fallbacks,
+  then the search API. API: Serper (Google results), then Tavily, then the
+  browser. Google shows "I'm not a robot" to an automated browser at once; a
+  person ticks it in the viewer. It waits 4 to 9 seconds between searches. A
+  check nobody solves, an error page or unrelated results count as blocked: no
+  junk company is saved.
+- **Some websites are never returned:** any domain written in the search ("like
+  racko.ai" skips racko.ai), our own products (Racko, KanonKode, Aaptor, Gisul)
+  and listing or review sites such as G2, Capterra, Clutch and SourceForge
+  (`own_domains`, `listing_domains` in `CUSTOM_SEARCH`).
 - **The browser is visible in a viewer, like the LinkedIn scraper's.** The image
   runs Xvfb, fluxbox, x11vnc and noVNC (`docker-entrypoint.sh`, container port
   6080, host `127.0.0.1:6082`). With a screen, the search Chromium opens as a

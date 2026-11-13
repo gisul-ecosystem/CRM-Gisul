@@ -136,6 +136,9 @@ export const pipelineSettings = z.object({
 	earlyExempt: choice.nullable(),
 });
 
+export const SEARCH_MODES = ["browser", "api"] as const;
+export type SearchMode = (typeof SEARCH_MODES)[number];
+
 const customSearch = z.object({
 	name: z.string(),
 	slug: z.string(),
@@ -145,6 +148,11 @@ const customSearch = z.object({
 	exclude: z.array(z.string()),
 	companies: z.number(),
 	queries: z.array(z.string()),
+	searchWith: z.enum(SEARCH_MODES).catch("browser"),
+	skipDomains: z
+		.array(z.string())
+		.nullish()
+		.transform((value) => value ?? []),
 	startedAt: z.string(),
 	found: z.number().nullable(),
 	searched: z
@@ -186,6 +194,7 @@ export type CustomSearchInput = {
 	mustHave: string[];
 	exclude: string[];
 	companies: number;
+	searchWith: SearchMode;
 };
 
 export type ProfileStatus = z.infer<typeof profileStatus>;

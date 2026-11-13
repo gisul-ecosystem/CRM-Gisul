@@ -21,6 +21,18 @@ CUSTOM_SEARCH = {
     "check_wait_seconds": 300,
     "check_poll_ms": 3000,
     "browser_profile_dir": "search-browser",
+    "google_pages": 2,
+    "search_modes": ("browser", "api"),
+    "default_mode": "browser",
+    "own_domains": ("racko.ai", "kanonkode.com", "aaptor.com", "gisul.co.in"),
+    "listing_domains": (
+        "sourceforge.net", "aimultiple.com", "g2.com", "capterra.com", "capterra.in", "clutch.co",
+        "goodfirms.co", "trustradius.com", "getapp.com", "softwaresuggest.com", "techjockey.com",
+        "gartner.com", "producthunt.com", "medium.com", "wikipedia.org", "justdial.com", "indiamart.com",
+        "tracxn.com", "crunchbase.com", "linkedin.com", "facebook.com", "instagram.com", "x.com",
+        "twitter.com", "quora.com", "reddit.com", "youtube.com", "glassdoor.com", "ambitionbox.com",
+        "saasworthy.com", "slashdot.org", "alternativeto.net", "f6s.com", "builtin.com",
+    ),
     "history_size": 50,
     "spec_file": "custom_search.json",
     "history_file": "custom_searches.json",
@@ -46,6 +58,19 @@ def _lines(value, limit: int, label: str) -> List[str]:
     if len(out) > limit:
         raise SpecError(f"{label}: at most {limit} lines.")
     return out
+
+
+DOMAIN_RE = re.compile(r"\b((?:[a-z0-9-]+\.)+[a-z]{2,})\b", re.I)
+
+
+def mentioned_domains(lines: List[str]) -> List[str]:
+    found = []
+    for line in lines:
+        for match in DOMAIN_RE.findall(line):
+            domain = match.lower().removeprefix("www.")
+            if domain not in found:
+                found.append(domain)
+    return found
 
 
 def slug_of(name: str) -> str:
@@ -76,13 +101,17 @@ def parse_spec(data: dict) -> Dict:
         raise SpecError("How many companies must be a whole number.")
     if not 1 <= companies <= CUSTOM_SEARCH["max_companies"]:
         raise SpecError(f"How many companies: between 1 and {CUSTOM_SEARCH['max_companies']}.")
+    mode = str(data.get("searchWith") or CUSTOM_SEARCH["default_mode"])
+    if mode not in CUSTOM_SEARCH["search_modes"]:
+        raise SpecError("Search with: pick the browser or the search API.")
     queries = build_queries(what, where)
     if len(queries) > CUSTOM_SEARCH["max_queries"]:
         raise SpecError(
             f"That makes {len(queries)} searches. Keep it to {CUSTOM_SEARCH['max_queries']}: "
             "fewer lines in What or Where.")
     return {"name": name, "slug": slug_of(name), "what": what, "where": where, "mustHave": must,
-            "exclude": exclude, "companies": companies, "queries": queries}
+            "exclude": exclude, "companies": companies, "queries": queries, "searchWith": mode,
+            "skipDomains": mentioned_domains(what + where)}
 
 
 def write_spec(data_dir: Path, spec: Dict) -> Dict:
