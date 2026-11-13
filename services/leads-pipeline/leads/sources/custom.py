@@ -70,6 +70,7 @@ ENGINES = {
 }
 CONSENT_BUTTONS = ("Accept all", "I agree", "Reject all")
 ENGINE_DOMAINS = {"google.com", "bing.com", "duckduckgo.com", "microsoft.com", "msn.com", "youtube.com"}
+GOOGLE_HOST = re.compile(r"(^|\.)google\.[a-z.]+$")
 BLOCK_WORDS = ("captcha", "unusual traffic", "verify you are human", "are you a robot", "anomaly",
                "if this persists", "not a robot")
 STOP_WORDS = {"in", "the", "and", "for", "with", "of", "a", "an", "near", "best", "top", "like"}
@@ -90,7 +91,7 @@ def real_url(url: str) -> str:
         return ""
     if host.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
         return (query.get("uddg") or [""])[0]
-    if host.endswith("google.com") and parsed.path == "/url":
+    if GOOGLE_HOST.search(host) and parsed.path == "/url":
         return (query.get("q") or query.get("url") or [""])[0]
     return url
 
@@ -330,24 +331,35 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int) -> List[Ca
                 break
             searched += 1
             new = 0
-            why = {"duplicate": 0, "blocklist": 0, "listing site": 0, "own or named site": 0, "words": 0}
+            why = {"duplicate": 0, "search engine link": 0, "blocklist": 0, "listing site": 0,
+                   "own or named site": 0, "words": 0}
+            examples: Dict[str, List[str]] = {}
+
+            def skip_as(reason: str, domain: str) -> None:
+                why[reason] += 1
+                if domain and domain not in examples.setdefault(reason, []):
+                    examples[reason].append(domain)
+
             for r in rows:
                 url = real_url(r.get("url", ""))
                 d = extract_domain(url)
                 if not d or d in seen:
-                    why["duplicate"] += 1
+                    skip_as("duplicate", d)
+                    continue
+                if GOOGLE_HOST.search(d) or d in ENGINE_DOMAINS:
+                    skip_as("search engine link", d)
                     continue
                 if skipped_domain(d, CUSTOM_SEARCH["listing_domains"]):
-                    why["listing site"] += 1
+                    skip_as("listing site", d)
                     continue
                 if skipped_domain(d, own_or_named):
-                    why["own or named site"] += 1
+                    skip_as("own or named site", d)
                     continue
                 if d in skip or is_blocked(d):
-                    why["blocklist"] += 1
+                    skip_as("blocklist", d)
                     continue
                 if not matches(f"{r.get('title', '')} {r.get('snippet', '')}", must, exclude):
-                    why["words"] += 1
+                    skip_as("words", d)
                     continue
                 seen.add(d)
                 new += 1
@@ -356,7 +368,9 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int) -> List[Ca
                                      source_ref=f"custom:{q}"))
                 if len(out) >= want:
                     break
-            skipped = ", ".join(f"{n} {reason}" for reason, n in why.items() if n) or "none"
+            skipped = ", ".join(
+                f"{n} {reason}" + (f" (e.g. {', '.join(examples[reason][:3])})" if examples.get(reason) else "")
+                for reason, n in why.items() if n) or "none"
             log.info("custom search %r via %s: %d results, %d new websites; skipped: %s", q, via, len(rows), new,
                      skipped)
             time.sleep(random.uniform(*CUSTOM_SEARCH["pause_seconds"]))
