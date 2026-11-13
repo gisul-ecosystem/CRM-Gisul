@@ -28,6 +28,19 @@ GOOGLE_ROWS = """() => {
         const snippet = box ? box.querySelector('.VwiC3b, [data-sncf], div[style*="-webkit-line-clamp"]') : null;
         out.push({url: a.href, title: h3.innerText, snippet: snippet ? snippet.innerText : ''});
     }
+    if (out.length) return out;
+    const area = document.querySelector('#rso, #search, #center_col, #main') || document.body;
+    for (const a of area.querySelectorAll('a[href]')) {
+        let host = '';
+        try { host = new URL(a.href).hostname; } catch (e) { continue; }
+        const outside = host && !/(^|\\.)google\\.[a-z.]+$/.test(host) && !/(^|\\.)(gstatic|googleusercontent|youtube)\\.com$/.test(host);
+        const viaGoogle = /(^|\\.)google\\.[a-z.]+$/.test(host) && a.pathname === '/url';
+        const title = (a.innerText || '').trim().split('\\n')[0];
+        if ((!outside && !viaGoogle) || title.length < 4 || seen.has(a.href)) continue;
+        seen.add(a.href);
+        const box = a.closest('div[data-hveid], div.g, div.MjjYud') || a.parentElement;
+        out.push({url: a.href, title, snippet: box ? (box.innerText || '').slice(0, 300) : ''});
+    }
     return out;
 }"""
 
@@ -175,7 +188,7 @@ class BrowserSearch:
             if "q=" not in self._page.url:
                 continue
             state, rows = self._read(engine, q)
-            if state == "rows" and rows:
+            if state == "rows":
                 log.info("custom search: check passed, searching goes on")
                 return rows
         log.warning("custom search: nobody solved the %s check in time", engine)
@@ -208,10 +221,24 @@ class BrowserSearch:
                 return None
             if rows is None:
                 return None
+            if not rows:
+                self._save_debug(engine)
             return self._more_pages(engine, q, rows)
         except Exception as e:
             log.warning("custom search: %s failed for %r: %s", engine, q, e)
             return []
+
+    def _save_debug(self, engine: str) -> None:
+        if not self.profile_dir:
+            return
+        folder = self.profile_dir.parent
+        try:
+            self._page.screenshot(path=str(folder / f"custom-search-debug-{engine}.png"))
+            (folder / f"custom-search-debug-{engine}.html").write_text(self._page.content(), encoding="utf-8")
+            log.warning("custom search: %s gave 0 results on %s; saved custom-search-debug-%s.png and .html in %s",
+                        engine, self._page.url[:120], engine, folder)
+        except Exception as e:
+            log.debug("custom search: could not save the debug page: %s", e)
 
     def close(self) -> None:
         for obj in (self._page, self._browser):
@@ -238,6 +265,7 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int) -> List[Ca
     skip = _lists(getattr(s, "profile", "gpu"))[2] | SEA_SKIP | ENGINE_DOMAINS
     skip_domains = list(dict.fromkeys([*CUSTOM_SEARCH["own_domains"], *(spec.get("skipDomains") or []),
                                        *CUSTOM_SEARCH["listing_domains"]]))
+    own_or_named = list(dict.fromkeys([*CUSTOM_SEARCH["own_domains"], *(spec.get("skipDomains") or [])]))
     mode = spec.get("searchWith") or CUSTOM_SEARCH["default_mode"]
     apis = providers(s)
     log.info("custom search %r: %d searches, up to %d companies, with %s; never returns %s", spec["name"],
@@ -302,12 +330,24 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int) -> List[Ca
                 break
             searched += 1
             new = 0
+            why = {"duplicate": 0, "blocklist": 0, "listing site": 0, "own or named site": 0, "words": 0}
             for r in rows:
                 url = real_url(r.get("url", ""))
                 d = extract_domain(url)
-                if not d or d in seen or d in skip or is_blocked(d) or skipped_domain(d, skip_domains):
+                if not d or d in seen:
+                    why["duplicate"] += 1
+                    continue
+                if skipped_domain(d, CUSTOM_SEARCH["listing_domains"]):
+                    why["listing site"] += 1
+                    continue
+                if skipped_domain(d, own_or_named):
+                    why["own or named site"] += 1
+                    continue
+                if d in skip or is_blocked(d):
+                    why["blocklist"] += 1
                     continue
                 if not matches(f"{r.get('title', '')} {r.get('snippet', '')}", must, exclude):
+                    why["words"] += 1
                     continue
                 seen.add(d)
                 new += 1
@@ -316,7 +356,9 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int) -> List[Ca
                                      source_ref=f"custom:{q}"))
                 if len(out) >= want:
                     break
-            log.info("custom search %r via %s: %d results, %d new websites", q, via, len(rows), new)
+            skipped = ", ".join(f"{n} {reason}" for reason, n in why.items() if n) or "none"
+            log.info("custom search %r via %s: %d results, %d new websites; skipped: %s", q, via, len(rows), new,
+                     skipped)
             time.sleep(random.uniform(*CUSTOM_SEARCH["pause_seconds"]))
     finally:
         browser.close()
