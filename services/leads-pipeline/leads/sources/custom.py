@@ -73,6 +73,7 @@ ENGINE_DOMAINS = {"google.com", "bing.com", "duckduckgo.com", "microsoft.com", "
 GOOGLE_HOST = re.compile(r"(^|\.)google\.[a-z.]+$")
 BLOCK_WORDS = ("captcha", "unusual traffic", "verify you are human", "are you a robot", "anomaly",
                "if this persists", "not a robot")
+NAVIGATING = re.compile(r"context was destroyed|because of a navigation|frame was detached|navigating", re.I)
 STOP_WORDS = {"in", "the", "and", "for", "with", "of", "a", "an", "near", "best", "top", "like"}
 
 
@@ -144,6 +145,22 @@ class BrowserSearch:
             return False
 
     def _read(self, engine: str, q: str):
+        tries = CUSTOM_SEARCH["read_retries"]
+        for attempt in range(tries):
+            try:
+                return self._read_once(engine, q)
+            except Exception as e:
+                if attempt == tries - 1 or not NAVIGATING.search(str(e)):
+                    raise
+                log.info("custom search: the page changed while reading (%s); reading the new page", engine)
+                try:
+                    self._page.wait_for_load_state("domcontentloaded")
+                except Exception:
+                    pass
+                self._page.wait_for_timeout(CUSTOM_SEARCH["settle_ms"])
+        return "rows", []
+
+    def _read_once(self, engine: str, q: str):
         rows = self._page.evaluate(ENGINES[engine]["rows"]) or []
         if rows and related(rows, q):
             return "rows", rows
