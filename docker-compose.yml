@@ -314,6 +314,7 @@ services:
       - leads-data:/app/data
     ports:
       - "127.0.0.1:8502:8501"
+      - "127.0.0.1:6082:6080"
     healthcheck:
       test:
         [

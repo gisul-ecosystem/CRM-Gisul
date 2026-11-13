@@ -199,6 +199,12 @@ const GROUPS: NavGroup[] = [
 				match: "prefix",
 			},
 			{
+				title: "Custom search",
+				href: "/lead-generation/search",
+				icon: Search,
+				match: "prefix",
+			},
+			{
 				title: "Settings",
 				href: "/lead-generation/settings",
 				icon: SettingsAdjust,

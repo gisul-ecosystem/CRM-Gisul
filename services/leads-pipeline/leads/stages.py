@@ -28,7 +28,7 @@ from .score import is_ready, score_row
 from . import profile as _profile
 from .segments import qualifies
 from . import training as _training
-from .sources import competitors, directories, funding, github, hackernews, huggingface, incubators, maps, search, seeds, yc
+from .sources import competitors, custom, directories, funding, github, hackernews, huggingface, incubators, maps, search, seeds, yc
 from .store import (DISCOVERED, EMAIL_FOUND, NO_CONTACT, PEOPLE_FOUND, SCRAPED, VERIFIED,
                     Store)
 from .util import ESTABLISHED, TimeLimit, extract_domain, is_blocked, person_key, time_limit
@@ -37,14 +37,15 @@ from .verify import Verifier
 log = logging.getLogger(__name__)
 
 GPU_SOURCES = {"seeds": seeds, "incubators": incubators, "search": search, "maps": maps, "yc": yc,
-               "funding": funding, "github": github, "huggingface": huggingface, "hn": hackernews}
+               "funding": funding, "github": github, "huggingface": huggingface, "hn": hackernews,
+               "custom": custom}
 # Training profile: only its own lists - seeds_training/, training_directories.csv - plus
 # edtech / skilling news and GitHub academies (same engine, training rules in training.py).
 # It never reads the GPU profile's lists (seeds/, incubators.csv).
 TRAINING_SOURCES = {"seeds": seeds, "directories": directories, "search": search, "maps": maps,
-                    "funding": funding, "github": github}
+                    "funding": funding, "github": github, "custom": custom}
 # Competitors profile: cloud & compute provider testimonials/case studies (leads/competitors.csv)
-COMPETITORS_SOURCES = {"competitors": competitors, "seeds": seeds, "search": search}
+COMPETITORS_SOURCES = {"competitors": competitors, "seeds": seeds, "search": search, "custom": custom}
 
 if _profile.current() == _profile.TRAINING:
     SOURCES = TRAINING_SOURCES
@@ -125,7 +126,7 @@ def recheck_sheet(s: Settings, store: Store) -> dict:
 # ------------------------------------------------------------------ 1. discover
 # Run only when asked for with --sources: YC companies get large free cloud/GPU credits from
 # YC's partners, so they are poor vGPU prospects.
-OFF_BY_DEFAULT = {"yc"}
+OFF_BY_DEFAULT = {"yc", "custom"}
 
 
 def discover_stage(s: Settings, store: Store, fetcher: Fetcher, only: Optional[Iterable[str]] = None) -> dict:

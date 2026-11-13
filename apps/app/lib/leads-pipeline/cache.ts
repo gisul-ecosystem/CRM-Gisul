@@ -13,6 +13,8 @@ export const pipelineKeys = {
 		["leads-pipeline", "leads", profile, filters, page] as const,
 	settings: (profile: LeadProfile) =>
 		["leads-pipeline", "settings", profile] as const,
+	customSearches: (profile: LeadProfile) =>
+		["leads-pipeline", "custom-search", profile] as const,
 };
 
 type PipelineCache = {
@@ -34,6 +36,7 @@ export function usePipelineCache(): PipelineCache {
 				pipelineKeys.status,
 				pipelineKeys.log(profile),
 				pipelineKeys.leadsOf(profile),
+				pipelineKeys.customSearches(profile),
 			]),
 		everything: () => refresh([pipelineKeys.all]),
 	};

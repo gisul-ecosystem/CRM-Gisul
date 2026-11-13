@@ -78,6 +78,7 @@ browser ──► CRM app /api/leads-pipeline/<path>   (apps/app/app/api/leads-p
 | Overview | `/status`, `/run`, `/stop`, `/log` |
 | Leads | `/leads`, `/download` |
 | Settings | `/settings` (GET and POST) |
+| Custom search | `/custom-search` (GET and POST), `/custom-search/preview`, `/log` |
 
 - **Leads become CRM contacts by selection.** Tick rows on the Leads page (the
   header box ticks the page; the choice survives paging) and click **Add to CRM
@@ -90,6 +91,52 @@ browser ──► CRM app /api/leads-pipeline/<path>   (apps/app/app/api/leads-p
   person already in the CRM (same email, or same name at the same company) is
   counted as existing and left unchanged. A row without a person name cannot be
   ticked.
+- **Custom search finds companies from your own description.** The page takes a
+  name, what to find (one kind per line), where (one place per line), words a
+  result must mention or must not mention, and how many companies. Each line of
+  What is searched in each place: at most 30 searches and 200 companies per run
+  (`CUSTOM_SEARCH` in `leads/custom_search.py`). Preview shows the searches
+  before a run.
+- **It searches with an API key when one is set, else in its own browser.**
+  With `SERPER_API_KEY`, `TAVILY_API_KEY` or `BRAVE_API_KEY` it uses that API.
+  Without one, the `custom` source (`leads/sources/custom.py`) opens Chromium
+  through Playwright: DuckDuckGo's HTML page first, Bing second. It waits 4 to 9
+  seconds between searches. A CAPTCHA, an error page or results unrelated to
+  the query count as blocked: no junk company is saved.
+- **The browser is visible in a viewer, like the LinkedIn scraper's.** The image
+  runs Xvfb, fluxbox, x11vnc and noVNC (`docker-entrypoint.sh`, container port
+  6080, host `127.0.0.1:6082`). With a screen, the search Chromium opens as a
+  normal window and keeps its cookies in the data volume (`search-browser/`).
+  When an engine shows a check, the run waits up to 5 minutes
+  (`CUSTOM_SEARCH.check_wait_seconds`) for a person to solve it in the viewer,
+  then goes on. Headless Chromium is blocked by both engines; the
+  visible one is not, in our test. Daily runs stay headless.
+- **The Custom search page embeds the viewer while a search runs.** Set
+  `LEADS_PIPELINE_VIEWER_URL` on the app; the server page builds the noVNC
+  address with its own WebSocket path, so it does not collide with the
+  LinkedIn viewer's `/websockify`. Route it through the reverse proxy and reuse
+  the CRM session check:
+
+  ```nginx
+  location /leads-viewer/ {
+      auth_request /_linkedin_viewer_auth;
+      proxy_pass http://127.0.0.1:6082/;
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      proxy_read_timeout 3600s;
+  }
+  ```
+
+  with `LEADS_PIPELINE_VIEWER_URL="https://<crm-domain>/leads-viewer"`. The
+  `/_linkedin_viewer_auth` location is the one from docs/linkedin-scraper.md.
+- **The rest of the run is the normal pipeline** under the chosen profile: the
+  website check, segments, countries, people, emails, verification and scores
+  from that profile's Settings. Daily runs never use the `custom` source.
+- **Each search tags its leads.** The source column gets `custom-<name>`. The
+  Leads page has a Search filter (`?source=` in the URL), and View leads on a
+  past search opens it. The search and its history live in the profile's data
+  folder: `custom_search.json` and `custom_searches.json`.
 - **Stop works only for a run started from the CRM.** The daily run belongs to the
   scheduler, so the Stop button stays disabled for it.
 

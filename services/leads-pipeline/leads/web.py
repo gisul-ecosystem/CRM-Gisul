@@ -14,6 +14,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 from flask import Flask, jsonify, request, send_file
 from .config import DEFAULT_COUNTRIES
+from .custom_search import CUSTOM_SEARCH, SpecError, parse_spec, read_history, write_spec
 from .geo import COUNTRIES
 from .people_search import google_url
 from .profile import GPU, LABELS, OWN_KEYS, TRAINING, COMPETITORS, env_name
@@ -632,6 +633,42 @@ def create_app(root: Path = ROOT) -> Flask:
         except RuntimeError as error:
             raise ApiError(409, "RUN_IN_PROGRESS", str(error))
         return jsonify(ok=True, message=f"{LABELS[runner.profile]} run started.")
+
+    @app.get("/api/custom-search")
+    def custom_searches():
+        runner = runner_for(request.args.get("profile"))
+        limits = {k: CUSTOM_SEARCH[k] for k in ("max_name_chars", "max_what", "max_where", "max_words",
+                                                 "max_term_chars", "max_queries", "max_companies",
+                                                 "default_companies")}
+        return jsonify(profile=runner.profile, running=runner.any_running(),
+                       searches=read_history(runner.data_dir()), limits=limits)
+
+    @app.post("/api/custom-search/preview")
+    def custom_search_preview():
+        data = body()
+        try:
+            spec = parse_spec({**data, "name": data.get("name") or "Preview"})
+        except SpecError as error:
+            raise ApiError(400, "INVALID_SEARCH", str(error))
+        return jsonify(queries=spec["queries"], slug=spec["slug"], maxQueries=CUSTOM_SEARCH["max_queries"])
+
+    @app.post("/api/custom-search")
+    def custom_search_start():
+        data = body()
+        runner = runner_for(data.get("profile"))
+        try:
+            spec = parse_spec(data)
+        except SpecError as error:
+            raise ApiError(400, "INVALID_SEARCH", str(error))
+        if runner.any_running():
+            raise ApiError(409, "RUN_IN_PROGRESS", "A run is already in progress.")
+        write_spec(runner.data_dir(), spec)
+        try:
+            runner.start(spec["companies"], ["custom"], why=f"for the custom search {spec['name']}")
+        except RuntimeError as error:
+            raise ApiError(409, "RUN_IN_PROGRESS", str(error))
+        return jsonify(ok=True, message=f"Custom search {spec['name']} started: {len(spec['queries'])} searches, "
+                                        f"up to {spec['companies']} companies.")
 
     @app.post("/api/stop")
     def stop():
