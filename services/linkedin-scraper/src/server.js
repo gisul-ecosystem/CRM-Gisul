@@ -839,6 +839,8 @@ async function main() {
   try {
     await db.connectMongo();
     await db.users.upsertUser({ userId: SCRAPER_USERS.fallback, name: 'Local operator' });
+    const repaired = await db.profiles.repairNotificationCountNames();
+    if (repaired) console.log(`[repair] Removed LinkedIn notification counts from ${repaired} profile name(s)`);
     db.startAtlasBackup();
   } catch (err) {
     console.warn(`[mongo] Could not connect on startup: ${err.message}`);

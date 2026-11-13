@@ -32,7 +32,7 @@ import { agentModelOutput, modelCatalogOutput, setAgentModelInput, researchKeyOu
 import { slackStatusOutput, slackMatchesOutput, slackChannelsInput, slackChannelsOutput, slackJoinChannelInput, slackJoinChannelOutput, slackRefreshPeopleOutput, slackCreateChannelInput, slackCreateChannelOutput, slackDisconnectOutput } from "../slack/slack.contracts";
 import { ssoSignInOptionsOutput, ssoSettingsOutput, ssoProviderListInput, ssoProviderListOutput, registerSsoProviderInput, ssoProviderOutput, deleteSsoProviderInput, deleteSsoProviderOutput } from "../sso/sso.contracts";
 import { trackingSettingsOutput, trackingFlagInput, cookieLifetimeInput, addDomainInput, trackedDomainOutput, removeDomainInput, rotateSiteIdOutput, verifyInput, verifyOutput, sourcesOutput, companyActivityInput, websiteActivityOutput, contactActivityInput } from "../tracking/tracking.contracts";
-import { workspaceOutput, memberListInput, memberListOutput, teamItemOutput, roleItemOutput, invitationSettingsOutput, updateWorkspaceInput, setMemberRoleInput, workspaceMemberOutput, updateMemberTeamInput, createTeamInput, leadSettingsOutput, createLeadFieldInput, leadFieldOutput, updateLeadFieldInput, deleteLeadFieldInput, createLeadAssignmentRuleInput, leadAssignmentRuleOutput, updateLeadAssignmentRuleInput, deleteLeadAssignmentRuleInput, updateDefaultLeadOwnerInput, defaultLeadOwnerOutput, integrationsOverviewOutput, toggleIntegrationInput, integrationItemOutput, activitySettingsOverviewOutput, updateDefaultActivitySettingsInput, defaultActivitySettingsOutput, updateReminderRulesInput, reminderRulesOutput, updateCompletionBehaviorInput, completionBehaviorOutput, createActivityTypeInput, activityTypeItemOutput, updateActivityTypeInput, deleteActivityTypeInput, createActivityAssignmentRuleInput, activityAssignmentRuleOutput, updateActivityAssignmentRuleInput, deleteActivityAssignmentRuleInput, dataManagementOverviewOutput, createBackupInput, backupItemOutput, backupIdInput, backupDownloadOutput, clearDeletedDataInput, clearDeletedDataOutput, archiveInactiveRecordsInput, archiveInactiveRecordsOutput, entityInput, exportDataOutput, importDataInput, importDataOutput, importTemplateOutput, duplicateEntityInput, duplicateGroupsOutput } from "../workspace/workspace.contracts";
+import { workspaceOutput, memberListInput, memberListOutput, teamItemOutput, roleItemOutput, invitationSettingsOutput, updateWorkspaceInput, setMemberRoleInput, workspaceMemberOutput, removeMemberInput, memberRemovalOutput, removedMembersOutput, allowMemberAgainInput, updateMemberTeamInput, createTeamInput, leadSettingsOutput, createLeadFieldInput, leadFieldOutput, updateLeadFieldInput, deleteLeadFieldInput, createLeadAssignmentRuleInput, leadAssignmentRuleOutput, updateLeadAssignmentRuleInput, deleteLeadAssignmentRuleInput, updateDefaultLeadOwnerInput, defaultLeadOwnerOutput, integrationsOverviewOutput, toggleIntegrationInput, integrationItemOutput, activitySettingsOverviewOutput, updateDefaultActivitySettingsInput, defaultActivitySettingsOutput, updateReminderRulesInput, reminderRulesOutput, updateCompletionBehaviorInput, completionBehaviorOutput, createActivityTypeInput, activityTypeItemOutput, updateActivityTypeInput, deleteActivityTypeInput, createActivityAssignmentRuleInput, activityAssignmentRuleOutput, updateActivityAssignmentRuleInput, deleteActivityAssignmentRuleInput, dataManagementOverviewOutput, createBackupInput, backupItemOutput, backupIdInput, backupDownloadOutput, clearDeletedDataInput, clearDeletedDataOutput, archiveInactiveRecordsInput, archiveInactiveRecordsOutput, entityInput, exportDataOutput, importDataInput, importDataOutput, importTemplateOutput, duplicateEntityInput, duplicateGroupsOutput } from "../workspace/workspace.contracts";
 import type { UsersRouter } from "../users/users.router";
 
 const appRouter = t.router({
@@ -855,6 +855,17 @@ const appRouter = t.router({
     setMemberRole: publicProcedure
       .input(setMemberRoleInput)
       .output(workspaceMemberOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    removeMember: publicProcedure
+      .input(removeMemberInput)
+      .output(memberRemovalOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    removedMembers: publicProcedure
+      .output(removedMembersOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    allowMemberAgain: publicProcedure
+      .input(allowMemberAgainInput)
+      .output(memberRemovalOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     updateMemberTeam: publicProcedure
       .input(updateMemberTeamInput)

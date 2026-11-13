@@ -1,4 +1,5 @@
 const { getDb } = require('./mongo');
+const { cleanPersonName, firstName } = require('../utils');
 
 function toProfileDoc(ownerId, slug, record, jobId) {
   const hasDraft = Boolean(record.aiMessage || record.lastMessage);
@@ -15,7 +16,7 @@ function toProfileDoc(ownerId, slug, record, jobId) {
     ownerId,
     slug,
     profileUrl: record.profileUrl || '',
-    name: record.name || '',
+    name: cleanPersonName(record.name),
     headline: record.headline || '',
     company: record.company || '',
     jobTitle: record.jobTitle || '',
@@ -231,7 +232,27 @@ async function countSentOnDate(ownerId, dateKey, timeZone = 'Asia/Kolkata') {
   return rows.length;
 }
 
+async function repairNotificationCountNames() {
+  const rows = await getDb()
+    .collection('profiles')
+    .find({ name: /^\s*\(\s*\d+\s*\+?\s*\)/ })
+    .toArray();
+  for (const row of rows) {
+    const name = cleanPersonName(row.name);
+    const $set = { name, updatedAt: new Date() };
+    const greeting = firstName(name);
+    for (const field of ['aiMessage', 'lastMessage']) {
+      if (row[field] && greeting) {
+        $set[field] = row[field].replace(/\(\s*\d+\s*\+?\s*\)/, greeting);
+      }
+    }
+    await getDb().collection('profiles').updateOne({ _id: row._id }, { $set });
+  }
+  return rows.length;
+}
+
 module.exports = {
+  repairNotificationCountNames,
   upsertProfile,
   getProfile,
   findProfileBySlug,

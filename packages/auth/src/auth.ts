@@ -303,6 +303,17 @@ export const auth = betterAuth({
 		session: {
 			create: {
 				before: async (session) => {
+					const removed = await db.user.findUnique({
+						where: { id: session.userId },
+						select: { removedAt: true },
+					});
+					if (removed?.removedAt) {
+						throw new APIError("FORBIDDEN", {
+							message:
+								"You were removed from this CRM. Ask an owner to let you back in.",
+						});
+					}
+
 					const workspaceId = await ensureWorkspaceMembership(session.userId);
 
 					const user = await db.user.findUnique({

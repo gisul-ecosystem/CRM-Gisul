@@ -19,6 +19,7 @@ const {
   sleepBetween,
   slugFromProfileUrl,
   nameFromSlug,
+  cleanPersonName,
 } = require('./utils');
 const db = require('./db');
 
@@ -358,9 +359,7 @@ async function runScrapeJob(userId, filters, onProgress) {
       };
 
       // Always keep a display name — list card / page / slug fallback
-      if (!record.name) {
-        record.name = conn.listName || nameFromSlug(slug);
-      }
+      record.name = cleanPersonName(record.name) || cleanPersonName(conn.listName) || nameFromSlug(slug);
       if (!record.headline) {
         record.headline = conn.headline || conn.subtitle || '';
       }

@@ -303,6 +303,7 @@ export function useCrmCache(): CrmCache {
 					trpc.workspace.members.queryKey(),
 					trpc.workspace.teams.queryKey(),
 					trpc.workspace.roles.queryKey(),
+					trpc.workspace.removedMembers.queryKey(),
 				],
 				[],
 				options,

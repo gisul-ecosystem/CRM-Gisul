@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import { MembersTable } from "./members-table";
+import { RemovedMembers } from "./removed-members";
 import { ROLE_DESCRIPTION, ROLE_LABEL } from "./roles";
 
 export function UsersTeamsView() {
@@ -87,6 +88,8 @@ export function UsersTeamsView() {
 					<MembersTable />
 				</CardContent>
 			</Card>
+
+			<RemovedMembers />
 
 			<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
 				<Card>

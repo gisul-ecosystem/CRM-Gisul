@@ -50,12 +50,19 @@ function saveJson(filePath, data) {
   fs.renameSync(tmp, filePath);
 }
 
+const NOTIFICATION_COUNT = /^\s*\(\s*\d+\s*\+?\s*\)\s*/;
+
+function cleanPersonName(name) {
+  return String(name || '')
+    .replace(NOTIFICATION_COUNT, '')
+    .replace(/\s*\|\s*LinkedIn.*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function firstName(fullName) {
-  const parts = String(fullName || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  return parts[0] || '';
+  const parts = cleanPersonName(fullName).split(/\s+/).filter(Boolean);
+  return parts.find((part) => /\p{L}/u.test(part)) || '';
 }
 
 function slugFromProfileUrl(url) {
@@ -107,6 +114,7 @@ module.exports = {
   maskUri,
   sleep,
   sleepBetween,
+  cleanPersonName,
   gotoWithRetry,
   ensureDirs,
   loadJson,
