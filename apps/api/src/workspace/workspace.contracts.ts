@@ -63,6 +63,31 @@ export const createTeamInput = z.object({
 
 export type UpdateWorkspaceInput = z.infer<typeof updateWorkspaceInput>;
 export type SetMemberRoleInput = z.infer<typeof setMemberRoleInput>;
+
+export const removeMemberInput = z.object({
+	memberId: z.string().min(1),
+});
+
+export type RemoveMemberInput = z.infer<typeof removeMemberInput>;
+
+export const allowMemberAgainInput = z.object({
+	userId: z.string().min(1),
+});
+
+export type AllowMemberAgainInput = z.infer<typeof allowMemberAgainInput>;
+
+export const removedMemberOutput = z.object({
+	userId: z.string(),
+	name: z.string(),
+	email: z.string(),
+	removedAt: z.string(),
+});
+
+export type RemovedMember = z.infer<typeof removedMemberOutput>;
+
+export const removedMembersOutput = z.array(removedMemberOutput);
+
+export const memberRemovalOutput = z.object({ ok: z.literal(true) });
 export type UpdateMemberTeamInput = z.infer<typeof updateMemberTeamInput>;
 export type CreateTeamInput = z.infer<typeof createTeamInput>;
 
@@ -88,6 +113,7 @@ export const workspaceOutput = z.object({
 	viewerRole: z.enum(WORKSPACE_ROLES).nullable(),
 	canRename: z.boolean(),
 	canChangeRoles: z.boolean(),
+	canRemoveMembers: z.boolean(),
 });
 
 export type Workspace = z.infer<typeof workspaceOutput>;

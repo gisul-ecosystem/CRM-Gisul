@@ -19,6 +19,7 @@ export {
 	canManageCurrency,
 	canManageProducts,
 	canManageTracking,
+	canRemoveMembers,
 	canRenameWorkspace,
 	DEFAULT_WORKSPACE_NAME,
 	ensureWorkspaceMembership,

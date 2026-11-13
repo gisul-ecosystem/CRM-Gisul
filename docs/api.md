@@ -47,6 +47,13 @@ here, what do we sell.
   `databaseHooks.session.create.before` and **degrades, never throws** — a throw fails
   the session create and locks everyone out. The plugin's `invitation` table is unused.
 - **First account is owner**, and the hook enrols pre-existing users, oldest first.
+- **Only an owner removes a member** (`workspace.removeMember`, `canRemoveMembers`).
+  It sets `user.removedAt`, deletes their sessions and their member row in one
+  transaction, and refuses yourself and the last owner. Their records keep them
+  as owner. `session.create.before` refuses a removed user and
+  `ensureWorkspaceMembership` never re-enrols one, so `ALLOWED_SIGN_IN` alone
+  cannot bring them back; `workspace.allowMemberAgain` clears `removedAt`, and
+  they rejoin as a member on their next sign-in.
 - **Permissions come from `@crm/auth`** — `canRenameWorkspace`, `canChangeRole`,
   `canConfigureSso`, `canManageCurrency` — enforced by the service *and* used to
   disable the UI control, so the button and the 403 cannot disagree.
