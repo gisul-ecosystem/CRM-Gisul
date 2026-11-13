@@ -155,7 +155,8 @@ function ScrapeBody() {
 					<CardHeader>
 						<CardTitle>Current scrape</CardTitle>
 						<CardDescription>
-							One scrape runs at a time, for everyone.
+							Your own scrapes and LinkedIn account. The browser runs one job at
+							a time, so a colleague's job can make you wait.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="flex flex-col gap-3">

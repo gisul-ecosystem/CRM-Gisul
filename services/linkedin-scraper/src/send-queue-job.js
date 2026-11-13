@@ -158,4 +158,8 @@ async function runSendQueueJob(userId, { slugs = [] } = {}) {
   }
 }
 
-module.exports = { runSendQueueJob, getSendJobStatus };
+function runningUsers() {
+  return [...sendJobs].filter(([, job]) => job?.status === 'running').map(([userId]) => userId);
+}
+
+module.exports = { runningUsers, runSendQueueJob, getSendJobStatus };

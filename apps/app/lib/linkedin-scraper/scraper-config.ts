@@ -5,6 +5,8 @@ export const LINKEDIN_SCRAPER = {
 	proxy: {
 		crmPrefix: "/api/linkedin-scraper",
 		upstreamPrefix: "/api",
+		userHeader: "x-crm-user-id",
+		legacyOwnerId: "local",
 	},
 	refresh: {
 		activeJobMs: 3 * SECOND_MS,
