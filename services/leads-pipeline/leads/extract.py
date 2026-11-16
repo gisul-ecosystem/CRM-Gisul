@@ -23,7 +23,7 @@ from .util import clean_name, extract_domain, looks_like_name
 # ---------------------------------------------------------------- titles
 _ATOM = (
     r"co-?founders?|founders?|ceo|chief executive officer|cto|chief technology officer|"
-    r"cio|chief information officer|chief ai officer|chief scientist|managing director|"
+    r"cio|chief information officer|chief ai officer|chief scientist|managing director|general manager|"
     r"president|owner|"
     r"head of (?:ai|ml|machine learning|engineering|infrastructure|infra|platform|data|devops|research|"
     r"it|technology|studio|production|r&d|pipeline|rendering|cloud|cloud infrastructure|mlops|"

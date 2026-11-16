@@ -102,6 +102,13 @@ _NAME_STOPWORDS = {
     "senior", "junior", "consultant", "consultants", "solution", "solutions", "architect", "manager",
     "managers", "executive", "associate", "analyst", "specialist", "coordinator", "trainer", "trainers",
     "faculty", "mentor", "mentors", "instructor", "developer", "lead", "intern", "counsellor", "counselor",
+    # Gulf company pages: divisions, sectors and widgets read as names ("Railways Project",
+    # "Hotels Division", "Family Businesses", "Calculate My Cost", "Both Tracks")
+    "railway", "railways", "project", "projects", "division", "divisions", "department", "departments",
+    "hotel", "hotels", "family", "businesses", "calculate", "cost", "costs", "both", "track", "tracks",
+    "sector", "sectors", "industry", "industries", "government", "hospitality", "retail", "banking",
+    "energy", "oil", "gas", "estate", "construction", "logistics", "aviation", "healthcare",
+    "education", "training", "trainings", "my", "your", "free", "zone", "freezone", "branch", "branches",
 }
 _HONORIFIC = re.compile(r"^(?:dr|mr|mrs|ms|miss|prof|er|sri|shri|smt)\.?\s+", re.I)
 

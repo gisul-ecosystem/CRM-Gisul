@@ -78,7 +78,7 @@ JOB = _rx(r"lab|labs|trainer|instructor|faculty|teaching assistant|mentor|techni
 
 # ---------------------------------------------------------------- decision makers
 TITLE_ATOMS = (
-    r"co-?founders?|founders?|ceo|chief executive officer|cto|chief technology officer|coo|"
+    r"co-?founders?|founders?|ceo|chief executive officer|cto|chief technology officer|coo|general manager|"
     r"chief operating officer|chief learning officer|clo|chief academic officer|managing director|"
     r"director|executive director|program(?:me)? director|academic director|director of (?:training|academics|"
     r"learning|programs?|programmes?|operations|technology|it)|"
@@ -98,8 +98,8 @@ PRIORITY = [
                 r"chief technology|dean|hod|director of", re.I), 1),
 ]
 # public search for people (people_search.py)
-SEARCH_TITLES = ('(founder OR director OR CEO OR "head of training" OR "academic head" OR '
-                 '"program director" OR "head of learning")')
+SEARCH_TITLES = ('(founder OR director OR CEO OR "general manager" OR "managing director" OR '
+                 '"head of training" OR "academic head" OR "program director" OR "head of learning")')
 
 # ---------------------------------------------------------------- scoring
 SOURCE_POINTS = {"directory": 3, "funding": 3, "incubator": 2, "github": 2}
