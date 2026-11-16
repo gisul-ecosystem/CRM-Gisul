@@ -27,13 +27,17 @@ describe("email draft", () => {
 	it("reads a drafted answer and rejects an empty subject", () => {
 		const drafted = emailDraftAnswer.parse({
 			outcome: "drafted",
-			draft: { subject: "Training for your team", body: "Hi Asha," },
+			draft: {
+				subject: "Training for your team",
+				body: "Hi Asha,",
+				followUpBody: "Hi again,",
+			},
 		});
 		expect(drafted.outcome).toBe("drafted");
 		expect(
 			emailDraftAnswer.safeParse({
 				outcome: "drafted",
-				draft: { subject: " ", body: "Hi" },
+				draft: { subject: " ", body: "Hi", followUpBody: "Hi" },
 			}).success,
 		).toBe(false);
 	});

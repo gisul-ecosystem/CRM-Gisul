@@ -55,6 +55,7 @@ import {
 } from "@/components/detail-sheet";
 import { LocalDateTime, LocalRelativeDate } from "@/components/local-date-time";
 import { SendEmailDialog } from "@/components/unifers/send-email-dialog";
+import { SentEmails } from "@/components/unifers/sent-emails";
 import { factsByField } from "@/lib/contact-facts";
 import { ENRICHMENT_POLL_MS, isEnriching } from "@/lib/enrichment-status";
 import {
@@ -205,6 +206,7 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 											name: contactName(contact),
 											companyName: contact.company?.name ?? null,
 											productId: contact.product?.id ?? null,
+											nextFollowUpAt: contact.nextFollowUpAt ?? null,
 										}}
 									/>
 								) : null}
@@ -468,6 +470,8 @@ function ContactOverview({ contact }: { contact: Contact }) {
 					/>
 				</DetailSheetProperties>
 			</DetailSheetSection>
+
+			<SentEmails contactId={contact.id} hasEmail={Boolean(contact.email)} />
 
 			{contact.brief ? <Background brief={contact.brief} /> : null}
 

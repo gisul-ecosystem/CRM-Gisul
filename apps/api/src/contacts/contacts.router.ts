@@ -12,6 +12,7 @@ import { EmailDraftService } from "../agent/email-draft.service";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { restMeta } from "../trpc/openapi";
+import { ContactEmailService } from "./contact-email.service";
 import {
 	bulkResultOutput,
 	contactBasicOutput,
@@ -33,7 +34,10 @@ import {
 	contactImportTemplateOutput,
 	contactListInput,
 	contactListOutput,
+	contactLogUnifersSendInput,
+	contactLogUnifersSendOutput,
 	contactNameOutput,
+	contactUnifersSendsOutput,
 	contactUpdateArgs,
 	decideFactOutput,
 	factDecisionInput,
@@ -46,6 +50,7 @@ export class ContactsRouter {
 	constructor(
 		@Inject(ContactsService) private readonly contacts: ContactsService,
 		@Inject(EmailDraftService) private readonly drafts: EmailDraftService,
+		@Inject(ContactEmailService) private readonly emails: ContactEmailService,
 	) {}
 
 	@Query({
@@ -238,5 +243,26 @@ export class ContactsRouter {
 			senderName: ctx.user.name?.trim() || null,
 			purpose: input.purpose || null,
 		});
+	}
+
+	@Mutation({
+		input: contactLogUnifersSendInput,
+		output: contactLogUnifersSendOutput,
+		meta: restMeta("POST", "/contacts/{contactId}/unifers-sends", ["Contacts"]),
+	})
+	async logUnifersSend(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof contactLogUnifersSendInput>,
+	) {
+		return this.emails.logSend(input, ctx.user.id);
+	}
+
+	@Query({
+		input: contactIdInput,
+		output: contactUnifersSendsOutput,
+		meta: restMeta("GET", "/contacts/{id}/unifers-sends", ["Contacts"]),
+	})
+	async unifersSends(@Input("id") id: string) {
+		return this.emails.sends(id);
 	}
 }

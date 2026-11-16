@@ -10,13 +10,15 @@ import { EMAIL_DRAFT } from "./email-draft-config";
 
 const SYSTEM = [
 	"You write one short, personal sales email from a CRM user to one person.",
-	"Write plain text only. No markdown, no links you were not given, no placeholders in square brackets.",
+	"Write plain text only. No markdown, no placeholders in square brackets.",
+	"When the sender's website is given, put it once in the first email, written out in full near the ask, so the reader can see more. Use no other links.",
 	`Keep the body under ${EMAIL_DRAFT.body.maxWords} words. Open with a line that shows you know who they are, then make one clear point, then ask one easy question.`,
 	"Use only the facts you are given. Do not invent numbers, customers, meetings or past contact.",
 	"When a product is given, the whole email is about that product. Name it. Take one concrete benefit from its description and tie it to this person's role and their company. Do not list features.",
 	"When no product is given, write a short introduction from the sender's company.",
 	"Sign off with the sender's name when it is given, otherwise end without a signature.",
 	"The subject is short, specific and lower-key than a headline.",
+	`Also write followUpBody: a follow-up sent a few days later in the same thread, only when they have not replied. Under ${EMAIL_DRAFT.followUp.maxWords} words. Refer back to the first email in one line, add one new reason or a simpler ask, and stay polite. Do not repeat the first email or guilt them.`,
 ].join("\n");
 
 function clip(text: string | null | undefined, max: number): string | null {

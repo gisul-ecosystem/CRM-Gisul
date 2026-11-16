@@ -1,6 +1,8 @@
 "use client";
 
 import { Button } from "@crm/ui/components/button";
+import { Checkbox } from "@crm/ui/components/checkbox";
+import { DatePicker } from "@crm/ui/components/date-picker";
 import {
 	Dialog,
 	DialogContent,
@@ -24,13 +26,18 @@ import {
 	SelectValue,
 } from "@crm/ui/components/select";
 import { Textarea } from "@crm/ui/components/textarea";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useUnifersHealth } from "@/components/unifers/unifers-page";
 import { useTRPC } from "@/lib/trpc/client";
 import { campaignsApi } from "@/lib/unifers/api";
 import { useUnifersCache } from "@/lib/unifers/cache";
+import {
+	defaultFollowUpDay,
+	followUpSubject,
+	waitDaysUntil,
+} from "@/lib/unifers/single-send";
 import { UNIFERS } from "@/lib/unifers/unifers-config";
 
 export type EmailRecipient = {
@@ -39,6 +46,7 @@ export type EmailRecipient = {
 	name: string;
 	companyName: string | null;
 	productId: string | null;
+	nextFollowUpAt: string | null;
 };
 
 const NO_PRODUCT = "none";
@@ -58,9 +66,13 @@ export function SendEmailDialog({
 		purpose: useId(),
 		subject: useId(),
 		body: useId(),
+		followUp: useId(),
+		followUpOn: useId(),
+		followUpBody: useId(),
 	};
 	const trpc = useTRPC();
 	const cache = useUnifersCache();
+	const queryClient = useQueryClient();
 	const accounts = useUnifersHealth();
 	const products = useQuery(trpc.products.options.queryOptions());
 	const productOptions = products.data?.options ?? [];
@@ -73,6 +85,11 @@ export function SendEmailDialog({
 	const [purpose, setPurpose] = useState("");
 	const [subject, setSubject] = useState("");
 	const [body, setBody] = useState("");
+	const [followUp, setFollowUp] = useState(true);
+	const [followUpOn, setFollowUpOn] = useState(() =>
+		defaultFollowUpDay(recipient.nextFollowUpAt),
+	);
+	const [followUpBody, setFollowUpBody] = useState("");
 	const drafted = useRef(false);
 
 	const chosenSender =
@@ -86,6 +103,7 @@ export function SendEmailDialog({
 			onSuccess: (result) => {
 				setSubject(result.subject);
 				setBody(result.body);
+				setFollowUpBody(result.followUpBody);
 			},
 			onError: (error) => toast.error(error.message),
 		}),
@@ -109,12 +127,38 @@ export function SendEmailDialog({
 			purpose: nextPurpose.trim() || null,
 		});
 
+	const logSend = useMutation(
+		trpc.contacts.logUnifersSend.mutationOptions({
+			onSuccess: () =>
+				queryClient.invalidateQueries({
+					queryKey: trpc.contacts.unifersSends.queryKey({
+						id: recipient.contactId,
+					}),
+				}),
+			onError: (error) =>
+				toast.error(`Sent, but the CRM did not record it: ${error.message}`),
+		}),
+	);
+
+	const withFollowUp = followUp && followUpBody.trim() !== "";
+
 	const send = useMutation({
 		mutationFn: () =>
 			campaignsApi.create({
 				name: `${UNIFERS.singleSend.namePrefix} ${recipient.name} · ${new Date().toLocaleString()}`,
 				senders: [chosenSender],
-				sequence: [{ subject: subject.trim(), body: body.trim(), waitDays: 0 }],
+				sequence: [
+					{ subject: subject.trim(), body: body.trim(), waitDays: 0 },
+					...(withFollowUp
+						? [
+								{
+									subject: followUpSubject(subject),
+									body: followUpBody.trim(),
+									waitDays: waitDaysUntil(followUpOn),
+								},
+							]
+						: []),
+				],
 				sendWindow: {
 					...UNIFERS.singleSend.window,
 					days: [...UNIFERS.singleSend.window.days],
@@ -147,7 +191,19 @@ export function SendEmailDialog({
 				);
 				return;
 			}
-			toast.success(`Sending to ${recipient.email} from ${chosenSender}.`);
+			await logSend.mutateAsync({
+				contactId: recipient.contactId,
+				campaignId: created.campaign.id,
+				sender: chosenSender,
+				subject: subject.trim(),
+				body: body.trim(),
+				followUpAt: withFollowUp ? followUpOn : null,
+			});
+			toast.success(
+				withFollowUp
+					? `Sending to ${recipient.email}. Follow-up on ${followUpOn} unless they reply.`
+					: `Sending to ${recipient.email} from ${chosenSender}.`,
+			);
 			onClose();
 		},
 		onError: (error) => toast.error(error.message),
@@ -157,6 +213,7 @@ export function SendEmailDialog({
 		chosenSender !== "" &&
 		subject.trim() !== "" &&
 		body.trim() !== "" &&
+		(!followUp || followUpBody.trim() !== "") &&
 		!draft.isPending &&
 		!send.isPending;
 
@@ -259,13 +316,54 @@ export function SendEmailDialog({
 						<FieldLabel htmlFor={ids.body}>Message</FieldLabel>
 						<Textarea
 							id={ids.body}
-							rows={10}
+							rows={8}
 							value={body}
 							disabled={draft.isPending}
 							placeholder={draft.isPending ? "Claude is writing…" : ""}
 							onChange={(event) => setBody(event.target.value)}
 						/>
 					</Field>
+					<Field orientation="horizontal">
+						<Checkbox
+							id={ids.followUp}
+							checked={followUp}
+							onCheckedChange={(checked) => setFollowUp(checked === true)}
+						/>
+						<FieldLabel htmlFor={ids.followUp}>
+							Send a follow-up if they do not reply
+						</FieldLabel>
+					</Field>
+					{followUp ? (
+						<>
+							<Field>
+								<FieldLabel htmlFor={ids.followUpOn}>Follow-up on</FieldLabel>
+								<DatePicker
+									id={ids.followUpOn}
+									value={followUpOn}
+									onChange={(day) =>
+										setFollowUpOn(day || defaultFollowUpDay(null))
+									}
+								/>
+								<FieldDescription>
+									Starts from the contact's next follow-up date. Sending saves
+									this date on the contact. A reply stops the follow-up.
+								</FieldDescription>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor={ids.followUpBody}>
+									Follow-up message
+								</FieldLabel>
+								<Textarea
+									id={ids.followUpBody}
+									rows={5}
+									value={followUpBody}
+									disabled={draft.isPending}
+									placeholder={draft.isPending ? "Claude is writing…" : ""}
+									onChange={(event) => setFollowUpBody(event.target.value)}
+								/>
+							</Field>
+						</>
+					) : null}
 				</FieldGroup>
 				<DialogFooter>
 					<Button variant="outline" onClick={onClose}>
