@@ -17,6 +17,7 @@ describe("email draft", () => {
 		delete process.env.ANTHROPIC_API_KEY;
 		const answer = await draftEmail({
 			contactId: "c1",
+			productId: null,
 			senderName: null,
 			purpose: null,
 		});
@@ -41,6 +42,7 @@ describe("email draft", () => {
 		expect(
 			emailDraftRequest.safeParse({
 				contactId: "",
+				productId: null,
 				senderName: null,
 				purpose: null,
 			}).success,

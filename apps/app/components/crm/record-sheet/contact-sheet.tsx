@@ -204,6 +204,7 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 											email: contact.email,
 											name: contactName(contact),
 											companyName: contact.company?.name ?? null,
+											productId: contact.product?.id ?? null,
 										}}
 									/>
 								) : null}

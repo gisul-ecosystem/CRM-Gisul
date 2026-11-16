@@ -9,6 +9,7 @@ export const EMAIL_DRAFT_LIMITS = {
 
 export const emailDraftRequest = z.object({
 	contactId: z.string().trim().min(1),
+	productId: z.string().trim().min(1).nullable(),
 	senderName: z.string().trim().max(EMAIL_DRAFT_LIMITS.senderName).nullable(),
 	purpose: z.string().trim().max(EMAIL_DRAFT_LIMITS.purpose).nullable(),
 });

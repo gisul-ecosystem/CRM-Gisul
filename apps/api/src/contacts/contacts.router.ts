@@ -234,6 +234,7 @@ export class ContactsRouter {
 	) {
 		return this.drafts.draft({
 			contactId: input.id,
+			productId: input.productId,
 			senderName: ctx.user.name?.trim() || null,
 			purpose: input.purpose || null,
 		});

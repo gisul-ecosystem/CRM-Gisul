@@ -13,6 +13,8 @@ const SYSTEM = [
 	"Write plain text only. No markdown, no links you were not given, no placeholders in square brackets.",
 	`Keep the body under ${EMAIL_DRAFT.body.maxWords} words. Open with a line that shows you know who they are, then make one clear point, then ask one easy question.`,
 	"Use only the facts you are given. Do not invent numbers, customers, meetings or past contact.",
+	"When a product is given, the whole email is about that product. Name it. Take one concrete benefit from its description and tie it to this person's role and their company. Do not list features.",
+	"When no product is given, write a short introduction from the sender's company.",
 	"Sign off with the sender's name when it is given, otherwise end without a signature.",
 	"The subject is short, specific and lower-key than a headline.",
 ].join("\n");
@@ -31,9 +33,41 @@ function model(): string {
 	return process.env[EMAIL_DRAFT.env.model]?.trim() || EMAIL_DRAFT.model;
 }
 
-async function contactContext(contactId: string): Promise<string | null> {
+const PRODUCT_SELECT = {
+	name: true,
+	shortDescription: true,
+	detailedDescription: true,
+	category: true,
+	type: true,
+} as const;
+
+async function chosenProduct(productId: string | null) {
+	if (!productId) return null;
+	return db.product.findFirst({
+		where: { id: productId, archivedAt: null },
+		select: PRODUCT_SELECT,
+	});
+}
+
+async function senderCompany(): Promise<string | null> {
+	const organization = await db.organization.findFirst({
+		select: { name: true, website: true },
+		orderBy: { createdAt: "asc" },
+	});
+	if (!organization) return null;
+	return [
+		`Company: ${organization.name}`,
+		organization.website ? `Website: ${organization.website}` : null,
+	]
+		.filter((line) => line !== null)
+		.join("\n");
+}
+
+async function contactContext(
+	request: EmailDraftRequest,
+): Promise<string | null> {
 	const contact = await db.contact.findFirst({
-		where: { id: contactId, archivedAt: null },
+		where: { id: request.contactId, archivedAt: null },
 		select: {
 			firstName: true,
 			lastName: true,
@@ -49,13 +83,7 @@ async function contactContext(contactId: string): Promise<string | null> {
 					description: true,
 				},
 			},
-			product: {
-				select: {
-					name: true,
-					shortDescription: true,
-					detailedDescription: true,
-				},
-			},
+			product: { select: PRODUCT_SELECT },
 		},
 	});
 	if (!contact) return null;
@@ -84,14 +112,17 @@ async function contactContext(contactId: string): Promise<string | null> {
 		);
 	}
 
-	if (contact.product) {
+	const product =
+		(await chosenProduct(request.productId)) ?? contact.product ?? null;
+	if (product) {
 		lines.push(
 			"",
-			"## What we want to talk to them about",
-			`Product: ${contact.product.name}`,
-			`Summary: ${contact.product.shortDescription}`,
-			contact.product.detailedDescription
-				? `Detail: ${clip(contact.product.detailedDescription, EMAIL_DRAFT.product.maxDescriptionChars)}`
+			"## The product this email is about",
+			`Product: ${product.name}`,
+			`Category: ${product.category} · ${product.type}`,
+			`Summary: ${product.shortDescription}`,
+			product.detailedDescription
+				? `Detail: ${clip(product.detailedDescription, EMAIL_DRAFT.product.maxDescriptionChars)}`
 				: null,
 		);
 	}
@@ -110,7 +141,7 @@ export async function draftEmail(
 		};
 	}
 
-	const context = await contactContext(request.contactId);
+	const context = await contactContext(request);
 	if (!context) {
 		return { outcome: "not_found", reason: "That contact does not exist." };
 	}
@@ -120,10 +151,11 @@ export async function draftEmail(
 		"",
 		"## The sender",
 		request.senderName ? `Name: ${request.senderName}` : "Name: not given",
+		(await senderCompany()) ?? "Company: not given",
 		"",
 		"## What this email is for",
 		request.purpose ||
-			"A first, friendly introduction that starts a conversation.",
+			"A first, friendly email that introduces the product and starts a conversation.",
 	].join("\n");
 
 	try {
