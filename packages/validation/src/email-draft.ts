@@ -19,6 +19,7 @@ export type EmailDraftRequest = z.infer<typeof emailDraftRequest>;
 export const emailDraft = z.object({
 	subject: z.string().trim().min(1).max(EMAIL_DRAFT_LIMITS.subject),
 	body: z.string().trim().min(1).max(EMAIL_DRAFT_LIMITS.body),
+	followUpBody: z.string().trim().min(1).max(EMAIL_DRAFT_LIMITS.body),
 });
 
 export type EmailDraft = z.infer<typeof emailDraft>;

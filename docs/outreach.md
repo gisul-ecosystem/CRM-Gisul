@@ -148,3 +148,16 @@ picks a verified Unifers mailbox. Send creates a one-lead campaign named
 
 Starting a campaign is owner or admin only, so a member gets a 403 on send.
 A lead already in another Unifers campaign is not added, and nothing is sent.
+
+#### Follow-up and reply tracking
+
+The Send email dialog can add one follow-up. Claude writes it with the first email. The date starts
+from the contact's **Next follow-up** (or three days out) and is saved back on the contact. Unifers
+sends it as a second step, subject "Re: …", and stops it on a reply (`stopConditions.onReply`).
+
+Each send is saved as an EMAIL activity on the contact. Its `meta` holds the Unifers campaign id,
+the sender and the follow-up day (`@crm/validation/unifers-send`). `contacts.logUnifersSend` writes
+it and `contacts.unifersSends` reads it. The contact's Overview shows **Emails sent with Unifers**:
+the app asks Unifers for each campaign's analytics and shows Replied, Bounced, Clicked, Opened,
+Delivered, Sent or Queued, plus the follow-up state. The logic is `sendStatus` in
+`lib/unifers/single-send.ts`.

@@ -26,6 +26,7 @@ export const UNIFERS = {
 		namePrefix: "Email to",
 		window: { start: "00:00", end: "23:59", days: [1, 2, 3, 4, 5, 6, 7] },
 		stopConditions: { onReply: true, onClick: false },
+		minFollowUpDays: 1,
 	},
 	placeholders: [
 		"{{firstName | there}}",

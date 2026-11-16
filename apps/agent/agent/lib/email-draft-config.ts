@@ -11,4 +11,5 @@ export const EMAIL_DRAFT = {
 	company: { maxDescriptionChars: 800 },
 	product: { maxDescriptionChars: 1200 },
 	body: { maxWords: 140 },
+	followUp: { maxWords: 80 },
 } as const;

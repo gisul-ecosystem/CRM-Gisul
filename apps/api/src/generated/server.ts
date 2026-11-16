@@ -17,7 +17,7 @@ import { activitiesListInput, activitiesListOutput, timelineInput, timelineOutpu
 import { agentListOutput, agentReviseInput, agentReviseOutput, agentIdInput, agentFilesOutput, agentSaveFileInput, agentSaveFileOutput, agentByIdOutput, agentHistoryInput, agentHistoryOutput, agentActivityOutput, agentUpdateInput, agentUpdateOutput, agentDeployInput, agentDeployOutput, agentPauseOutput, agentResumeOutput, agentArchiveOutput, agentRestoreOutput, agentRemoveOutput, agentRunNowInput, agentRunNowOutput, agentRetryRunInput, agentRetryRunOutput, agentCancelRunInput, agentCancelRunOutput } from "../agent/agents.contracts";
 import { apiKeyListInput, apiKeyListOutput, createApiKeyInput, createApiKeyOutput, revokeApiKeyInput, revokeApiKeyOutput } from "../api-keys/api-keys.contracts";
 import { companyListInput, companyListOutput, companyExportInput, companyExportOutput, companyImportTemplateOutput, companyImportInput, companyImportOutput, companyIdInput, companyDetailOutput, companyOptionsInput, companyOptionOutput, companyCreateInput, companySummaryOutput, companyUpdateArgs, companyArchiveResultOutput, companyBulkOwnerInput, companyBulkResultOutput, companyBulkInput, companyEnrichOutput, companyResearchOutput, setPrimaryContactInput, companySetPrimaryContactOutput } from "../companies/companies.contracts";
-import { contactListInput, contactListOutput, contactExportInput, contactExportOutput, contactImportTemplateOutput, contactImportInput, contactImportOutput, contactImportLeadsInput, contactImportLeadsOutput, contactIdInput, contactByIdOutput, contactCreateInput, contactBasicOutput, contactUpdateArgs, contactNameOutput, contactEnrichOutput, contactBulkOwnerInput, bulkResultOutput, contactBulkCompanyInput, contactBulkInput, factDecisionInput, decideFactOutput, contactDraftEmailInput, contactDraftEmailOutput } from "../contacts/contacts.contracts";
+import { contactListInput, contactListOutput, contactExportInput, contactExportOutput, contactImportTemplateOutput, contactImportInput, contactImportOutput, contactImportLeadsInput, contactImportLeadsOutput, contactIdInput, contactByIdOutput, contactCreateInput, contactBasicOutput, contactUpdateArgs, contactNameOutput, contactEnrichOutput, contactBulkOwnerInput, bulkResultOutput, contactBulkCompanyInput, contactBulkInput, factDecisionInput, decideFactOutput, contactDraftEmailInput, contactDraftEmailOutput, contactLogUnifersSendInput, contactLogUnifersSendOutput, contactUnifersSendsOutput } from "../contacts/contacts.contracts";
 import { conversationListInput, conversationListOutput, builderListOutput, builderResourceSearchInput, builderResourcesOutput, conversationIdInput, builderConversationDetailOutput, conversationEventsInput, conversationEventsOutput, conversationSaveInput, conversationIdOutput, builderConversationCreateInput, builderConversationSubmitInput, builderQuestionResponseInput, builderResponseRatingInput, builderResponseRatingOutput, conversationShareStatusOutput, conversationShareTokenOutput, sharedConversationInput, sharedConversationOutput } from "../conversations/conversations.contracts";
 import { currencySettingsOutput, setReportingCurrencyInput, setManualRateInput, removeManualRateInput } from "../currency/currency.contracts";
 import { dashboardSummaryInput, dashboardSummaryOutput, dashboardReportInput, dashboardReportOutput } from "../dashboard/dashboard.contracts";
@@ -301,7 +301,15 @@ const appRouter = t.router({
     draftEmail: publicProcedure
       .input(contactDraftEmailInput)
       .output(contactDraftEmailOutput)
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    logUnifersSend: publicProcedure
+      .input(contactLogUnifersSendInput)
+      .output(contactLogUnifersSendOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    unifersSends: publicProcedure
+      .input(contactIdInput)
+      .output(contactUnifersSendsOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
     }),
   conversations: t.router({
     list: publicProcedure

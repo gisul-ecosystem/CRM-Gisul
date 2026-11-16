@@ -9,13 +9,11 @@ import {
 } from "@crm/db";
 import { FIELD_ENTITIES, FIELD_TYPES } from "@crm/db/fields";
 import { EMAIL_DRAFT_LIMITS, emailDraft } from "@crm/validation/email-draft";
+import { unifersSend, unifersSendInput } from "@crm/validation/unifers-send";
 import { z } from "zod";
 import { bulkIdsInput } from "../crm/bulk";
 import { recordFieldValues } from "../fields/fields.contracts";
-import {
-	leadSourceEnum,
-	leadStatusEnum,
-} from "../products/products.contracts";
+import { leadSourceEnum, leadStatusEnum } from "../products/products.contracts";
 import { activityFacetInput, listInput } from "../trpc/list-input";
 import { CONTACT_IO } from "./contacts-io-config";
 
@@ -400,3 +398,9 @@ export const contactDraftEmailInput = z.object({
 });
 
 export const contactDraftEmailOutput = emailDraft;
+
+export const contactLogUnifersSendInput = unifersSendInput;
+
+export const contactLogUnifersSendOutput = z.object({ id: z.string() });
+
+export const contactUnifersSendsOutput = z.array(unifersSend);
