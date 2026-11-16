@@ -247,3 +247,17 @@ skips queries done before, so each run continues the list.
 The Leads page has **Found from** and **Found to**. They send `since` and `until` (`YYYY-MM-DD`)
 to `/api/leads` and `/api/download`. Both days are included. The filter reads `date_found`, the
 day the pipeline first found the lead. A value that is not a date is ignored.
+
+## Emails for Gulf (and other) companies
+
+- **Other domains.** An address on a sibling domain counts as the company's (`info@acme.com` for
+  `acme.ae`), after its own domain. A free mailbox (Gmail, Hotmail, Outlook, Yahoo) is used only when
+  the site shows nothing on the company's domains; its source is `website-freemail`. Each address
+  is verified against its own mail domain.
+- **People search** uses the first search key set: Serper, Tavily, then Brave. It searches in the
+  company's country (Brave: `ALL` where it has no country), and moves to the next key when one
+  is out of credit. It searches up to `SEARCH_MAX_PER_RUN` companies a run.
+- **General Manager** counts as a decision-maker title in both profiles.
+- **One more pass.** `EMAIL_RULES_VERSION` in `stages.py` gives companies left without an email one
+  more pass when the rules change, if their site shows an address the new rules accept. Companies
+  searched for people with the old India-only search are searched once more in their own country.

@@ -47,4 +47,10 @@ export const LINKEDIN_SCRAPER = {
 			"AI interview tool",
 		],
 	},
+	companies: {
+		maxKeywordChars: 120,
+		pageSize: 25,
+		defaultIndustries: ["132", "105"],
+		defaultCountries: ["104305776"],
+	},
 } as const;

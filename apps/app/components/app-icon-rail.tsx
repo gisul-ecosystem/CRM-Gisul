@@ -170,6 +170,12 @@ const GROUPS: NavGroup[] = [
 				match: "prefix",
 			},
 			{
+				title: "Companies",
+				href: "/linkedin/companies",
+				icon: Building,
+				match: "prefix",
+			},
+			{
 				title: "Queue",
 				href: "/linkedin/queue",
 				icon: ListChecked,
