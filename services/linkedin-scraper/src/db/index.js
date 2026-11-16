@@ -6,4 +6,6 @@ module.exports = {
   jobs: require('./jobs'),
   sendLimits: require('./send-limits'),
   postSearchLimits: require('./post-search-limits'),
+  companies: require('./companies'),
+  companySearchLimits: require('./company-search-limits'),
 };

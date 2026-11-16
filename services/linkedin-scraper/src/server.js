@@ -14,11 +14,13 @@ const {
   SEND_DAY_TZ,
   OUT_DIR,
   POST_SEARCH,
+  COMPANY_SEARCH,
   SCRAPER_USERS,
 } = require('./config');
 const { CONNECTION_TYPES, buildSearchUrl, resolveConnectionType } = require('./search');
 const { runScrapeJob, getJobStatus, requestScrapeStop, runningUsers: scrapeUsers } = require('./scrape-job');
 const { buildPostSearchUrl } = require('./posts');
+const { buildCompanySearchUrl, pickFilters } = require('./companies');
 const FIRST_DEGREE_TYPES = ['all_connections', 'connections_search', 'first_degree'];
 const { runSendQueueJob, getSendJobStatus, runningUsers: sendUsers } = require('./send-queue-job');
 const {
@@ -33,7 +35,7 @@ const { listProducts, parseProductIds } = require('./products');
 const { userPaths } = require('./paths');
 const { getRagStatus, buildIndex } = require('./rag/index');
 const { getSendBudget } = require('./send-limits');
-const { writeDailySendReportExcel } = require('./export');
+const { writeDailySendReportExcel, companiesWorkbook } = require('./export');
 const { ensureDirs, maskUri } = require('./utils');
 const { parseConnectionFile } = require('./import-profiles');
 const multer = require('multer');
@@ -690,6 +692,123 @@ app.post('/api/scrape/posts', async (req, res) => {
   runScrapeJob(req.userId, filters).catch((err) => {
     console.error(`[scrape-posts:${req.userId}]`, err.message);
   });
+});
+
+app.get('/api/company-search/options', async (req, res) => {
+  let runsToday = 0;
+  try {
+    await db.connectMongo();
+    runsToday = (await db.companySearchLimits.getDailyCompanyRuns(req.userId)).runCount;
+  } catch {
+    runsToday = 0;
+  }
+  res.json({
+    industries: COMPANY_SEARCH.industries.map(({ id, label }) => ({ id, label })),
+    countries: COMPANY_SEARCH.countries.map(({ id, label }) => ({ id, label })),
+    defaultMaxCompanies: COMPANY_SEARCH.defaultMaxCompanies,
+    maxCompaniesCap: COMPANY_SEARCH.maxCompaniesCap,
+    dailyRunLimit: COMPANY_SEARCH.dailyRunLimit,
+    runsToday,
+  });
+});
+
+app.post('/api/scrape/companies', async (req, res) => {
+  if (browserBusyFor(req.userId)) return res.status(409).json(BROWSER_BUSY);
+  if (getJobStatus(req.userId).status === 'running') {
+    return res.status(409).json({ error: 'Scrape already running' });
+  }
+  if (getSendJobStatus(req.userId).status === 'running') {
+    return res.status(409).json({ error: 'Send job is running — wait until it finishes' });
+  }
+
+  const paths = userPaths(req.userId);
+  if (!hasLinkedInSession(paths.linkedinSession)) {
+    return res.status(401).json({ error: 'Connect LinkedIn first' });
+  }
+
+  const body = req.body || {};
+  const keywords = String(body.keywords || '').replace(/\s+/g, ' ').trim();
+  if (keywords.length > COMPANY_SEARCH.maxKeywordChars) {
+    return res.status(400).json({ error: `Keep keywords under ${COMPANY_SEARCH.maxKeywordChars} characters` });
+  }
+  const industries = pickFilters(body.industries, COMPANY_SEARCH.industries);
+  const countries = pickFilters(body.countries, COMPANY_SEARCH.countries);
+  if (!industries.length && !keywords) {
+    return res.status(400).json({ error: 'Pick at least one industry, or enter keywords' });
+  }
+  if (!countries.length) {
+    return res.status(400).json({ error: 'Pick at least one country' });
+  }
+  const maxCompanies = Math.min(
+    COMPANY_SEARCH.maxCompaniesCap,
+    Math.max(1, Number(body.maxCompanies) || COMPANY_SEARCH.defaultMaxCompanies)
+  );
+
+  try {
+    await db.connectMongo();
+  } catch (err) {
+    return res.status(503).json({ error: `MongoDB not available: ${err.message}` });
+  }
+
+  const runs = await db.companySearchLimits.getDailyCompanyRuns(req.userId);
+  if (runs.runCount >= COMPANY_SEARCH.dailyRunLimit) {
+    return res.status(429).json({
+      error: `Company search limit reached: ${COMPANY_SEARCH.dailyRunLimit} run(s) per day, to keep the LinkedIn account safe. Try again tomorrow.`,
+    });
+  }
+  await db.companySearchLimits.recordCompanyRun(req.userId);
+
+  const filters = {
+    connectionType: 'company_search',
+    rescrape: body.rescrape === true,
+    sendMessages: false,
+    aiMessages: false,
+    maxResults: maxCompanies,
+    companySearch: { keywords, industries, countries, maxCompanies },
+  };
+
+  res.json({
+    ok: true,
+    message: `Company search started — up to ${maxCompanies} companies. Run ${runs.runCount + 1} of ${COMPANY_SEARCH.dailyRunLimit} today.`,
+    previewUrl: buildCompanySearchUrl({ keywords, industries, countries }),
+  });
+
+  runScrapeJob(req.userId, filters).catch((err) => {
+    console.error(`[scrape-companies:${req.userId}]`, err.message);
+  });
+});
+
+app.get('/api/companies', async (req, res) => {
+  try {
+    await db.connectMongo();
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = Math.max(0, Number(req.query.skip) || 0);
+    const result = await db.companies.listCompanies(req.userId, {
+      q: String(req.query.q || '').trim().slice(0, 100),
+      country: String(req.query.country || '').trim(),
+      industry: String(req.query.industry || '').trim(),
+      limit,
+      skip,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/companies/download', async (req, res) => {
+  try {
+    await db.connectMongo();
+    const companies = await db.companies.allCompanies(req.userId);
+    if (!companies.length) return res.status(404).json({ error: 'No companies yet. Run a company search first.' });
+    const workbook = await companiesWorkbook(companies);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="linkedin-companies.xlsx"');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    if (!res.headersSent) res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/scrape/import', upload.single('file'), async (req, res) => {

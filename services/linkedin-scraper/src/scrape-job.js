@@ -9,6 +9,7 @@ const { writeConnectionsExcel } = require('./export');
 const { resolveConnectionType, buildSearchUrl } = require('./search');
 const { generateOutreachMessage, assessPostIntent } = require('./ai-message');
 const { collectPosts } = require('./posts');
+const { collectCompanies, scrapeCompanies } = require('./companies');
 const { renderTemplate } = require('./message-template');
 const { sendMessageToProfile } = require('./messaging');
 const { getSendBudget, recordSuccessfulSend, maybeBatchPause } = require('./send-limits');
@@ -151,6 +152,10 @@ async function runScrapeJob(userId, filters, onProgress) {
       log,
       shouldStop: () => job.stopRequested,
     });
+
+    if (filters.connectionType === 'company_search') {
+      return await runCompanySearch({ userId, jobId, job, filters, page, log, outDir: paths.outDir });
+    }
 
     if (usingImport) {
       await log(`Mode: file import | ${importedConns.length} URL(s) in spreadsheet`);
@@ -543,6 +548,58 @@ async function runScrapeJob(userId, filters, onProgress) {
   } finally {
     await browser.close();
   }
+}
+
+async function runCompanySearch({ userId, jobId, job, filters, page, log, outDir }) {
+  const search = filters.companySearch;
+  const shouldStop = () => job.stopRequested;
+  const labels = (items) => items.map((item) => item.label);
+  await log(
+    `Mode: company search | keywords "${search.keywords || 'none'}" | industries: ${labels(search.industries).join(', ') || 'any'} | countries: ${labels(search.countries).join(', ') || 'any'} | up to ${search.maxCompanies}`
+  );
+  const known = filters.rescrape ? new Set() : await db.companies.knownCompanySlugs(userId);
+  const cards = await collectCompanies(page, {
+    keywords: search.keywords,
+    industries: search.industries,
+    countries: search.countries,
+    maxCompanies: search.maxCompanies,
+    known,
+    shouldStop,
+    log,
+    debugDir: outDir,
+  });
+  job.total = cards.length;
+  await db.jobs.updateScrapeJob(jobId, { total: job.total, filters: job.filters });
+  if (cards.length) await log(`Opening ${cards.length} company page(s), with a pause between each`);
+
+  const stored = {
+    keywords: search.keywords,
+    industries: labels(search.industries),
+    countries: labels(search.countries),
+  };
+  const { kept, outside } = await scrapeCompanies(page, cards, search, {
+    shouldStop,
+    log,
+    onCompany: async (record) => {
+      await db.companies.upsertCompany(userId, record, stored);
+      job.processed += 1;
+      job.current = record.name;
+    },
+  });
+
+  job.status = job.stopRequested ? 'stopped' : 'completed';
+  job.finishedAt = new Date().toISOString();
+  job.resultCount = kept;
+  await db.jobs.updateScrapeJob(jobId, {
+    status: job.status,
+    finishedAt: job.finishedAt,
+    resultCount: kept,
+    processed: job.processed,
+  });
+  await log(
+    `${job.stopRequested ? 'Stopped' : 'Done'} — ${kept} compan${kept === 1 ? 'y' : 'ies'} saved${outside ? `, ${outside} skipped (headquarters outside the chosen countries)` : ''}`
+  );
+  return job;
 }
 
 function runningUsers() {

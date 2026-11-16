@@ -23,6 +23,8 @@ async function ensureIndexes(database) {
   await database.collection('profiles').createIndex({ ownerId: 1, queueStatus: 1 });
   await database.collection('scrape_jobs').createIndex({ jobId: 1 }, { unique: true });
   await database.collection('scrape_jobs').createIndex({ ownerId: 1, startedAt: -1 });
+  await database.collection('companies').createIndex({ ownerId: 1, slug: 1 }, { unique: true });
+  await database.collection('companies').createIndex({ ownerId: 1, foundAt: -1 });
 }
 
 function getDb() {

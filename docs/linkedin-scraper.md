@@ -131,8 +131,9 @@ browser ──► CRM app /api/linkedin-scraper/<path>   (apps/app/app/api/linke
 | CRM page | Scraper endpoints |
 | --- | --- |
 | Overview | `/status`, `/products`, `/rag/rebuild`, `/linkedin/*` |
-| Search and scrape | `/connection-types`, `/scrape/start`, `/scrape/posts`, `/scrape/import`, `/scrape/stop`, `/jobs` |
+| Search and scrape | `/connection-types`, `/scrape/start`, `/scrape/posts`, `/company-search/options`, `/scrape/companies`, `/scrape/import`, `/scrape/stop`, `/jobs` |
 | Found posts | `/results`, filtered to profiles with `sourcePost` |
+| Companies | `/companies`, `/companies/download` |
 | Profiles | `/results`, `/results/download` |
 | Queue | `/queue`, `/queue/:slug`, `/queue/template`, `/queue/skip`, `/queue/clear`, `/queue/send` |
 | Sent | `/reports/daily-sends/summary`, `/reports/daily-sends` |
@@ -163,6 +164,24 @@ browser ──► CRM app /api/linkedin-scraper/<path>   (apps/app/app/api/linke
   (next to Comment and Repost). Without a post ID, "Open the post" opens the
   author's recent activity. A run with 0 posts logs a page check line and saves
   `post-search-debug.png` and `post-search-debug.html` in the output volume.
+- **Companies finds companies by industry and country.** The Companies tab on
+  Search and scrape builds a LinkedIn company search with LinkedIn's own filters
+  (`industryCompanyVertical`, `companyHqGeo`) and optional keywords. The filter
+  ids live in `COMPANY_SEARCH` in `src/config.js`. A run reads up to 5 result
+  pages, then opens each company's About page and saves name, website, industry,
+  size, LinkedIn members, headquarters, founded, type, specialties, phone,
+  followers and overview (`src/companies.js`, MongoDB `companies`, per
+  `ownerId`). There is no AI check. A company whose headquarters is not in a
+  chosen country is skipped; a run that skips them all says to check the
+  country filter. Companies already saved are skipped unless "read again" is
+  ticked.
+- **Company search is paced for account safety.** 20 companies by default, 40 at
+  most, 20 to 45 seconds between company pages, and `COMPANY_SEARCH_DAILY_RUNS`
+  runs a day (default 2; a further run gets `429`). It runs as a scrape job, so
+  the live log, Stop and save, and the one-browser lock all apply. A run with no
+  results saves `company-search-debug.png` and `.html` in the output volume.
+- **LinkedIn → Companies lists them,** newest first, with search, country and
+  industry filters, every detail on click, and an Excel download.
 - **Found posts lists every person found from a post,** newest first, with the
   post, need score and product. A click opens the profile sheet with the draft.
 - **Message: an AI draft for each person, or one template for everyone.** Every

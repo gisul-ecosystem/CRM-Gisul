@@ -37,6 +37,7 @@ import { Textarea } from "@crm/ui/components/textarea";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { toast } from "sonner";
+import { CompanySearchForm } from "@/components/linkedin-scraper/company-search-form";
 import { JobLog } from "@/components/linkedin-scraper/job-log";
 import { MessageTemplateField } from "@/components/linkedin-scraper/message-template-field";
 import { ScraperPage } from "@/components/linkedin-scraper/scraper-page";
@@ -136,6 +137,7 @@ function ScrapeBody() {
 							<TabsList>
 								<TabsTrigger value="search">LinkedIn search</TabsTrigger>
 								<TabsTrigger value="posts">Posts</TabsTrigger>
+								<TabsTrigger value="companies">Companies</TabsTrigger>
 								<TabsTrigger value="import">Import a file</TabsTrigger>
 							</TabsList>
 							<TabsContent value="search">
@@ -143,6 +145,9 @@ function ScrapeBody() {
 							</TabsContent>
 							<TabsContent value="posts">
 								<PostsForm disabled={busy} />
+							</TabsContent>
+							<TabsContent value="companies">
+								<CompanySearchForm disabled={busy} />
 							</TabsContent>
 							<TabsContent value="import">
 								<ImportForm disabled={busy} />

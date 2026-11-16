@@ -335,3 +335,68 @@ export type ScrapeFilters = {
 	sendMessages: boolean;
 	messageTemplate: string;
 };
+
+const filterOption = z.object({ id: z.string(), label: z.string() });
+
+export const companySearchOptions = z.object({
+	industries: z.array(filterOption),
+	countries: z.array(filterOption),
+	defaultMaxCompanies: z.number(),
+	maxCompaniesCap: z.number(),
+	dailyRunLimit: z.number(),
+	runsToday: z.number(),
+});
+export type CompanySearchOptions = z.infer<typeof companySearchOptions>;
+
+export const linkedInCompany = z.object({
+	slug: z.string(),
+	name: text,
+	industry: text,
+	companySize: text,
+	employeesOnLinkedIn: text,
+	headquarters: text,
+	country: text,
+	website: text,
+	phone: text,
+	founded: text,
+	companyType: text,
+	specialties: text,
+	followers: text,
+	tagline: text,
+	overview: text,
+	linkedinUrl: text,
+	search: z
+		.object({
+			keywords: text,
+			industries: z.array(z.string()).catch([]),
+			countries: z.array(z.string()).catch([]),
+		})
+		.nullish()
+		.transform((value) => value ?? null),
+	foundAt: instant,
+	scrapedAt: instant,
+});
+export type LinkedInCompany = z.infer<typeof linkedInCompany>;
+
+export const companiesResponse = z.object({
+	companies: z.array(linkedInCompany),
+	total: z.number(),
+	countries: z.array(z.string()),
+	industries: z.array(z.string()),
+});
+export type CompaniesResponse = z.infer<typeof companiesResponse>;
+
+export type CompanySearch = {
+	keywords: string;
+	industries: string[];
+	countries: string[];
+	maxCompanies: number;
+	rescrape: boolean;
+};
+
+export type CompanyListQuery = {
+	q: string;
+	country: string;
+	industry: string;
+	page: number;
+};

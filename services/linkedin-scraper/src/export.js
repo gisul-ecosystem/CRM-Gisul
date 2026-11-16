@@ -142,4 +142,43 @@ async function writeDailySendReportExcel(sentProfiles, filePath, meta = {}) {
   return filePath;
 }
 
-module.exports = { writeConnectionsExcel, writeDailySendReportExcel };
+const COMPANY_COLUMNS = [
+  { header: 'Company', key: 'name', width: 32 },
+  { header: 'Industry', key: 'industry', width: 28 },
+  { header: 'Company size', key: 'companySize', width: 18 },
+  { header: 'Employees on LinkedIn', key: 'employeesOnLinkedIn', width: 12 },
+  { header: 'Headquarters', key: 'headquarters', width: 28 },
+  { header: 'Country', key: 'country', width: 20 },
+  { header: 'Website', key: 'website', width: 34 },
+  { header: 'Phone', key: 'phone', width: 18 },
+  { header: 'Founded', key: 'founded', width: 10 },
+  { header: 'Type', key: 'companyType', width: 18 },
+  { header: 'Specialties', key: 'specialties', width: 40 },
+  { header: 'Followers', key: 'followers', width: 12 },
+  { header: 'Tagline', key: 'tagline', width: 40 },
+  { header: 'Overview', key: 'overview', width: 60 },
+  { header: 'LinkedIn', key: 'linkedinUrl', width: 44 },
+  { header: 'Searched for', key: 'searchedFor', width: 40 },
+  { header: 'Found at', key: 'foundAt', width: 22 },
+];
+
+async function companiesWorkbook(companies) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'linkedin-scrapper';
+  const sheet = workbook.addWorksheet('Companies');
+  sheet.columns = COMPANY_COLUMNS;
+  sheet.getRow(1).font = { bold: true };
+  for (const company of companies) {
+    const search = company.search || {};
+    sheet.addRow({
+      ...company,
+      searchedFor: [search.keywords, ...(search.industries || []), ...(search.countries || [])]
+        .filter(Boolean)
+        .join(' · '),
+      foundAt: company.foundAt ? new Date(company.foundAt).toISOString() : '',
+    });
+  }
+  return workbook;
+}
+
+module.exports = { writeConnectionsExcel, writeDailySendReportExcel, companiesWorkbook };

@@ -1,16 +1,20 @@
 import { downloadFromScraper, scraperJson } from "./client";
 import {
+	type CompanyListQuery,
+	type CompanySearch,
 	clearResult,
+	companiesResponse,
+	companySearchOptions,
 	connectionTypes,
 	importStarted,
 	jobsResponse,
 	okMessage,
+	type PostSearch,
 	productsResponse,
 	queueItemResponse,
 	queueResponse,
 	ragRebuild,
 	resultsResponse,
-	type PostSearch,
 	type ScrapeFilters,
 	scraperStatus,
 	scrapeStarted,
@@ -70,6 +74,11 @@ export const scrapeApi = {
 			method: "POST",
 			json: search,
 		}),
+	companies: (search: CompanySearch) =>
+		scraperJson("/scrape/companies", scrapeStarted, {
+			method: "POST",
+			json: search,
+		}),
 	stop: () => scraperJson("/scrape/stop", okMessage, { method: "POST" }),
 	history: () => scraperJson("/jobs", jobsResponse),
 };
@@ -77,6 +86,21 @@ export const scrapeApi = {
 export const profilesApi = {
 	list: () => scraperJson("/results", resultsResponse),
 	download: () => downloadFromScraper("/results/download"),
+};
+
+export const companiesApi = {
+	options: () => scraperJson("/company-search/options", companySearchOptions),
+	list: (query: CompanyListQuery, pageSize: number) =>
+		scraperJson("/companies", companiesResponse, {
+			query: {
+				q: query.q,
+				country: query.country,
+				industry: query.industry,
+				limit: pageSize,
+				skip: (query.page - 1) * pageSize,
+			},
+		}),
+	download: () => downloadFromScraper("/companies/download"),
 };
 
 export const queueApi = {
