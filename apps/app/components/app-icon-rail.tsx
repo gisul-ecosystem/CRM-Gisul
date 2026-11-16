@@ -74,7 +74,7 @@ const GROUPS: NavGroup[] = [
 				match: "prefix",
 			},
 			{
-				title: "Customers",
+				title: "Contacts",
 				href: "/companies",
 				icon: Building,
 				match: "prefix",

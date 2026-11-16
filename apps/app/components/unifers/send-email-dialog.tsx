@@ -24,7 +24,7 @@ import {
 	SelectValue,
 } from "@crm/ui/components/select";
 import { Textarea } from "@crm/ui/components/textarea";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useUnifersHealth } from "@/components/unifers/unifers-page";
@@ -38,7 +38,10 @@ export type EmailRecipient = {
 	email: string;
 	name: string;
 	companyName: string | null;
+	productId: string | null;
 };
+
+const NO_PRODUCT = "none";
 
 export function SendEmailDialog({
 	open,
@@ -51,6 +54,7 @@ export function SendEmailDialog({
 }) {
 	const ids = {
 		from: useId(),
+		product: useId(),
 		purpose: useId(),
 		subject: useId(),
 		body: useId(),
@@ -58,11 +62,14 @@ export function SendEmailDialog({
 	const trpc = useTRPC();
 	const cache = useUnifersCache();
 	const accounts = useUnifersHealth();
+	const products = useQuery(trpc.products.options.queryOptions());
+	const productOptions = products.data?.options ?? [];
 	const verified = (accounts.data?.accounts ?? []).filter(
 		(account) => account.status === "verified",
 	);
 
 	const [sender, setSender] = useState("");
+	const [productId, setProductId] = useState(recipient.productId ?? NO_PRODUCT);
 	const [purpose, setPurpose] = useState("");
 	const [subject, setSubject] = useState("");
 	const [body, setBody] = useState("");
@@ -88,8 +95,19 @@ export function SendEmailDialog({
 	useEffect(() => {
 		if (!open || drafted.current) return;
 		drafted.current = true;
-		writeDraft({ id: recipient.contactId, purpose: null });
-	}, [open, recipient.contactId, writeDraft]);
+		writeDraft({
+			id: recipient.contactId,
+			productId: recipient.productId,
+			purpose: null,
+		});
+	}, [open, recipient.contactId, recipient.productId, writeDraft]);
+
+	const rewrite = (nextProduct: string, nextPurpose: string) =>
+		draft.mutate({
+			id: recipient.contactId,
+			productId: nextProduct === NO_PRODUCT ? null : nextProduct,
+			purpose: nextPurpose.trim() || null,
+		});
 
 	const send = useMutation({
 		mutationFn: () =>
@@ -181,6 +199,33 @@ export function SendEmailDialog({
 						)}
 					</Field>
 					<Field>
+						<FieldLabel htmlFor={ids.product}>Product</FieldLabel>
+						<Select
+							value={productId}
+							disabled={draft.isPending}
+							onValueChange={(next) => {
+								setProductId(next);
+								rewrite(next, purpose);
+							}}
+						>
+							<SelectTrigger id={ids.product}>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value={NO_PRODUCT}>No product</SelectItem>
+								{productOptions.map((product) => (
+									<SelectItem key={product.id} value={product.id}>
+										{product.name}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+						<FieldDescription>
+							Claude writes the email about this product. Changing it rewrites
+							the draft.
+						</FieldDescription>
+					</Field>
+					<Field>
 						<FieldLabel htmlFor={ids.purpose}>
 							What is this email for?
 						</FieldLabel>
@@ -194,12 +239,7 @@ export function SendEmailDialog({
 							<Button
 								variant="outline"
 								disabled={draft.isPending}
-								onClick={() =>
-									draft.mutate({
-										id: recipient.contactId,
-										purpose: purpose.trim() || null,
-									})
-								}
+								onClick={() => rewrite(productId, purpose)}
 							>
 								{draft.isPending ? "Writing…" : "Rewrite"}
 							</Button>
