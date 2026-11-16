@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { EnrichmentStatus, Prisma } from "@crm/db";
 import { MAX_ATTEMPTS } from "@crm/db/agent-tasks";
 import { schemas } from "@crm/validation";
+import { emailDraftRequest } from "@crm/validation/email-draft";
 import { eveTurnFailure } from "@crm/validation/eve-stream";
 import { defineChannel, GET, POST } from "eve/channels";
 import { z } from "zod";
@@ -27,6 +28,7 @@ import {
 	taskAuth,
 } from "../lib/dispatch";
 import { DISPATCH } from "../lib/dispatch-config";
+import { draftEmail } from "../lib/email-draft";
 import { settle } from "../lib/enrichment";
 import { finishRun, runResultOf } from "../lib/run-runtime";
 import { attribute } from "../lib/session-purpose";
@@ -236,6 +238,24 @@ export default defineChannel({
 			}
 
 			return Response.json(await verifyKey(apiKey));
+		}),
+
+		POST("/internal/crm/draft-email", async (request) => {
+			if (!authorised(request)) {
+				return new Response("Unauthorized", { status: 401 });
+			}
+
+			const parsed = emailDraftRequest.safeParse(
+				await request.json().catch(() => null),
+			);
+			if (!parsed.success) {
+				return Response.json(
+					{ outcome: "failed", reason: parsed.error.message },
+					{ status: 400 },
+				);
+			}
+
+			return Response.json(await draftEmail(parsed.data));
 		}),
 	],
 

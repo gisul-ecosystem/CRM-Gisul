@@ -36,6 +36,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { toast } from "sonner";
+import { CountryPicker } from "@/components/leads-pipeline/country-picker";
 import { PipelinePage } from "@/components/leads-pipeline/pipeline-page";
 import { RunLog } from "@/components/leads-pipeline/run-log";
 import { BrowserViewer } from "@/components/linkedin-scraper/browser-viewer";
@@ -172,6 +173,7 @@ function SearchForm({
 	const [exclude, setExclude] = useState("");
 	const [companies, setCompanies] = useState(limits.default_companies);
 	const [searchWith, setSearchWith] = useState<SearchMode>("browser");
+	const [countries, setCountries] = useState<string[]>(status.targetCountries);
 	const [preview, setPreview] = useState<string[] | null>(null);
 	const ids = {
 		name: useId(),
@@ -192,6 +194,7 @@ function SearchForm({
 		exclude: words(exclude),
 		companies,
 		searchWith,
+		countries,
 	});
 
 	const showPreview = useMutation({
@@ -210,7 +213,8 @@ function SearchForm({
 	});
 
 	const reset = () => setPreview(null);
-	const ready = name.trim() !== "" && lines(what).length > 0;
+	const ready =
+		name.trim() !== "" && lines(what).length > 0 && countries.length > 0;
 
 	return (
 		<Card>
@@ -324,6 +328,11 @@ function SearchForm({
 								minute to read and check.
 							</FieldDescription>
 						</Field>
+						<CountryPicker
+							options={status.countryOptions}
+							value={countries}
+							onChange={setCountries}
+						/>
 						<Field>
 							<FieldLabel htmlFor={ids.searchWith}>Search with</FieldLabel>
 							<Select

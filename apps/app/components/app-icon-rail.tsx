@@ -111,15 +111,15 @@ const GROUPS: NavGroup[] = [
 				match: "exact",
 			},
 			{
-				title: "Campaigns",
-				href: "/outreach/campaigns",
-				icon: Send,
-				match: "prefix",
-			},
-			{
 				title: "Audiences",
 				href: "/outreach/audiences",
 				icon: Group,
+				match: "prefix",
+			},
+			{
+				title: "Campaigns",
+				href: "/outreach/campaigns",
+				icon: Send,
 				match: "prefix",
 			},
 			{

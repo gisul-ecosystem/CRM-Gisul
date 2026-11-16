@@ -7,6 +7,7 @@ import { AgentRunsService } from "./agent-runs.service";
 import { AgentTriggerService } from "./agent-trigger.service";
 import { AgentsRouter } from "./agents.router";
 import { DispatchHeartbeatService } from "./dispatch-heartbeat.service";
+import { EmailDraftService } from "./email-draft.service";
 import { ResearchKeyService } from "./research-key.service";
 
 @Module({
@@ -19,12 +20,14 @@ import { ResearchKeyService } from "./research-key.service";
 		AgentTriggerService,
 		AgentsRouter,
 		DispatchHeartbeatService,
+		EmailDraftService,
 		ResearchKeyService,
 	],
 	exports: [
 		AgentAccessService,
 		AgentTriggerService,
 		AgentQueueService,
+		EmailDraftService,
 		ResearchKeyService,
 	],
 })

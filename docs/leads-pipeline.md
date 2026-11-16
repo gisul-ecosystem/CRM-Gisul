@@ -80,6 +80,20 @@ browser ──► CRM app /api/leads-pipeline/<path>   (apps/app/app/api/leads-p
 | Settings | `/settings` (GET and POST) |
 | Custom search | `/custom-search` (GET and POST), `/custom-search/preview`, `/log` |
 
+- **Leads sort in the pipeline, not the browser.** `/leads` and `/download` take
+  `sort`: `score` (default, best first), `company` (A to Z, the domain when the
+  name is empty), `newest` or `oldest` (by date found). The Leads page has a
+  Sort select and a Found column.
+- **Countries can be picked per run.** Start a run and Custom search send
+  `countries`; the run gets them as its own `COUNTRIES` and Settings keeps the
+  default. `/status` reports `countryOptions` and the saved `targetCountries`.
+- **Reviewers reject leads from the Leads page.** `POST /leads/reject` with
+  `scope` `person` (drops those rows and remembers domain + person in
+  `state.json` `rejected_people`; `Store.save` drops them again, so a later run
+  cannot bring them back) or `company` (drops every row and adds the domain to
+  `rejected`, which discovery skips). It answers `409` while a run is going.
+  "Select no valid email (this page)" ticks rows with no email or one not
+  verified valid.
 - **Leads become CRM contacts by selection.** Tick rows on the Leads page (the
   header box ticks the page; the choice survives paging) and click **Add to CRM
   contacts**, after picking a lead source (default Cold outreach). The app calls `contacts.importLeads` with the lead's name, email,

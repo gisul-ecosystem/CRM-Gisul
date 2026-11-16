@@ -21,15 +21,17 @@ import { useId, useState } from "react";
 import { toast } from "sonner";
 import { LeadSheet } from "@/components/leads-pipeline/lead-sheet";
 import { PipelinePage } from "@/components/leads-pipeline/pipeline-page";
+import { ConfirmDialog } from "@/components/outreach/confirm-dialog";
 import {
 	ALL,
 	FilterSelect,
 	OutreachToolbar,
 	SearchBox,
 } from "@/components/outreach/toolbar";
+import { AddToUnifersDialog } from "@/components/unifers/add-to-campaign-dialog";
 import { LEAD_SOURCE_OPTIONS } from "@/lib/lead-fields";
 import { customSearchApi, leadsApi } from "@/lib/leads-pipeline/api";
-import { pipelineKeys } from "@/lib/leads-pipeline/cache";
+import { pipelineKeys, usePipelineCache } from "@/lib/leads-pipeline/cache";
 import {
 	intentTone,
 	segmentLabel,
@@ -39,9 +41,12 @@ import {
 import { LEADS_PIPELINE } from "@/lib/leads-pipeline/pipeline-config";
 import {
 	LEAD_INTENTS,
+	LEAD_SORTS,
 	type Lead,
 	type LeadFilters,
+	type LeadSort,
 	type ProfileStatus,
+	type RejectScope,
 } from "@/lib/leads-pipeline/schemas";
 import { useDebounced } from "@/lib/outreach/use-debounced";
 import { useCrmCache } from "@/lib/trpc/cache";
@@ -56,6 +61,7 @@ const NO_FILTERS: LeadFilters = {
 	segment: null,
 	country: null,
 	source: null,
+	sort: "score",
 	latest: false,
 	perCompany: false,
 };
@@ -67,6 +73,20 @@ const INTENT_OPTIONS = [
 		label: `${segmentLabel(intent)} intent`,
 	})),
 ];
+
+const REJECT_REASON = "Rejected in review";
+
+const SORT_LABELS: Record<LeadSort, string> = {
+	score: "Sort: best score",
+	company: "Sort: company A–Z",
+	newest: "Sort: newest first",
+	oldest: "Sort: oldest first",
+};
+
+const SORT_OPTIONS = LEAD_SORTS.map((sort) => ({
+	value: sort,
+	label: SORT_LABELS[sort],
+}));
 
 type Toggle = "ready" | "hasEmail" | "latest" | "perCompany";
 
@@ -165,11 +185,49 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 		});
 	};
 
+	const pipelineCache = usePipelineCache();
+	const [rejecting, setRejecting] = useState<RejectScope | null>(null);
+	const [unifersOpen, setUnifersOpen] = useState(false);
+	const reject = useMutation({
+		mutationFn: (scope: RejectScope) =>
+			leadsApi.reject(
+				status.profile,
+				scope,
+				[...selected.values()],
+				REJECT_REASON,
+			),
+		onSuccess: async (result) => {
+			toast.success(result.message);
+			setRejecting(null);
+			setSelected(new Map());
+			await pipelineCache.run(status.profile);
+		},
+		onError: (error) => toast.error(error.message),
+	});
+
 	const { maxLeads } = LEADS_PIPELINE.addToCrm;
+	const withNames = [...selected.values()].filter(
+		(row) => row.full_name.trim() !== "",
+	);
+	const unifersLeads = [
+		...new Map(
+			[...selected.values()]
+				.filter((row) => row.email.trim() !== "")
+				.map((row) => [
+					row.email.trim().toLowerCase(),
+					{
+						email: row.email.trim(),
+						...(row.full_name ? { fullName: row.full_name } : {}),
+						...(row.company ? { companyName: row.company } : {}),
+						...(row.linkedin_url ? { linkedinUrl: row.linkedin_url } : {}),
+					},
+				]),
+		).values(),
+	];
 	const submitSelected = () =>
 		addToCrm.mutate({
 			leadSource,
-			leads: [...selected.values()].map((row) => ({
+			leads: withNames.map((row) => ({
 				fullName: row.full_name,
 				email: row.email,
 				phone: row.phone,
@@ -216,9 +274,15 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 		searchOptions.push({ value: source, label: source });
 	}
 
+	const selectedDomains = new Set(
+		[...selected.values()].map((row) => row.domain),
+	).size;
 	const rows = leads.data?.rows ?? [];
 	const total = leads.data?.total ?? 0;
-	const selectable = rows.filter((row) => row.full_name.trim() !== "");
+	const selectable = rows;
+	const noValidEmail = rows.filter(
+		(row) => !row.email || row.verified_status !== "valid",
+	);
 	const pageSelected = selectable.filter((row) => selected.has(leadKey(row)));
 	const headerState =
 		selectable.length > 0 && pageSelected.length === selectable.length
@@ -265,6 +329,12 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 					label="Country"
 				/>
 				<FilterSelect
+					value={filters.sort}
+					onChange={(value) => change({ sort: value })}
+					options={SORT_OPTIONS}
+					label="Sort"
+				/>
+				<FilterSelect
 					value={source ?? ALL}
 					onChange={(value) => {
 						void setSource(value === ALL ? null : value);
@@ -283,7 +353,7 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 				</Button>
 			</OutreachToolbar>
 
-			<div className="flex flex-wrap gap-4">
+			<div className="flex flex-wrap items-center gap-4">
 				{TOGGLES.map((toggle) => (
 					<Field key={toggle.key} orientation="horizontal" className="w-auto">
 						<Checkbox
@@ -298,6 +368,14 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 						</FieldLabel>
 					</Field>
 				))}
+				<Button
+					variant="ghost"
+					size="sm"
+					disabled={noValidEmail.length === 0}
+					onClick={() => toggle(noValidEmail, true)}
+				>
+					Select no valid email (this page)
+				</Button>
 			</div>
 
 			{selected.size > 0 ? (
@@ -316,15 +394,45 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 					/>
 					<Button
 						size="sm"
-						disabled={addToCrm.isPending || selected.size > maxLeads}
+						disabled={
+							addToCrm.isPending ||
+							withNames.length === 0 ||
+							withNames.length > maxLeads
+						}
 						onClick={submitSelected}
 					>
-						{addToCrm.isPending ? "Adding…" : "Add to CRM contacts"}
+						{addToCrm.isPending
+							? "Adding…"
+							: `Add ${withNames.length} to CRM contacts`}
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={unifersLeads.length === 0}
+						onClick={() => setUnifersOpen(true)}
+					>
+						Send {unifersLeads.length} with Unifers
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={reject.isPending || status.running}
+						onClick={() => setRejecting("person")}
+					>
+						Reject people
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={reject.isPending || status.running}
+						onClick={() => setRejecting("company")}
+					>
+						Reject companies
 					</Button>
 					<Button
 						variant="ghost"
 						size="sm"
-						disabled={addToCrm.isPending}
+						disabled={addToCrm.isPending || reject.isPending}
 						onClick={() => setSelected(new Map())}
 					>
 						Clear selection
@@ -372,6 +480,7 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 						{ id: "email", header: "Email" },
 						{ id: "segment", header: "Segment" },
 						{ id: "intent", header: "Intent" },
+						{ id: "found", header: "Found" },
 						{ id: "score", header: "Score", align: "right" },
 					]}
 				>
@@ -388,7 +497,6 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 								<Checkbox
 									aria-label={`Select ${row.full_name || row.company}`}
 									checked={selected.has(leadKey(row))}
-									disabled={row.full_name.trim() === ""}
 									onCheckedChange={(checked) => toggle([row], checked === true)}
 								/>
 							</TableCell>
@@ -429,6 +537,9 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 									"—"
 								)}
 							</TableCell>
+							<TableCell className="whitespace-nowrap px-3 text-muted-foreground text-xs">
+								{row.date_found.slice(0, 10) || "—"}
+							</TableCell>
 							<TableCell className="px-3 text-right tabular-nums">
 								{row.score || "—"}
 								{row.ready === "yes" ? " · ready" : ""}
@@ -450,6 +561,36 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 			) : null}
 
 			<LeadSheet lead={open} onClose={() => setOpen(null)} />
+
+			<AddToUnifersDialog
+				open={unifersOpen}
+				leads={unifersLeads}
+				onClose={() => setUnifersOpen(false)}
+				onDone={() => {
+					setUnifersOpen(false);
+					setSelected(new Map());
+				}}
+			/>
+
+			<ConfirmDialog
+				open={rejecting !== null}
+				title={
+					rejecting === "company"
+						? `Reject ${selectedDomains} compan${selectedDomains === 1 ? "y" : "ies"}?`
+						: `Reject ${selected.size} ${selected.size === 1 ? "person" : "people"}?`
+				}
+				description={
+					rejecting === "company"
+						? "Every row of these companies leaves the sheet, and later runs never add them again."
+						: "These rows leave the sheet, and later runs never add these people again. Their companies stay."
+				}
+				action="Reject"
+				pending={reject.isPending}
+				onConfirm={() => {
+					if (rejecting) reject.mutate(rejecting);
+				}}
+				onClose={() => setRejecting(null)}
+			/>
 		</div>
 	);
 }

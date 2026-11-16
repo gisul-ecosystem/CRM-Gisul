@@ -2,6 +2,7 @@
 
 import Email from "@carbon/icons-react/es/Email";
 import Partnership from "@carbon/icons-react/es/Partnership";
+import Send from "@carbon/icons-react/es/Send";
 import Star from "@carbon/icons-react/es/Star";
 import type { FieldValueJson } from "@crm/db/fields";
 import {
@@ -22,6 +23,7 @@ import { SimpleTable, SimpleTableRow } from "@crm/ui/components/simple-table";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { TableCell } from "@crm/ui/components/table";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 import { AgentPanel } from "@/components/crm/agent-panel";
 import { InlineCompanyField } from "@/components/crm/company-picker";
@@ -52,6 +54,7 @@ import {
 	type DetailSheetTab,
 } from "@/components/detail-sheet";
 import { LocalDateTime, LocalRelativeDate } from "@/components/local-date-time";
+import { SendEmailDialog } from "@/components/unifers/send-email-dialog";
 import { factsByField } from "@/lib/contact-facts";
 import { ENRICHMENT_POLL_MS, isEnriching } from "@/lib/enrichment-status";
 import {
@@ -95,6 +98,7 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 	const { tab, setTab } = useRecordSheetView("overview");
+	const [composing, setComposing] = useState(false);
 
 	const query = useQuery({
 		...trpc.contacts.byId.queryOptions({ id: contactId }),
@@ -185,6 +189,26 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 				contact ? (
 					<>
 						<ContactEnrichmentAction contactId={contact.id} />
+						{contact.email ? (
+							<>
+								<Button size="sm" onClick={() => setComposing(true)}>
+									<Icon icon={Send} data-icon="inline-start" />
+									<span className="hidden sm:inline">Send email</span>
+								</Button>
+								{composing ? (
+									<SendEmailDialog
+										open={composing}
+										onClose={() => setComposing(false)}
+										recipient={{
+											contactId: contact.id,
+											email: contact.email,
+											name: contactName(contact),
+											companyName: contact.company?.name ?? null,
+										}}
+									/>
+								) : null}
+							</>
+						) : null}
 						{contact.email ? (
 							<Button asChild variant="outline" size="sm">
 								<a href={`mailto:${contact.email}`}>

@@ -96,3 +96,55 @@ start unless the profile is on: `COMPOSE_PROFILES=outreach` in `.env`, or
 Outreach and the CRM can both read Microsoft mailboxes. Use dedicated sending
 mailboxes that reps do not connect to the CRM, or the same email is stored in
 both systems.
+
+## Unifers, the second sender
+
+Each campaign is sent by the Outreach Engine **or** by Unifers
+(`https://api.unifers.ai`, API reference v1.0.0). The engine path is unchanged.
+
+```
+browser ──► CRM app /api/unifers/<path>      (apps/app/app/api/unifers/[...path]/route.ts)
+              1. Better Auth session, or 401
+              2. a sending change needs a CRM owner or admin, or 403
+              3. adds X-API-Key (and X-Workspace-Id) on the server
+              ▼
+            Unifers /client-apis/<path>
+```
+
+- **Only `campaigns` and `email-accounts` pass** (`upstreamPath` in
+  `lib/unifers/bridge.ts`). The paid people endpoints (search, enrich, reveal)
+  are blocked, so nobody spends credits by accident.
+- **Owners and admins only** (`adminOnly`): connecting or disconnecting a
+  mailbox, `campaigns/{id}/status` (start, schedule, pause, cancel), and
+  creating a campaign with `startAt`. Members create drafts and add leads.
+- **Optional.** Without `UNIFERS_API_KEY` the Unifers screens say it is not
+  connected; engine campaigns keep working. `UNIFERS_WORKSPACE_ID` and
+  `UNIFERS_API_URL` are optional.
+- **Screens, inside the existing Campaigns section:**
+  - The list has a "Sent with" switch (`?sender=unifers`); Unifers rows carry a
+    badge.
+  - New campaign first asks Send with: Outreach Engine (the existing wizard) or
+    Unifers (`wizard/unifers-wizard.tsx`): name, an Outreach audience list
+    whose active, unsuppressed contacts become leads, the email sequence, the
+    Unifers mailboxes, the sending window and stop rules, then draft, start
+    now or schedule. Unifers has no edit endpoint, so the campaign is created
+    in one call at the end.
+  - A Unifers campaign opens at `/outreach/campaigns/u-<id>`
+    (`parseUnifersRouteId`): status and controls, analytics, steps and leads by
+    event.
+  - Lead generation → Leads has "Send N with Unifers", which adds the selected
+    rows with an email to an open campaign.
+- **Leads go in batches of 1,000** (`addLeadsInBatches`), the Unifers limit.
+- **Every response is parsed with Zod** (`lib/unifers/schemas.ts`); an unknown
+  campaign status reads as draft instead of breaking the page.
+
+### One email from a contact
+
+**Send email** on a contact opens `components/unifers/send-email-dialog.tsx`.
+Claude writes the subject and body (see `docs/agent.md`). The rep edits them and
+picks a verified Unifers mailbox. Send creates a one-lead campaign named
+"Email to <name> · <time>" that starts now. The window and stop rules are
+`UNIFERS.singleSend` in `lib/unifers/unifers-config.ts`.
+
+Starting a campaign is owner or admin only, so a member gets a 403 on send.
+A lead already in another Unifers campaign is not added, and nothing is sent.
