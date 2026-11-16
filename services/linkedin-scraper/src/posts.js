@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { POST_SEARCH } = require('./config');
 const { gotoAndSettle } = require('./connections');
+const { watchPostData } = require('./post-network');
 const { sleepBetween, slugFromProfileUrl, normalizeProfileUrl } = require('./utils');
 
 function buildPostSearchUrl({ keywords, datePosted }) {
@@ -173,36 +174,52 @@ async function collectPosts(
     await sleepBetween(POST_SEARCH.warmup.pause);
   }
   await log(`Post search: ${url}`);
-  await gotoAndSettle(page, url);
-  await sleepBetween(POST_SEARCH.settle);
+  const data = watchPostData(page, POST_SEARCH.maxPostChars);
+  try {
+    await gotoAndSettle(page, url);
+    await sleepBetween(POST_SEARCH.settle);
+  } catch (err) {
+    data.stop();
+    throw err;
+  }
 
   const posts = [];
   const seenAuthors = new Set();
+  const via = { data: 0, page: 0 };
   let stale = 0;
   let lastStats = null;
+
+  const add = (raw, source) => {
+    const profileUrl = normalizeProfileUrl(String(raw.authorUrl || '').split('?')[0]);
+    const slug = slugFromProfileUrl(profileUrl);
+    if (!slug || seenAuthors.has(slug)) return;
+    seenAuthors.add(slug);
+    via[source] += 1;
+    posts.push({
+      profileUrl,
+      slug,
+      authorName: raw.authorName,
+      authorHeadline: raw.authorHeadline,
+      postedAgo: raw.postedAgo,
+      text: raw.text,
+      url: raw.urn
+        ? `https://www.linkedin.com/feed/update/${raw.urn}/`
+        : `${profileUrl}/recent-activity/all/`,
+    });
+  };
 
   for (let round = 0; round < POST_SEARCH.maxScrollRounds && posts.length < maxPosts; round += 1) {
     if (shouldStop()) break;
     const before = posts.length;
+    for (const raw of data.posts.splice(0)) {
+      if (posts.length >= maxPosts) break;
+      add(raw, 'data');
+    }
     const { posts: batch, stats } = await extractPosts(page, POST_SEARCH.maxPostChars);
     lastStats = stats;
     for (const raw of batch) {
-      const profileUrl = normalizeProfileUrl(raw.authorUrl.split('?')[0]);
-      const slug = slugFromProfileUrl(profileUrl);
-      if (!slug || seenAuthors.has(slug)) continue;
-      seenAuthors.add(slug);
-      posts.push({
-        profileUrl,
-        slug,
-        authorName: raw.authorName,
-        authorHeadline: raw.authorHeadline,
-        postedAgo: raw.postedAgo,
-        text: raw.text,
-        url: raw.urn
-          ? `https://www.linkedin.com/feed/update/${raw.urn}/`
-          : `${profileUrl}/recent-activity/all/`,
-      });
       if (posts.length >= maxPosts) break;
+      add(raw, 'page');
     }
     stale = posts.length === before ? stale + 1 : 0;
     if (stale >= 3) break;
@@ -215,7 +232,15 @@ async function collectPosts(
     }
   }
 
-  await log(`Post search found ${posts.length} post(s) by people`);
+  for (const raw of data.posts.splice(0)) {
+    if (posts.length >= maxPosts) break;
+    add(raw, 'data');
+  }
+  data.stop();
+
+  await log(
+    `Post search found ${posts.length} post(s) by people: ${via.data} from LinkedIn's data, ${via.page} from the page | data answers read: ${data.stats.jsonResponses} JSON, ${data.stats.otherResponses} other, ${data.stats.failures} unreadable`
+  );
   if (!posts.length && lastStats) {
     await log(
       `Post search page check: url=${page.url()} | title="${lastStats.title}" | post ids=${lastStats.urns} | post boxes=${lastStats.containers} | like buttons=${lastStats.likeButtons} | profile links=${lastStats.profileLinks} | "no results" shown=${lastStats.noResults}`

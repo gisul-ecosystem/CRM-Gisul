@@ -1,4 +1,5 @@
 import {
+	ActivityType,
 	type ContactBriefSections,
 	type Db,
 	type FactEvidence,
@@ -10,6 +11,11 @@ import {
 	type RecordSource,
 } from "@crm/db";
 import type { FieldDefinitionWithOptions } from "@crm/db/fields";
+import {
+	LEAD_CATEGORY_LABEL,
+	LEAD_ORIGIN_KIND,
+	leadOriginMeta,
+} from "@crm/validation/lead-origin";
 import {
 	BadRequestException,
 	ConflictException,
@@ -245,7 +251,7 @@ export class ContactsService {
 		};
 	}
 
-	async importLeads(input: ContactImportLeadsInput) {
+	async importLeads(input: ContactImportLeadsInput, actingUserId: string) {
 		let created = 0;
 		let existing = 0;
 		const errors: { name: string; message: string }[] = [];
@@ -277,10 +283,17 @@ export class ContactsService {
 				});
 				if (match) {
 					existing += 1;
+					await this.recordLeadOrigin(
+						match.id,
+						companyId,
+						input,
+						lead,
+						actingUserId,
+					);
 					continue;
 				}
 
-				await this.create({
+				const contact = await this.create({
 					firstName,
 					lastName: lastName || undefined,
 					email: email ?? undefined,
@@ -290,6 +303,13 @@ export class ContactsService {
 					leadStatus: "NEW",
 					leadSource: input.leadSource,
 				});
+				await this.recordLeadOrigin(
+					contact.id,
+					companyId,
+					input,
+					lead,
+					actingUserId,
+				);
 				created += 1;
 			} catch (error) {
 				errors.push({
@@ -307,6 +327,42 @@ export class ContactsService {
 		});
 
 		return { created, existing, failed: errors.length, errors };
+	}
+
+	private async recordLeadOrigin(
+		contactId: string,
+		companyId: string | null,
+		input: ContactImportLeadsInput,
+		lead: ContactImportLeadsInput["leads"][number],
+		actingUserId: string,
+	) {
+		if (!input.category) return;
+		const recorded = await this.db.activity.findFirst({
+			where: { contactId, meta: { path: ["kind"], equals: LEAD_ORIGIN_KIND } },
+			select: { id: true },
+		});
+		if (recorded) return;
+		const meta = leadOriginMeta.parse({
+			kind: LEAD_ORIGIN_KIND,
+			category: input.category,
+			...(lead.origin ?? {}),
+		});
+		await this.db.activity.create({
+			data: {
+				type: ActivityType.NOTE,
+				subject: `Added from Lead generation · ${LEAD_CATEGORY_LABEL[meta.category]}`,
+				body:
+					[meta.segment, meta.country, meta.signal]
+						.filter(Boolean)
+						.join(" · ") || null,
+				occurredAt: new Date(),
+				contactId,
+				companyId,
+				createdById: actingUserId,
+				meta,
+			},
+			select: { id: true },
+		});
 	}
 
 	async importCsv(input: ContactImportInput) {

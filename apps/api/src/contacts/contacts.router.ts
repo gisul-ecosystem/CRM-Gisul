@@ -93,8 +93,11 @@ export class ContactsRouter {
 		output: contactImportLeadsOutput,
 		meta: restMeta("POST", "/contacts/import-leads", ["Contacts"]),
 	})
-	async importLeads(@Input() input: z.infer<typeof contactImportLeadsInput>) {
-		return this.contacts.importLeads(input);
+	async importLeads(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof contactImportLeadsInput>,
+	) {
+		return this.contacts.importLeads(input, ctx.user.id);
 	}
 
 	@Query({
@@ -240,6 +243,7 @@ export class ContactsRouter {
 		return this.drafts.draft({
 			contactId: input.id,
 			productId: input.productId,
+			category: input.category,
 			senderName: ctx.user.name?.trim() || null,
 			purpose: input.purpose || null,
 		});

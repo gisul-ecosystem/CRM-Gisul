@@ -18,6 +18,7 @@ describe("email draft", () => {
 		const answer = await draftEmail({
 			contactId: "c1",
 			productId: null,
+			category: null,
 			senderName: null,
 			purpose: null,
 		});
@@ -47,6 +48,7 @@ describe("email draft", () => {
 			emailDraftRequest.safeParse({
 				contactId: "",
 				productId: null,
+				category: null,
 				senderName: null,
 				purpose: null,
 			}).success,

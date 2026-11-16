@@ -6,7 +6,15 @@ import {
 	type EmailDraftRequest,
 	emailDraft,
 } from "@crm/validation/email-draft";
+import {
+	LEAD_CATEGORY_LABEL,
+	LEAD_ORIGIN_KIND,
+	type LeadCategory,
+	type LeadOriginMeta,
+	leadOriginMeta,
+} from "@crm/validation/lead-origin";
 import { EMAIL_DRAFT } from "./email-draft-config";
+import { CATEGORY_BRIEF, GISUL, PROOF_BY_REGION } from "./email-knowledge";
 
 const SYSTEM = [
 	"You write one short, personal sales email from a CRM user to one person.",
@@ -16,6 +24,8 @@ const SYSTEM = [
 	"Use only the facts you are given. Do not invent numbers, customers, meetings or past contact.",
 	"When a product is given, the whole email is about that product. Name it. Take one concrete benefit from its description and tie it to this person's role and their company. Do not list features.",
 	"When no product is given, write a short introduction from the sender's company.",
+	"When a 'Why we are writing' brief is given, it sets the angle and the product to pitch. A product chosen under 'The product this email is about' wins over the brief's product.",
+	"Mention at most one client reference, the one closest to the reader's country and industry, and only from the list you are given.",
 	"Sign off with the sender's name when it is given, otherwise end without a signature.",
 	"The subject is short, specific and lower-key than a headline.",
 	`Also write followUpBody: a follow-up sent a few days later in the same thread, only when they have not replied. Under ${EMAIL_DRAFT.followUp.maxWords} words. Refer back to the first email in one line, add one new reason or a simpler ask, and stay polite. Do not repeat the first email or guilt them.`,
@@ -65,9 +75,27 @@ async function senderCompany(): Promise<string | null> {
 		.join("\n");
 }
 
+async function leadOrigin(contactId: string): Promise<LeadOriginMeta | null> {
+	const row = await db.activity.findFirst({
+		where: { contactId, meta: { path: ["kind"], equals: LEAD_ORIGIN_KIND } },
+		orderBy: { createdAt: "desc" },
+		select: { id: true, meta: true },
+	});
+	if (!row) return null;
+	const parsed = leadOriginMeta.safeParse(row.meta);
+	if (!parsed.success) {
+		throw new Error(
+			`Activity ${row.id} has an unreadable lead origin: ${parsed.error.message}`,
+		);
+	}
+	return parsed.data;
+}
+
+type ContactContext = { text: string; category: LeadCategory | null };
+
 async function contactContext(
 	request: EmailDraftRequest,
-): Promise<string | null> {
+): Promise<ContactContext | null> {
 	const contact = await db.contact.findFirst({
 		where: { id: request.contactId, archivedAt: null },
 		select: {
@@ -129,7 +157,25 @@ async function contactContext(
 		);
 	}
 
-	return lines.filter((line) => line !== null).join("\n");
+	const origin = await leadOrigin(request.contactId);
+	const category = request.category ?? origin?.category ?? null;
+	if (category) {
+		lines.push(
+			"",
+			"## How we found them",
+			`Lead type: ${LEAD_CATEGORY_LABEL[category]}`,
+			origin?.segment ? `Segment: ${origin.segment}` : null,
+			origin?.country ? `Country: ${origin.country}` : null,
+			origin?.signal ? `Signal: ${origin.signal}` : null,
+			"",
+			CATEGORY_BRIEF[category],
+		);
+	}
+
+	return {
+		text: lines.filter((line) => line !== null).join("\n"),
+		category,
+	};
 }
 
 export async function draftEmail(
@@ -143,13 +189,25 @@ export async function draftEmail(
 		};
 	}
 
-	const context = await contactContext(request);
+	let context: ContactContext | null;
+	try {
+		context = await contactContext(request);
+	} catch (error) {
+		return {
+			outcome: "failed",
+			reason: error instanceof Error ? error.message : String(error),
+		};
+	}
 	if (!context) {
 		return { outcome: "not_found", reason: "That contact does not exist." };
 	}
 
 	const ask = [
-		context,
+		context.text,
+		"",
+		GISUL,
+		"",
+		PROOF_BY_REGION,
 		"",
 		"## The sender",
 		request.senderName ? `Name: ${request.senderName}` : "Name: not given",
