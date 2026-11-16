@@ -208,9 +208,13 @@ async function runScrapeJob(userId, filters, onProgress) {
       });
       connections = [];
       let checked = 0;
+      let knownAuthors = 0;
       for (const post of posts) {
         if (job.stopRequested) break;
-        if (existingMap[post.slug]?.scrapedAt && !filters.rescrape) continue;
+        if (existingMap[post.slug]?.scrapedAt && !filters.rescrape) {
+          knownAuthors += 1;
+          continue;
+        }
         checked += 1;
         let intent;
         try {
@@ -250,7 +254,9 @@ async function runScrapeJob(userId, filters, onProgress) {
           },
         });
       }
-      await log(`Post check: ${connections.length} of ${checked} new post author(s) show a need`);
+      await log(
+        `Post check: ${connections.length} of ${checked} new post author(s) show a need${knownAuthors ? ` | ${knownAuthors} author(s) skipped: already scraped (tick "Read profiles again that were already scraped" to include them)` : ''}`
+      );
     } else if (usingImport) {
       connections = importedConns;
       await log(`File import targets: ${connections.length} unique profile URL(s)`);

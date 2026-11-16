@@ -393,6 +393,14 @@ person. The draft comes from `POST /internal/crm/draft-email` in
 - `ANTHROPIC_API_KEY` is optional. Without it the answer is `not_configured`.
 - Model, effort and limits are in `agent/lib/email-draft-config.ts`.
 
+**Lead type sets the pitch.** Leads added from Lead generation get a NOTE activity
+whose `meta` is a lead origin (`@crm/validation/lead-origin`): category (`gpu`,
+`training`, `competitors`), segment, country, signal and source. The draft reads the
+latest one, or the category picked in the dialog, and adds that category's brief from
+`agent/lib/email-knowledge.ts`, with Gisul's products and the client references by
+country. The facts there are copied from `services/linkedin-scraper/knowledge/*.md`;
+change both together.
+
 Unifers sends the email. The app creates a one-lead Unifers campaign with
 `startAt: "now"` and an all-day window. See `docs/outreach.md`.
 

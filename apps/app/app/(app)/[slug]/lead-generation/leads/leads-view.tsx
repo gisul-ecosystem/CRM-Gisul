@@ -15,6 +15,7 @@ import { Skeleton } from "@crm/ui/components/skeleton";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { TableCell } from "@crm/ui/components/table";
 import { TablePagination } from "@crm/ui/components/table-pagination";
+import { LEAD_ORIGIN_LIMITS } from "@crm/validation/lead-origin";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useQueryState } from "nuqs";
@@ -230,6 +231,7 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 	const submitSelected = () =>
 		addToCrm.mutate({
 			leadSource,
+			category: status.profile,
 			leads: withNames.map((row) => ({
 				fullName: row.full_name,
 				email: row.email,
@@ -237,6 +239,12 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 				title: row.title,
 				company: row.company,
 				domain: row.domain,
+				origin: {
+					segment: row.segment.slice(0, LEAD_ORIGIN_LIMITS.segment),
+					country: row.country.slice(0, LEAD_ORIGIN_LIMITS.country),
+					signal: row.signal.slice(0, LEAD_ORIGIN_LIMITS.signal),
+					source: row.source.slice(0, LEAD_ORIGIN_LIMITS.source),
+				},
 			})),
 		});
 

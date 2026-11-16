@@ -9,6 +9,7 @@ import {
 } from "@crm/db";
 import { FIELD_ENTITIES, FIELD_TYPES } from "@crm/db/fields";
 import { EMAIL_DRAFT_LIMITS, emailDraft } from "@crm/validation/email-draft";
+import { leadCategory, leadOriginDetails } from "@crm/validation/lead-origin";
 import { unifersSend, unifersSendInput } from "@crm/validation/unifers-send";
 import { z } from "zod";
 import { bulkIdsInput } from "../crm/bulk";
@@ -354,6 +355,7 @@ export const contactImportOutput = z.object({
 
 export const contactImportLeadsInput = z.object({
 	leadSource: leadSourceEnum.default("COLD_OUTREACH"),
+	category: leadCategory.nullable().default(null),
 	leads: z
 		.array(
 			z.object({
@@ -363,6 +365,7 @@ export const contactImportLeadsInput = z.object({
 				title: z.string().trim().default(""),
 				company: z.string().trim().default(""),
 				domain: z.string().trim().default(""),
+				origin: leadOriginDetails.nullable().default(null),
 			}),
 		)
 		.min(1, "Select at least one lead.")
@@ -394,6 +397,7 @@ export const contactImportTemplateOutput = z.object({
 export const contactDraftEmailInput = z.object({
 	id: z.string().trim().min(1),
 	productId: z.string().trim().min(1).nullable(),
+	category: leadCategory.nullable(),
 	purpose: z.string().trim().max(EMAIL_DRAFT_LIMITS.purpose).nullable(),
 });
 

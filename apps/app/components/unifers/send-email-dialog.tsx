@@ -27,6 +27,11 @@ import {
 	SelectValue,
 } from "@crm/ui/components/select";
 import { Textarea } from "@crm/ui/components/textarea";
+import {
+	LEAD_CATEGORIES,
+	LEAD_CATEGORY_LABEL,
+	type LeadCategory,
+} from "@crm/validation/lead-origin";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -51,6 +56,11 @@ export type EmailRecipient = {
 };
 
 const NO_PRODUCT = "none";
+const AUTO_CATEGORY = "auto";
+
+function categoryOf(value: string): LeadCategory | null {
+	return LEAD_CATEGORIES.find((category) => category === value) ?? null;
+}
 
 export function SendEmailDialog({
 	open,
@@ -64,6 +74,7 @@ export function SendEmailDialog({
 	const ids = {
 		from: useId(),
 		product: useId(),
+		category: useId(),
 		purpose: useId(),
 		subject: useId(),
 		body: useId(),
@@ -83,6 +94,7 @@ export function SendEmailDialog({
 
 	const [sender, setSender] = useState("");
 	const [productId, setProductId] = useState(recipient.productId ?? NO_PRODUCT);
+	const [category, setCategory] = useState<string>(AUTO_CATEGORY);
 	const [purpose, setPurpose] = useState("");
 	const [subject, setSubject] = useState("");
 	const [body, setBody] = useState("");
@@ -117,16 +129,22 @@ export function SendEmailDialog({
 		writeDraft({
 			id: recipient.contactId,
 			productId: recipient.productId,
+			category: null,
 			purpose: null,
 		});
 	}, [open, recipient.contactId, recipient.productId, writeDraft]);
 
-	const rewrite = (nextProduct: string, nextPurpose: string) =>
+	const rewrite = (
+		next: Partial<{ product: string; category: string; purpose: string }> = {},
+	) => {
+		const nextProduct = next.product ?? productId;
 		draft.mutate({
 			id: recipient.contactId,
 			productId: nextProduct === NO_PRODUCT ? null : nextProduct,
-			purpose: nextPurpose.trim() || null,
+			category: categoryOf(next.category ?? category),
+			purpose: (next.purpose ?? purpose).trim() || null,
 		});
+	};
 
 	const logSend = useMutation(
 		trpc.contacts.logUnifersSend.mutationOptions({
@@ -264,7 +282,7 @@ export function SendEmailDialog({
 								disabled={draft.isPending}
 								onValueChange={(next) => {
 									setProductId(next);
-									rewrite(next, purpose);
+									rewrite({ product: next });
 								}}
 							>
 								<SelectTrigger id={ids.product}>
@@ -285,6 +303,36 @@ export function SendEmailDialog({
 							</FieldDescription>
 						</Field>
 						<Field>
+							<FieldLabel htmlFor={ids.category}>Lead type</FieldLabel>
+							<Select
+								value={category}
+								disabled={draft.isPending}
+								onValueChange={(next) => {
+									setCategory(next);
+									rewrite({ category: next });
+								}}
+							>
+								<SelectTrigger id={ids.category}>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value={AUTO_CATEGORY}>
+										From how the lead was found
+									</SelectItem>
+									{LEAD_CATEGORIES.map((value) => (
+										<SelectItem key={value} value={value}>
+											{LEAD_CATEGORY_LABEL[value]}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+							<FieldDescription>
+								Sets the pitch: GPU compute, training labs, or an alternative to
+								their current cloud. Leads added from Lead generation already
+								carry it.
+							</FieldDescription>
+						</Field>
+						<Field>
 							<FieldLabel htmlFor={ids.purpose}>
 								What is this email for?
 							</FieldLabel>
@@ -298,7 +346,7 @@ export function SendEmailDialog({
 								<Button
 									variant="outline"
 									disabled={draft.isPending}
-									onClick={() => rewrite(productId, purpose)}
+									onClick={() => rewrite()}
 								>
 									{draft.isPending ? "Writing…" : "Rewrite"}
 								</Button>

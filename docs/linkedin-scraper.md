@@ -159,7 +159,15 @@ browser ──► CRM app /api/linkedin-scraper/<path>   (apps/app/app/api/linke
   between scrolls and 25 to 60 seconds between profile visits. A new account
   that signs in from a server IP still gets restricted fast: use an older
   account.
-- **Post search reads LinkedIn's page markup.** It finds a post by its post ID,
+- **Post search reads LinkedIn's own data first.** While the search page loads
+  and scrolls, `src/post-network.js` listens to LinkedIn's data answers
+  (`/voyager/api/`, `/flagship-web/`) and takes each post with an author profile,
+  text and post ID. The page markup is the backup. The run log says how many posts
+  came from each, and how many data answers were JSON, other or unreadable: many
+  "other" and 0 JSON means LinkedIn sends a format the scraper does not read yet.
+  Authors already scraped are counted in the "Post check" line; tick "Read
+  profiles again that were already scraped" to include them.
+- **The page markup backup** finds a post by its post ID,
   or, on pages without IDs, by one author link plus the post's own Like button
   (next to Comment and Repost). Without a post ID, "Open the post" opens the
   author's recent activity. A run with 0 posts logs a page check line and saves
