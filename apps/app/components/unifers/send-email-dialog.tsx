@@ -5,6 +5,7 @@ import { Checkbox } from "@crm/ui/components/checkbox";
 import { DatePicker } from "@crm/ui/components/date-picker";
 import {
 	Dialog,
+	DialogBody,
 	DialogContent,
 	DialogDescription,
 	DialogFooter,
@@ -227,144 +228,146 @@ export function SendEmailDialog({
 						{recipient.email}. Unifers sends it now from the mailbox you pick.
 					</DialogDescription>
 				</DialogHeader>
-				<FieldGroup>
-					<Field>
-						<FieldLabel htmlFor={ids.from}>From</FieldLabel>
-						{verified.length > 0 ? (
-							<Select value={chosenSender} onValueChange={setSender}>
-								<SelectTrigger id={ids.from}>
+				<DialogBody>
+					<FieldGroup>
+						<Field>
+							<FieldLabel htmlFor={ids.from}>From</FieldLabel>
+							{verified.length > 0 ? (
+								<Select value={chosenSender} onValueChange={setSender}>
+									<SelectTrigger id={ids.from}>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{verified.map((account) => (
+											<SelectItem key={account.email} value={account.email}>
+												{account.fromName
+													? `${account.fromName} <${account.email}>`
+													: account.email}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							) : (
+								<FieldDescription>
+									{accounts.isPending
+										? "Loading Unifers mailboxes…"
+										: accounts.isError
+											? accounts.error.message
+											: "No verified Unifers mailbox. Connect one in Outreach → Campaigns."}
+								</FieldDescription>
+							)}
+						</Field>
+						<Field>
+							<FieldLabel htmlFor={ids.product}>Product</FieldLabel>
+							<Select
+								value={productId}
+								disabled={draft.isPending}
+								onValueChange={(next) => {
+									setProductId(next);
+									rewrite(next, purpose);
+								}}
+							>
+								<SelectTrigger id={ids.product}>
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									{verified.map((account) => (
-										<SelectItem key={account.email} value={account.email}>
-											{account.fromName
-												? `${account.fromName} <${account.email}>`
-												: account.email}
+									<SelectItem value={NO_PRODUCT}>No product</SelectItem>
+									{productOptions.map((product) => (
+										<SelectItem key={product.id} value={product.id}>
+											{product.name}
 										</SelectItem>
 									))}
 								</SelectContent>
 							</Select>
-						) : (
 							<FieldDescription>
-								{accounts.isPending
-									? "Loading Unifers mailboxes…"
-									: accounts.isError
-										? accounts.error.message
-										: "No verified Unifers mailbox. Connect one in Outreach → Campaigns."}
+								Claude writes the email about this product. Changing it rewrites
+								the draft.
 							</FieldDescription>
-						)}
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={ids.product}>Product</FieldLabel>
-						<Select
-							value={productId}
-							disabled={draft.isPending}
-							onValueChange={(next) => {
-								setProductId(next);
-								rewrite(next, purpose);
-							}}
-						>
-							<SelectTrigger id={ids.product}>
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value={NO_PRODUCT}>No product</SelectItem>
-								{productOptions.map((product) => (
-									<SelectItem key={product.id} value={product.id}>
-										{product.name}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-						<FieldDescription>
-							Claude writes the email about this product. Changing it rewrites
-							the draft.
-						</FieldDescription>
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={ids.purpose}>
-							What is this email for?
-						</FieldLabel>
-						<div className="flex gap-2">
-							<Input
-								id={ids.purpose}
-								value={purpose}
-								placeholder="A first introduction"
-								onChange={(event) => setPurpose(event.target.value)}
-							/>
-							<Button
-								variant="outline"
-								disabled={draft.isPending}
-								onClick={() => rewrite(productId, purpose)}
-							>
-								{draft.isPending ? "Writing…" : "Rewrite"}
-							</Button>
-						</div>
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={ids.subject}>Subject</FieldLabel>
-						<Input
-							id={ids.subject}
-							value={subject}
-							disabled={draft.isPending}
-							placeholder={draft.isPending ? "Claude is writing…" : ""}
-							onChange={(event) => setSubject(event.target.value)}
-						/>
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={ids.body}>Message</FieldLabel>
-						<Textarea
-							id={ids.body}
-							rows={8}
-							value={body}
-							disabled={draft.isPending}
-							placeholder={draft.isPending ? "Claude is writing…" : ""}
-							onChange={(event) => setBody(event.target.value)}
-						/>
-					</Field>
-					<Field orientation="horizontal">
-						<Checkbox
-							id={ids.followUp}
-							checked={followUp}
-							onCheckedChange={(checked) => setFollowUp(checked === true)}
-						/>
-						<FieldLabel htmlFor={ids.followUp}>
-							Send a follow-up if they do not reply
-						</FieldLabel>
-					</Field>
-					{followUp ? (
-						<>
-							<Field>
-								<FieldLabel htmlFor={ids.followUpOn}>Follow-up on</FieldLabel>
-								<DatePicker
-									id={ids.followUpOn}
-									value={followUpOn}
-									onChange={(day) =>
-										setFollowUpOn(day || defaultFollowUpDay(null))
-									}
+						</Field>
+						<Field>
+							<FieldLabel htmlFor={ids.purpose}>
+								What is this email for?
+							</FieldLabel>
+							<div className="flex gap-2">
+								<Input
+									id={ids.purpose}
+									value={purpose}
+									placeholder="A first introduction"
+									onChange={(event) => setPurpose(event.target.value)}
 								/>
-								<FieldDescription>
-									Starts from the contact's next follow-up date. Sending saves
-									this date on the contact. A reply stops the follow-up.
-								</FieldDescription>
-							</Field>
-							<Field>
-								<FieldLabel htmlFor={ids.followUpBody}>
-									Follow-up message
-								</FieldLabel>
-								<Textarea
-									id={ids.followUpBody}
-									rows={5}
-									value={followUpBody}
+								<Button
+									variant="outline"
 									disabled={draft.isPending}
-									placeholder={draft.isPending ? "Claude is writing…" : ""}
-									onChange={(event) => setFollowUpBody(event.target.value)}
-								/>
-							</Field>
-						</>
-					) : null}
-				</FieldGroup>
+									onClick={() => rewrite(productId, purpose)}
+								>
+									{draft.isPending ? "Writing…" : "Rewrite"}
+								</Button>
+							</div>
+						</Field>
+						<Field>
+							<FieldLabel htmlFor={ids.subject}>Subject</FieldLabel>
+							<Input
+								id={ids.subject}
+								value={subject}
+								disabled={draft.isPending}
+								placeholder={draft.isPending ? "Claude is writing…" : ""}
+								onChange={(event) => setSubject(event.target.value)}
+							/>
+						</Field>
+						<Field>
+							<FieldLabel htmlFor={ids.body}>Message</FieldLabel>
+							<Textarea
+								id={ids.body}
+								rows={8}
+								value={body}
+								disabled={draft.isPending}
+								placeholder={draft.isPending ? "Claude is writing…" : ""}
+								onChange={(event) => setBody(event.target.value)}
+							/>
+						</Field>
+						<Field orientation="horizontal">
+							<Checkbox
+								id={ids.followUp}
+								checked={followUp}
+								onCheckedChange={(checked) => setFollowUp(checked === true)}
+							/>
+							<FieldLabel htmlFor={ids.followUp}>
+								Send a follow-up if they do not reply
+							</FieldLabel>
+						</Field>
+						{followUp ? (
+							<>
+								<Field>
+									<FieldLabel htmlFor={ids.followUpOn}>Follow-up on</FieldLabel>
+									<DatePicker
+										id={ids.followUpOn}
+										value={followUpOn}
+										onChange={(day) =>
+											setFollowUpOn(day || defaultFollowUpDay(null))
+										}
+									/>
+									<FieldDescription>
+										Starts from the contact's next follow-up date. Sending saves
+										this date on the contact. A reply stops the follow-up.
+									</FieldDescription>
+								</Field>
+								<Field>
+									<FieldLabel htmlFor={ids.followUpBody}>
+										Follow-up message
+									</FieldLabel>
+									<Textarea
+										id={ids.followUpBody}
+										rows={5}
+										value={followUpBody}
+										disabled={draft.isPending}
+										placeholder={draft.isPending ? "Claude is writing…" : ""}
+										onChange={(event) => setFollowUpBody(event.target.value)}
+									/>
+								</Field>
+							</>
+						) : null}
+					</FieldGroup>
+				</DialogBody>
 				<DialogFooter>
 					<Button variant="outline" onClick={onClose}>
 						Cancel
