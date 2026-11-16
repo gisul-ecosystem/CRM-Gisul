@@ -15,6 +15,7 @@ const {
   OUT_DIR,
   POST_SEARCH,
   COMPANY_SEARCH,
+  BROWSER_SLOTS,
   SCRAPER_USERS,
 } = require('./config');
 const { CONNECTION_TYPES, buildSearchUrl, resolveConnectionType } = require('./search');
@@ -40,15 +41,25 @@ const { ensureDirs, maskUri } = require('./utils');
 const { parseConnectionFile } = require('./import-profiles');
 const multer = require('multer');
 const db = require('./db');
+const slots = require('./slots');
 const { normalizeTemplate, renderTemplate } = require('./message-template');
 
 const BROWSER_BUSY = {
-  error: "The LinkedIn browser is busy with another person's job. Try again when it finishes.",
+  error: `All ${BROWSER_SLOTS.count} LinkedIn browsers are in use by other people. Try again when one of their jobs finishes.`,
   code: 'BROWSER_BUSY',
 };
 
+function activeBrowserUsers() {
+  return new Set([...scrapeUsers(), ...sendUsers(), ...loginUsers()]);
+}
+
 function browserBusyFor(userId) {
-  return [...scrapeUsers(), ...sendUsers(), ...loginUsers()].some((other) => other !== userId);
+  return slots.claim(userId, activeBrowserUsers()) === null;
+}
+
+function viewerPathFor(userId) {
+  const path = slots.viewerPathFor(userId);
+  return path ? `${BROWSER_VIEWER_PATH}&path=${encodeURIComponent(path)}` : '';
 }
 const NOVNC_UPSTREAM = { hostname: '127.0.0.1', port: 6080 };
 const BROWSER_VIEWER_PATH = '/vnc/vnc_lite.html?autoconnect=1&scale=true';
@@ -190,14 +201,22 @@ app.use('/vnc', (req, res) => {
 function attachNovncWsProxy(server) {
   server.on('upgrade', (req, socket, head) => {
     if (!req.url || !req.url.startsWith('/websockify')) return;
+    const token = req.url.split('?')[0].split('/')[2] || '';
+    const port = slots.viewerPortForToken(token);
+    if (!port) {
+      socket.write(['HTTP/1.1 403 Forbidden', 'Connection: close', '', ''].join('\r\n'));
+      socket.destroy();
+      return;
+    }
 
     const proxyReq = http.request({
-      ...NOVNC_UPSTREAM,
-      path: req.url,
+      hostname: NOVNC_UPSTREAM.hostname,
+      port,
+      path: '/websockify',
       method: 'GET',
       headers: {
         ...req.headers,
-        host: `${NOVNC_UPSTREAM.hostname}:${NOVNC_UPSTREAM.port}`,
+        host: `${NOVNC_UPSTREAM.hostname}:${port}`,
       },
     });
 
@@ -285,7 +304,7 @@ app.get('/api/status', async (req, res) => {
       user,
       mongo: { ok: mongoOk, uri: maskUri(MONGODB_URI), db: MONGODB_DB },
       inDocker: String(process.env.IN_DOCKER || '').toLowerCase() === 'true',
-      browserViewerUrl: BROWSER_VIEWER_PATH,
+      browserViewerUrl: viewerPathFor(req.userId),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -736,9 +755,11 @@ app.post('/api/scrape/companies', async (req, res) => {
   if (!industries.length && !keywords) {
     return res.status(400).json({ error: 'Pick at least one industry, or enter keywords' });
   }
-  if (!countries.length) {
-    return res.status(400).json({ error: 'Pick at least one country' });
+  const anyCountry = body.anyCountry === true;
+  if (!countries.length && !anyCountry) {
+    return res.status(400).json({ error: 'Pick at least one country, or choose Any country' });
   }
+  if (anyCountry) countries.length = 0;
   const maxCompanies = Math.min(
     COMPANY_SEARCH.maxCompaniesCap,
     Math.max(1, Number(body.maxCompanies) || COMPANY_SEARCH.defaultMaxCompanies)

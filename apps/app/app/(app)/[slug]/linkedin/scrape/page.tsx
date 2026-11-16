@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { PageShellFallback } from "@/components/page-shell";
+import { scraperViewerUrl } from "@/lib/linkedin-scraper/bridge";
 import { requireSession } from "@/lib/session";
 import { ScrapeView } from "./scrape-view";
 
@@ -18,5 +19,5 @@ export default function LinkedInScrapePage() {
 
 async function Scrape() {
 	await requireSession();
-	return <ScrapeView />;
+	return <ScrapeView viewerBaseUrl={scraperViewerUrl()} />;
 }

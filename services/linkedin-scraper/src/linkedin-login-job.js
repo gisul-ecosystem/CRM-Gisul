@@ -1,4 +1,5 @@
 const { launchBrowser } = require('./browser');
+const { displayFor } = require('./slots');
 const {
   ensureLinkedInLoggedIn,
   hasLinkedInSession,
@@ -105,6 +106,7 @@ async function startLinkedInConnect(userId) {
       const launched = await launchBrowser({
         storageStatePath: paths.linkedinSession,
         headless: false,
+        display: displayFor(userId),
       });
       browser = launched.browser;
       const { context, page } = launched;

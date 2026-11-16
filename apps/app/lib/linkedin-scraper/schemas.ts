@@ -390,6 +390,7 @@ export type CompanySearch = {
 	keywords: string;
 	industries: string[];
 	countries: string[];
+	anyCountry: boolean;
 	maxCompanies: number;
 	rescrape: boolean;
 };

@@ -96,6 +96,8 @@ export const lead = z.object({
 	source: z.string(),
 	signal: z.string(),
 	signal_url: z.string(),
+	competitor: z.string().default(""),
+	competitor_service: z.string().default(""),
 	date_found: z.string(),
 	full_name: z.string(),
 	title: z.string(),

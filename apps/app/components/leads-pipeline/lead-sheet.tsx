@@ -48,6 +48,8 @@ function website(domain: string): string {
 function LeadBody({ lead }: { lead: Lead }) {
 	const facts: [string, string][] = [
 		["Country", lead.country],
+		["Competitor", lead.competitor],
+		["Service they take", lead.competitor_service],
 		["Segment", segmentList(lead.segment)],
 		["Founded", lead.founded],
 		["Stage", lead.stage],

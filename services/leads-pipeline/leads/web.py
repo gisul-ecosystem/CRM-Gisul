@@ -404,9 +404,9 @@ PAGE_SIZE = 25
 MAX_PAGE_SIZE = 200
 LEAD_FIELDS = ["company", "domain", "company_linkedin", "country", "segment", "intent", "intent_score",
                "intent_signals", "early", "founded", "stage", "team_size", "source", "signal", "signal_url",
-               "date_found", "full_name", "title", "linkedin_url", "email", "email_type", "verified_status",
+               "competitor", "competitor_service", "date_found", "full_name", "title", "linkedin_url", "email", "email_type", "verified_status",
                "phone", "score", "ready", "status", "last_updated"]
-SEARCH_FIELDS = ["company", "domain", "full_name", "title", "email"]
+SEARCH_FIELDS = ["company", "domain", "full_name", "title", "email", "competitor", "competitor_service"]
 EXEMPT_DEFAULT = "vfx_animation,gaming,arch_viz,competitor_clients"
 
 

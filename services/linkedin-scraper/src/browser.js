@@ -3,12 +3,12 @@ const { chromium } = require('playwright');
 const { HEADLESS, AUTH_DIR } = require('./config');
 const { ensureDirs } = require('./utils');
 
-async function launchBrowser({ storageStatePath, headless } = {}) {
+async function launchBrowser({ storageStatePath, headless, display: chosenDisplay } = {}) {
   ensureDirs(AUTH_DIR);
 
   const useHeadless = headless ?? HEADLESS;
   const inDocker = String(process.env.IN_DOCKER || '').toLowerCase() === 'true';
-  const display = process.env.DISPLAY || ':99';
+  const display = chosenDisplay || process.env.DISPLAY || ':99';
 
   const args = [
     '--disable-blink-features=AutomationControlled',

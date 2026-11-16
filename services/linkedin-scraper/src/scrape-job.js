@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { ACTION_DELAY_MS, AI_MESSAGES, HEADLESS, POST_SEARCH } = require('./config');
 const { launchBrowser } = require('./browser');
+const { displayFor } = require('./slots');
 const { ensureLinkedInLoggedIn } = require('./linkedin-auth');
 const { collectConnectionLinks } = require('./connections');
 const { scrapeProfile } = require('./profile');
@@ -144,6 +145,7 @@ async function runScrapeJob(userId, filters, onProgress) {
   const { browser, context, page } = await launchBrowser({
     storageStatePath: paths.linkedinSession,
     headless: HEADLESS,
+    display: displayFor(userId),
   });
   page.setDefaultTimeout(90000);
 
@@ -586,6 +588,7 @@ async function runCompanySearch({ userId, jobId, job, filters, page, log, outDir
   const { kept, outside } = await scrapeCompanies(page, cards, search, {
     shouldStop,
     log,
+    debugDir: outDir,
     onCompany: async (record) => {
       await db.companies.upsertCompany(userId, record, stored);
       job.processed += 1;
