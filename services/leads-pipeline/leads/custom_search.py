@@ -32,6 +32,8 @@ CUSTOM_SEARCH = {
         "tracxn.com", "crunchbase.com", "linkedin.com", "facebook.com", "instagram.com", "x.com",
         "twitter.com", "quora.com", "reddit.com", "youtube.com", "glassdoor.com", "ambitionbox.com",
         "saasworthy.com", "slashdot.org", "alternativeto.net", "f6s.com", "builtin.com",
+        "bayt.com", "gulftalent.com", "naukrigulf.com", "dubizzle.com", "opensooq.com", "yellowpages.ae",
+        "connect.ae", "zawya.com", "magnitt.com", "wamda.com", "gulfnews.com", "khaleejtimes.com",
     ),
     "history_size": 50,
     "spec_file": "custom_search.json",

@@ -78,3 +78,9 @@ Golden Gate Ventures (SG),https://goldengate.vc/portfolio/,check,/portfolio
 # Removed 2026-11-03: later-stage funds whose portfolios are mostly grown companies (Prime, Kalaari,
 # 3one4, WEH, Rainmatter, Jungle, Gobi, Quest, Beacon VC, Alpha JWC, Radical). Add only programmes
 # and funds that back pre-seed / seed / pre-Series A startups.
+# Gulf (added 2026-11-16). india=check: each startup's own site decides its country, so pick the
+# Gulf countries in COUNTRIES. in5 lists startups with links to their sites in plain HTML (7 checked).
+# Hub71 builds its list with JavaScript and needs RENDER_JS=1. Checked 2026-11-16, not usable: Sheraa
+# (domain for sale), Flat6Labs, QSTP and C5 (404), AstroLabs (no list), KAUST (list on another host).
+in5 Dubai,https://infive.ae/startups,check,
+Hub71 Abu Dhabi,https://www.hub71.com/startups,check,

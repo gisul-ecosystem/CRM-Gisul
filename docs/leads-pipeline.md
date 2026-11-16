@@ -219,3 +219,31 @@ python -m leads.web               # http://127.0.0.1:8501
 ```
 
 and set `LEADS_PIPELINE_URL="http://127.0.0.1:8501"` in the CRM's `.env`.
+
+## Gulf countries
+
+`leads/geo.py` lists six Gulf countries: United Arab Emirates, Saudi Arabia, Qatar, Kuwait,
+Bahrain and Oman (`GULF`). Each has its domain ending, phone code, cities, places (English and
+Arabic) and company-registration markers (FZ-LLC, DMCC, a Saudi C.R. number, QFC, K.S.C., B.S.C. (c),
+SAOG). Pick them in the Countries choice of a run. Search, Maps and Custom search then query their
+cities, and the country check reads `.ae`, `+971` and the other markers.
+
+`GULF_SKIP` in `sources/search.py` drops Gulf job boards, news sites and directories. The GPU
+profile also reads two Gulf incubators in `incubators.csv`: in5 (plain HTML) and Hub71 (needs
+`RENDER_JS=1`). Both use `india=check`, so each startup's own site decides its country.
+
+The training profile reads the AI CERTs training-partner list in `training_directories.csv`
+(about 300 partners, 14 with a Gulf domain ending). Partners outside the chosen countries are dropped.
+
+Arabic pages pass the same checks. `training.py` and the AI words in `geo.py` hold Arabic terms
+beside the English ones. The Arabic terms take no word boundaries, because Arabic joins "the" and
+"and" to the word (والتدريب).
+
+More countries do not spend more search credits in one run. Search stops at its per-run budget and
+skips queries done before, so each run continues the list.
+
+## Date filter
+
+The Leads page has **Found from** and **Found to**. They send `since` and `until` (`YYYY-MM-DD`)
+to `/api/leads` and `/api/download`. Both days are included. The filter reads `date_found`, the
+day the pipeline first found the lead. A value that is not a date is ignored.

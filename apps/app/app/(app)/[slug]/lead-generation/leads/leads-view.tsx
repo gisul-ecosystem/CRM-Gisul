@@ -2,6 +2,7 @@
 
 import { Button } from "@crm/ui/components/button";
 import { Checkbox } from "@crm/ui/components/checkbox";
+import { DatePicker } from "@crm/ui/components/date-picker";
 import {
 	Empty,
 	EmptyDescription,
@@ -61,6 +62,8 @@ const NO_FILTERS: LeadFilters = {
 	segment: null,
 	country: null,
 	source: null,
+	foundFrom: null,
+	foundTo: null,
 	sort: "score",
 	latest: false,
 	perCompany: false,
@@ -328,6 +331,22 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 					options={countryOptions}
 					label="Country"
 				/>
+				<div className="flex items-center gap-2">
+					<div className="w-40">
+						<DatePicker
+							value={filters.foundFrom}
+							placeholder="Found from"
+							onChange={(day) => change({ foundFrom: day || null })}
+						/>
+					</div>
+					<div className="w-40">
+						<DatePicker
+							value={filters.foundTo}
+							placeholder="Found to"
+							onChange={(day) => change({ foundTo: day || null })}
+						/>
+					</div>
+				</div>
 				<FilterSelect
 					value={filters.sort}
 					onChange={(value) => change({ sort: value })}
