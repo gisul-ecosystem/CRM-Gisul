@@ -229,6 +229,8 @@ export type LeadFilters = {
 	segment: string | null;
 	country: string | null;
 	source: string | null;
+	foundFrom: string | null;
+	foundTo: string | null;
 	sort: LeadSort;
 	latest: boolean;
 	perCompany: boolean;

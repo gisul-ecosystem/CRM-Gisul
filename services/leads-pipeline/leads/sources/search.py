@@ -80,11 +80,23 @@ SEA_SKIP = {
 }
 
 
+GULF_SKIP = {
+    "bayt.com", "gulftalent.com", "naukrigulf.com", "dubizzle.com", "dubizzle.sa", "opensooq.com",
+    "yellowpages.ae", "yellowpages-uae.com", "connect.ae", "uaecontact.com", "dubaibizdirectory.com",
+    "saudiyellowpages.com", "qatarliving.com", "qatar.yellowpages.qa", "kuwaitlocal.com", "bahrainyellow.com",
+    "omanyellowpages.com", "gulfnews.com", "khaleejtimes.com", "thenationalnews.com", "arabnews.com",
+    "zawya.com", "gulfbusiness.com", "arabianbusiness.com", "argaam.com", "saudigazette.com.sa",
+    "gulf-times.com", "thepeninsulaqatar.com", "timesofoman.com", "gdnonline.com", "arabtimesonline.com",
+    "wamda.com", "magnitt.com", "bayut.com", "propertyfinder.ae", "noon.com", "amazon.ae", "amazon.sa",
+    "talabat.com", "careem.com", "glassdoor.ae", "indeed.ae", "khda.gov.ae", "u.ae", "my.gov.sa",
+}
+
+
 def _lists(profile: str):
     """(cities, topics, skip) for a profile."""
     if profile == "training":
-        return training.CITIES, training.TOPICS, training.SEARCH_SKIP | SEA_SKIP
-    return GPU_CITIES, GPU_TOPICS, GPU_SKIP | SEA_SKIP
+        return training.CITIES, training.TOPICS, training.SEARCH_SKIP | SEA_SKIP | GULF_SKIP
+    return GPU_CITIES, GPU_TOPICS, GPU_SKIP | SEA_SKIP | GULF_SKIP
 
 
 def target_cities(india_cities: List[str], countries=("India",)) -> List[str]:

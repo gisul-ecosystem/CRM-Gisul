@@ -9,3 +9,8 @@
 # Removed 2026-10-16: CNCF Kubernetes Training Partners (mostly foreign consultancies; gave
 # non-Indian, non-training rows). Add only pages that list Indian training institutes.
 incubator,url,india
+# Added 2026-11-16: AI CERTs training partners, about 300 worldwide with a "Visit Site" link each,
+# about 50 in the Gulf (UAE, Qatar, Bahrain, Kuwait, Oman, Saudi Arabia). india=check: each
+# partner's own site decides its country; partners outside COUNTRIES are dropped.
+# Checked 2026-11-16, not usable: Edarabia (403), Palo Alto ATC list and KHDA (JavaScript, empty).
+AI CERTs Training Partners,https://aicerts.ai/find-a-training-partner/,check

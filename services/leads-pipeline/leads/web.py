@@ -258,6 +258,9 @@ def filter_sheet(df: pd.DataFrame, args, last_run: Optional[dict] = None) -> pd.
         day = (args.get(key) or "").strip()
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
             df = df[df[col].str[:10] >= day]
+    day = (args.get("until") or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        df = df[df["date_found"].str[:10] <= day]
     sort = args.get("sort") if args.get("sort") in SORTS else SORTS[0]
     if sort == "company":
         df = df.assign(_company=df["company"].where(df["company"] != "", df["domain"]).str.strip().str.lower())
