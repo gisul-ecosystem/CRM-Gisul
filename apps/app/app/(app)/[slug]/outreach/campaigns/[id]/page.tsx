@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { PageShellFallback } from "@/components/page-shell";
 import { requireSession } from "@/lib/session";
+import { parseUnifersRouteId } from "@/lib/unifers/route-id";
 import { CampaignDetail } from "./campaign-detail";
+import { UnifersCampaignDetail } from "./unifers-campaign-detail";
 
 export const metadata: Metadata = {
 	title: "Campaign",
@@ -22,5 +24,7 @@ async function Campaign({
 	params,
 }: Pick<PageProps<"/[slug]/outreach/campaigns/[id]">, "params">) {
 	const [session, { id }] = await Promise.all([requireSession(), params]);
+	const unifersId = parseUnifersRouteId(id);
+	if (unifersId !== null) return <UnifersCampaignDetail id={unifersId} />;
 	return <CampaignDetail id={id} viewerEmail={session.user.email} />;
 }

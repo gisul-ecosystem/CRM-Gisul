@@ -1,0 +1,241 @@
+"use client";
+
+import { Button } from "@crm/ui/components/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@crm/ui/components/dialog";
+import {
+	Field,
+	FieldDescription,
+	FieldGroup,
+	FieldLabel,
+} from "@crm/ui/components/field";
+import { Input } from "@crm/ui/components/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@crm/ui/components/select";
+import { Textarea } from "@crm/ui/components/textarea";
+import { useMutation } from "@tanstack/react-query";
+import { useEffect, useId, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useUnifersHealth } from "@/components/unifers/unifers-page";
+import { useTRPC } from "@/lib/trpc/client";
+import { campaignsApi } from "@/lib/unifers/api";
+import { useUnifersCache } from "@/lib/unifers/cache";
+import { UNIFERS } from "@/lib/unifers/unifers-config";
+
+export type EmailRecipient = {
+	contactId: string;
+	email: string;
+	name: string;
+	companyName: string | null;
+};
+
+export function SendEmailDialog({
+	open,
+	onClose,
+	recipient,
+}: {
+	open: boolean;
+	onClose: () => void;
+	recipient: EmailRecipient;
+}) {
+	const ids = {
+		from: useId(),
+		purpose: useId(),
+		subject: useId(),
+		body: useId(),
+	};
+	const trpc = useTRPC();
+	const cache = useUnifersCache();
+	const accounts = useUnifersHealth();
+	const verified = (accounts.data?.accounts ?? []).filter(
+		(account) => account.status === "verified",
+	);
+
+	const [sender, setSender] = useState("");
+	const [purpose, setPurpose] = useState("");
+	const [subject, setSubject] = useState("");
+	const [body, setBody] = useState("");
+	const drafted = useRef(false);
+
+	const chosenSender =
+		sender ||
+		verified.find((account) => account.isDefault)?.email ||
+		verified[0]?.email ||
+		"";
+
+	const draft = useMutation(
+		trpc.contacts.draftEmail.mutationOptions({
+			onSuccess: (result) => {
+				setSubject(result.subject);
+				setBody(result.body);
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	const writeDraft = draft.mutate;
+	useEffect(() => {
+		if (!open || drafted.current) return;
+		drafted.current = true;
+		writeDraft({ id: recipient.contactId, purpose: null });
+	}, [open, recipient.contactId, writeDraft]);
+
+	const send = useMutation({
+		mutationFn: () =>
+			campaignsApi.create({
+				name: `${UNIFERS.singleSend.namePrefix} ${recipient.name} · ${new Date().toLocaleString()}`,
+				senders: [chosenSender],
+				sequence: [{ subject: subject.trim(), body: body.trim(), waitDays: 0 }],
+				sendWindow: {
+					...UNIFERS.singleSend.window,
+					days: [...UNIFERS.singleSend.window.days],
+					timeZone: UNIFERS.defaultTimeZone,
+				},
+				stopConditions: { ...UNIFERS.singleSend.stopConditions },
+				startAt: "now",
+				leads: [
+					{
+						email: recipient.email,
+						fullName: recipient.name,
+						...(recipient.companyName
+							? { companyName: recipient.companyName }
+							: {}),
+					},
+				],
+			}),
+		onSuccess: async (created) => {
+			await cache.everything();
+			const rejected = created.leads?.rejected[0];
+			if (rejected) {
+				toast.error(
+					`Unifers did not accept ${recipient.email}: ${rejected.message}`,
+				);
+				return;
+			}
+			if (created.leads && created.leads.added === 0) {
+				toast.error(
+					`${recipient.email} is already in another Unifers campaign, so nothing was sent.`,
+				);
+				return;
+			}
+			toast.success(`Sending to ${recipient.email} from ${chosenSender}.`);
+			onClose();
+		},
+		onError: (error) => toast.error(error.message),
+	});
+
+	const ready =
+		chosenSender !== "" &&
+		subject.trim() !== "" &&
+		body.trim() !== "" &&
+		!draft.isPending &&
+		!send.isPending;
+
+	return (
+		<Dialog open={open} onOpenChange={(next) => (next ? null : onClose())}>
+			<DialogContent className="sm:max-w-(--container-sheet)">
+				<DialogHeader>
+					<DialogTitle>Email {recipient.name}</DialogTitle>
+					<DialogDescription>
+						Claude writes the email from what the CRM knows about{" "}
+						{recipient.email}. Unifers sends it now from the mailbox you pick.
+					</DialogDescription>
+				</DialogHeader>
+				<FieldGroup>
+					<Field>
+						<FieldLabel htmlFor={ids.from}>From</FieldLabel>
+						{verified.length > 0 ? (
+							<Select value={chosenSender} onValueChange={setSender}>
+								<SelectTrigger id={ids.from}>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{verified.map((account) => (
+										<SelectItem key={account.email} value={account.email}>
+											{account.fromName
+												? `${account.fromName} <${account.email}>`
+												: account.email}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						) : (
+							<FieldDescription>
+								{accounts.isPending
+									? "Loading Unifers mailboxes…"
+									: accounts.isError
+										? accounts.error.message
+										: "No verified Unifers mailbox. Connect one in Outreach → Campaigns."}
+							</FieldDescription>
+						)}
+					</Field>
+					<Field>
+						<FieldLabel htmlFor={ids.purpose}>
+							What is this email for?
+						</FieldLabel>
+						<div className="flex gap-2">
+							<Input
+								id={ids.purpose}
+								value={purpose}
+								placeholder="A first introduction"
+								onChange={(event) => setPurpose(event.target.value)}
+							/>
+							<Button
+								variant="outline"
+								disabled={draft.isPending}
+								onClick={() =>
+									draft.mutate({
+										id: recipient.contactId,
+										purpose: purpose.trim() || null,
+									})
+								}
+							>
+								{draft.isPending ? "Writing…" : "Rewrite"}
+							</Button>
+						</div>
+					</Field>
+					<Field>
+						<FieldLabel htmlFor={ids.subject}>Subject</FieldLabel>
+						<Input
+							id={ids.subject}
+							value={subject}
+							disabled={draft.isPending}
+							placeholder={draft.isPending ? "Claude is writing…" : ""}
+							onChange={(event) => setSubject(event.target.value)}
+						/>
+					</Field>
+					<Field>
+						<FieldLabel htmlFor={ids.body}>Message</FieldLabel>
+						<Textarea
+							id={ids.body}
+							rows={10}
+							value={body}
+							disabled={draft.isPending}
+							placeholder={draft.isPending ? "Claude is writing…" : ""}
+							onChange={(event) => setBody(event.target.value)}
+						/>
+					</Field>
+				</FieldGroup>
+				<DialogFooter>
+					<Button variant="outline" onClick={onClose}>
+						Cancel
+					</Button>
+					<Button disabled={!ready} onClick={() => send.mutate()}>
+						{send.isPending ? "Sending…" : "Send now"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
+}

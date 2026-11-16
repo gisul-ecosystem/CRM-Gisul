@@ -19,7 +19,7 @@ from .geo import COUNTRIES
 from .people_search import google_url
 from .profile import GPU, LABELS, OWN_KEYS, TRAINING, COMPETITORS, env_name
 from .segments import GPU_SEGMENTS, TRAINING_SEGMENTS, COMPETITOR_SEGMENTS
-from .store import fill_country, to_xlsx
+from .store import Store, fill_country, to_xlsx
 
 try:
     import fcntl
@@ -33,6 +33,9 @@ TRAINING_SOURCES = ["seeds", "directories", "search", "maps", "funding", "github
 COMPETITORS_SOURCES = ["competitors", "seeds", "search"]
 SEGMENTS = GPU_SEGMENTS
 INTENTS = ["high", "medium", "low"]
+SORTS = ["score", "company", "newest", "oldest"]
+REJECT_SCOPES = ("person", "company")
+MAX_REJECT = 500
 PREVIEW_COLUMNS = ["company", "country", "full_name", "title", "email", "verified_status", "intent", "segment",
                    "score", "ready"]
 LOG_LINES = 80
@@ -255,7 +258,16 @@ def filter_sheet(df: pd.DataFrame, args, last_run: Optional[dict] = None) -> pd.
         day = (args.get(key) or "").strip()
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
             df = df[df[col].str[:10] >= day]
-    df = df.sort_values(["_score", "_intent"], ascending=False)
+    sort = args.get("sort") if args.get("sort") in SORTS else SORTS[0]
+    if sort == "company":
+        df = df.assign(_company=df["company"].where(df["company"] != "", df["domain"]).str.strip().str.lower())
+        df = df.sort_values(["_company", "_score"], ascending=[True, False]).drop(columns=["_company"])
+    elif sort == "newest":
+        df = df.sort_values(["date_found", "_score"], ascending=[False, False])
+    elif sort == "oldest":
+        df = df.sort_values(["date_found", "_score"], ascending=[True, False])
+    else:
+        df = df.sort_values(["_score", "_intent"], ascending=False)
     if args.get("per_company"):
         df = df.drop_duplicates("domain")
     return df.drop(columns=["_score", "_intent"])
@@ -338,18 +350,22 @@ class Runner:
             except OSError:
                 return True
 
-    def start(self, batch: int, sources: List[str], why: str = "from the web page") -> None:
+    def start(self, batch: int, sources: List[str], why: str = "from the web page",
+              countries: Optional[List[str]] = None) -> None:
         with self.lock:
             if self.any_running():
                 raise RuntimeError("A run is already in progress")
             env = {k: v for k, v in os.environ.items() if k not in SETTING_KEYS | OWN_KEYS - {"DATA_DIR"}}
             env.update(PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8", PROFILE=self.profile)
+            if countries:
+                env["COUNTRIES"] = ",".join(countries)
             cmd = [sys.executable, "-u", "-m", "leads", "run", "--profile", self.profile,
                    "--batch", str(batch), "--sources", ",".join(sources)]
             self.data_dir().mkdir(parents=True, exist_ok=True)
             log = open(self.log_path(), "a", encoding="utf-8")
             log.write(f"\n=== run started {why} {datetime.now():%Y-%m-%d %H:%M} "
-                      f"(batch {batch}, sources {','.join(sources)})\n")
+                      f"(batch {batch}, sources {','.join(sources)}"
+                      f"{', countries ' + ','.join(countries) if countries else ''})\n")
             log.flush()
             extra = {"start_new_session": True} if os.name == "posix" else {}
             self.proc = subprocess.Popen(cmd, cwd=self.root, env=env, stdout=log,
@@ -454,6 +470,17 @@ def text_keys(profile: str) -> List[str]:
     return [key for key in TEXTS if profile == GPU or key not in SHARED_KEYS]
 
 
+def run_countries(value) -> Optional[List[str]]:
+    if value is None:
+        return None
+    if not isinstance(value, list) or not all(isinstance(c, str) for c in value):
+        raise ApiError(400, "INVALID_COUNTRIES", "Countries must be a list of names.")
+    unknown = [c for c in value if c not in COUNTRIES]
+    if unknown:
+        raise ApiError(400, "INVALID_COUNTRIES", f"Unknown country: {unknown[0]}.")
+    return [c for c in COUNTRIES if c in value] or None
+
+
 def split_list(raw: str) -> List[str]:
     return [x for x in (raw or "").split(",") if x]
 
@@ -553,6 +580,8 @@ def run_info(runner: Runner, sheets: SheetCache) -> dict:
         "dailySources": daily_sources(env, cfg["sources"]),
         "segments": list(cfg["segments"]),
         "countries": list(COUNTRIES) + [OTHER_COUNTRY],
+        "countryOptions": list(COUNTRIES),
+        "targetCountries": split_list(env.get("COUNTRIES") or DEFAULT_COUNTRIES[runner.profile]),
         "intents": INTENTS,
     }
 
@@ -628,8 +657,9 @@ def create_app(root: Path = ROOT) -> Flask:
             raise ApiError(400, "INVALID_BATCH", "The batch must be a whole number.")
         if not 1 <= batch <= limit:
             raise ApiError(400, "INVALID_BATCH", f"The batch must be between 1 and {limit}.")
+        countries = run_countries(data.get("countries"))
         try:
-            runner.start(batch, sources, why="from the CRM")
+            runner.start(batch, sources, why="from the CRM", countries=countries)
         except RuntimeError as error:
             raise ApiError(409, "RUN_IN_PROGRESS", str(error))
         return jsonify(ok=True, message=f"{LABELS[runner.profile]} run started.")
@@ -660,11 +690,13 @@ def create_app(root: Path = ROOT) -> Flask:
             spec = parse_spec(data)
         except SpecError as error:
             raise ApiError(400, "INVALID_SEARCH", str(error))
+        countries = run_countries(data.get("countries"))
         if runner.any_running():
             raise ApiError(409, "RUN_IN_PROGRESS", "A run is already in progress.")
         write_spec(runner.data_dir(), spec)
         try:
-            runner.start(spec["companies"], ["custom"], why=f"for the custom search {spec['name']}")
+            runner.start(spec["companies"], ["custom"], why=f"for the custom search {spec['name']}",
+                         countries=countries)
         except RuntimeError as error:
             raise ApiError(409, "RUN_IN_PROGRESS", str(error))
         return jsonify(ok=True, message=f"Custom search {spec['name']} started: {len(spec['queries'])} searches, "
@@ -689,6 +721,37 @@ def create_app(root: Path = ROOT) -> Flask:
         rows = df.iloc[(page - 1) * size: page * size] if len(df) else df
         return jsonify(profile=runner.profile, total=int(len(df)), page=page, pageSize=size,
                        rows=lead_rows(rows) if len(rows) else [])
+
+    @app.post("/api/leads/reject")
+    def reject_leads():
+        data = body()
+        runner = runner_for(data.get("profile"))
+        scope = data.get("scope")
+        if scope not in REJECT_SCOPES:
+            raise ApiError(400, "INVALID_SCOPE", "Reject people or companies.")
+        rows = data.get("leads")
+        if not isinstance(rows, list) or not rows or len(rows) > MAX_REJECT:
+            raise ApiError(400, "INVALID_LEADS", f"Pick between 1 and {MAX_REJECT} leads.")
+        if not all(isinstance(r, dict) and str(r.get("domain") or "").strip() for r in rows):
+            raise ApiError(400, "INVALID_LEADS", "Each lead needs its domain.")
+        reason = re.sub(r"\s+", " ", str(data.get("reason") or "Rejected in review")).strip()[:80]
+        if runner.any_running():
+            raise ApiError(409, "RUN_IN_PROGRESS", "A run is in progress. Reject leads when it finishes.")
+        store = Store(runner.data_dir())
+        before = len(store.df)
+        for r in rows:
+            domain = str(r["domain"]).strip()
+            if scope == "company":
+                store.reject(domain, f"manual: {reason}")
+                store.drop_domain(domain)
+            else:
+                store.reject_person(domain, str(r.get("full_name") or ""), str(r.get("email") or ""),
+                                    f"manual: {reason}")
+        store.save()
+        removed = before - len(store.df)
+        noun = "companies" if scope == "company" else "people"
+        return jsonify(ok=True, removed=removed,
+                       message=f"Rejected {len(rows)} {noun}: {removed} row(s) removed from the sheet.")
 
     @app.get("/api/download")
     def download():

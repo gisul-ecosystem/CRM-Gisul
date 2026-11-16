@@ -8,6 +8,7 @@ import {
 	RecordSource,
 } from "@crm/db";
 import { FIELD_ENTITIES, FIELD_TYPES } from "@crm/db/fields";
+import { EMAIL_DRAFT_LIMITS, emailDraft } from "@crm/validation/email-draft";
 import { z } from "zod";
 import { bulkIdsInput } from "../crm/bulk";
 import { recordFieldValues } from "../fields/fields.contracts";
@@ -391,3 +392,10 @@ export const contactImportTemplateOutput = z.object({
 	csv: z.string(),
 	filename: z.string(),
 });
+
+export const contactDraftEmailInput = z.object({
+	id: z.string().trim().min(1),
+	purpose: z.string().trim().max(EMAIL_DRAFT_LIMITS.purpose).nullable(),
+});
+
+export const contactDraftEmailOutput = emailDraft;

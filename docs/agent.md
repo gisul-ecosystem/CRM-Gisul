@@ -379,6 +379,23 @@ asserts the declared subagent path, verifies a READY side-effect-free manifest, 
 cleans up its rows. It skips visibly when the database, bridge secret or model
 credential is unavailable.
 
+## One email, drafted by Claude
+
+The contact sheet has a **Send email** button. It sends one email to that one
+person. The draft comes from `POST /internal/crm/draft-email` in
+`agent/channels/crm.ts`, which calls `agent/lib/email-draft.ts`.
+
+- The API relays only. `contacts.draftEmail` sends `{contactId, senderName, purpose}`
+  through the bridge and returns `{subject, body}`.
+- The agent reads the contact, the company, the brief and the product from the
+  database. It calls Claude with structured output and server-side fallbacks.
+- The shape lives in `@crm/validation/email-draft`.
+- `ANTHROPIC_API_KEY` is optional. Without it the answer is `not_configured`.
+- Model, effort and limits are in `agent/lib/email-draft-config.ts`.
+
+Unifers sends the email. The app creates a one-lead Unifers campaign with
+`startAt: "now"` and an all-day window. See `docs/outreach.md`.
+
 ## The bridge
 
 ```

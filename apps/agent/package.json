@@ -21,6 +21,7 @@
 	"dependencies": {
 		"@ai-sdk/azure": "4.0.78",
 		"@ai-sdk/provider": "4.0.18",
+		"@anthropic-ai/sdk": "^1.8.0",
 		"@crm/brand": "workspace:*",
 		"@crm/db": "workspace:*",
 		"@crm/env": "workspace:*",

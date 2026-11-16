@@ -9,8 +9,11 @@ import {
 	customSearchPreview,
 	type LeadFilters,
 	type LeadProfile,
+	type Lead,
 	leadsPage,
 	okMessage,
+	type RejectScope,
+	rejectResult,
 	pipelineSettings,
 	pipelineStatus,
 	runLog,
@@ -30,6 +33,7 @@ function filterQuery(
 		segment: filters.segment,
 		country: filters.country,
 		source: filters.source,
+		sort: filters.sort,
 		latest: filters.latest,
 		per_company: filters.perCompany,
 	};
@@ -39,10 +43,15 @@ export const pipelineApi = {
 	status: () => pipelineJson("/status", pipelineStatus),
 	log: (profile: LeadProfile) =>
 		pipelineJson("/log", runLog, { query: { profile } }),
-	run: (profile: LeadProfile, batch: number, sources: readonly string[]) =>
+	run: (
+		profile: LeadProfile,
+		batch: number,
+		sources: readonly string[],
+		countries: readonly string[],
+	) =>
 		pipelineJson("/run", okMessage, {
 			method: "POST",
-			json: { profile, batch, sources },
+			json: { profile, batch, sources, countries },
 		}),
 	stop: (profile: LeadProfile) =>
 		pipelineJson("/stop", okMessage, { method: "POST", json: { profile } }),
@@ -57,6 +66,25 @@ export const leadsApi = {
 	) =>
 		pipelineJson("/leads", leadsPage, {
 			query: { ...filterQuery(profile, filters), page, pageSize },
+		}),
+	reject: (
+		profile: LeadProfile,
+		scope: RejectScope,
+		leads: readonly Pick<Lead, "domain" | "full_name" | "email">[],
+		reason: string,
+	) =>
+		pipelineJson("/leads/reject", rejectResult, {
+			method: "POST",
+			json: {
+				profile,
+				scope,
+				reason,
+				leads: leads.map(({ domain, full_name, email }) => ({
+					domain,
+					full_name,
+					email,
+				})),
+			},
 		}),
 	download: (profile: LeadProfile, filters: LeadFilters) =>
 		downloadFromPipeline("/download", filterQuery(profile, filters)),

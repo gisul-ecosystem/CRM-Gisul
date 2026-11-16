@@ -8,6 +8,7 @@ import {
 	UseMiddlewares,
 } from "nestjs-trpc";
 import type { z } from "zod";
+import { EmailDraftService } from "../agent/email-draft.service";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { restMeta } from "../trpc/openapi";
@@ -19,6 +20,8 @@ import {
 	contactBulkOwnerInput,
 	contactByIdOutput,
 	contactCreateInput,
+	contactDraftEmailInput,
+	contactDraftEmailOutput,
 	contactEnrichOutput,
 	contactExportInput,
 	contactExportOutput,
@@ -42,6 +45,7 @@ import { ContactsService } from "./contacts.service";
 export class ContactsRouter {
 	constructor(
 		@Inject(ContactsService) private readonly contacts: ContactsService,
+		@Inject(EmailDraftService) private readonly drafts: EmailDraftService,
 	) {}
 
 	@Query({
@@ -217,5 +221,21 @@ export class ContactsRouter {
 		@Input() input: z.infer<typeof factDecisionInput>,
 	) {
 		return this.contacts.decideFact(input, ctx.user.id);
+	}
+
+	@Mutation({
+		input: contactDraftEmailInput,
+		output: contactDraftEmailOutput,
+		meta: restMeta("POST", "/contacts/{id}/draft-email", ["Contacts"]),
+	})
+	async draftEmail(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof contactDraftEmailInput>,
+	) {
+		return this.drafts.draft({
+			contactId: input.id,
+			senderName: ctx.user.name?.trim() || null,
+			purpose: input.purpose || null,
+		});
 	}
 }

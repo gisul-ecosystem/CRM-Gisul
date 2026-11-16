@@ -18,7 +18,13 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from .util import person_key
+
 log = logging.getLogger(__name__)
+
+
+def person_reject_key(domain: str, name: str, email: str) -> str:
+    return f"{(domain or '').strip().lower()}|{person_key(name) or (email or '').strip().lower()}"
 
 SHEET = "leads"
 COLUMNS = [
@@ -144,7 +150,7 @@ class Store:
         return pd.DataFrame(columns=COLUMNS, dtype=object)
 
     def _load_state(self) -> dict:
-        base = {"rejected": {}, "attempts": {}, "catch_all": {}, "cursors": {}}
+        base = {"rejected": {}, "rejected_people": {}, "attempts": {}, "catch_all": {}, "cursors": {}}
         if self.state_path.exists():
             try:
                 base.update(json.loads(self.state_path.read_text()))
@@ -154,6 +160,7 @@ class Store:
 
     # ---------- saving ----------
     def save(self) -> None:
+        self.drop_rejected_people()
         df = self.df.copy()
         df["score"] = pd.to_numeric(df["score"], errors="coerce").fillna(0).astype(int)
         df = df.sort_values(["score", "date_found"], ascending=[False, False], kind="stable")
@@ -337,6 +344,22 @@ class Store:
     # ---------- state helpers ----------
     def reject(self, domain: str, reason: str) -> None:
         self.state["rejected"][domain] = reason
+
+    def reject_person(self, domain: str, name: str, email: str, reason: str) -> None:
+        self.state.setdefault("rejected_people", {})[person_reject_key(domain, name, email)] = reason
+        self.drop_rejected_people()
+
+    def drop_rejected_people(self) -> int:
+        rejected = self.state.get("rejected_people") or {}
+        if not rejected or self.df.empty:
+            return 0
+        keys = [person_reject_key(d, n, e) for d, n, e in
+                zip(self.df["domain"], self.df["full_name"], self.df["email"])]
+        keep = [k not in rejected for k in keys]
+        dropped = len(keep) - sum(keep)
+        if dropped:
+            self.df = self.df[keep].astype(object).reset_index(drop=True)
+        return dropped
 
     def is_rejected(self, domain: str) -> bool:
         return domain in self.state["rejected"]

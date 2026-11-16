@@ -2,6 +2,10 @@ import { z } from "zod";
 
 export const LEAD_PROFILES = ["gpu", "training", "competitors"] as const;
 export const LEAD_INTENTS = ["high", "medium", "low"] as const;
+export const LEAD_SORTS = ["score", "company", "newest", "oldest"] as const;
+export const REJECT_SCOPES = ["person", "company"] as const;
+export type RejectScope = (typeof REJECT_SCOPES)[number];
+export type LeadSort = (typeof LEAD_SORTS)[number];
 
 export const leadProfile = z.enum(LEAD_PROFILES);
 export type LeadProfile = z.infer<typeof leadProfile>;
@@ -44,6 +48,14 @@ const profileStatus = z.object({
 	dailySources: z.array(z.string()),
 	segments: z.array(z.string()),
 	countries: z.array(z.string()),
+	countryOptions: z
+		.array(z.string())
+		.nullish()
+		.transform((value) => value ?? []),
+	targetCountries: z
+		.array(z.string())
+		.nullish()
+		.transform((value) => value ?? []),
 	intents: z.array(z.string()),
 });
 
@@ -55,6 +67,12 @@ export const runLog = z.object({
 	profile: leadProfile,
 	running: z.boolean(),
 	lines: z.array(z.string()),
+});
+
+export const rejectResult = z.object({
+	ok: z.literal(true),
+	removed: z.number(),
+	message: z.string(),
 });
 
 export const okMessage = z.object({
@@ -195,6 +213,7 @@ export type CustomSearchInput = {
 	exclude: string[];
 	companies: number;
 	searchWith: SearchMode;
+	countries: string[];
 };
 
 export type ProfileStatus = z.infer<typeof profileStatus>;
@@ -210,6 +229,7 @@ export type LeadFilters = {
 	segment: string | null;
 	country: string | null;
 	source: string | null;
+	sort: LeadSort;
 	latest: boolean;
 	perCompany: boolean;
 };

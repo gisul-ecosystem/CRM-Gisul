@@ -38,6 +38,8 @@ import {
 	OutreachToolbar,
 	SearchBox,
 } from "@/components/outreach/toolbar";
+import { SenderTabs } from "@/components/unifers/sender-tabs";
+import { UnifersPage } from "@/components/unifers/unifers-page";
 import { campaignApi } from "@/lib/outreach/api";
 import { outreachKeys, useOutreachCache } from "@/lib/outreach/cache";
 import { campaignProgress, isEditable } from "@/lib/outreach/campaign-progress";
@@ -50,7 +52,9 @@ import {
 	type CampaignStatus,
 } from "@/lib/outreach/schemas/enums";
 import { useDebounced } from "@/lib/outreach/use-debounced";
+import { useCampaignSender } from "@/lib/unifers/sender";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
+import { UnifersCampaignsTable } from "./unifers-campaigns-table";
 
 type StatusFilter = CampaignStatus | typeof ALL;
 
@@ -64,19 +68,43 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
 
 export function CampaignsView() {
 	const href = useWorkspaceUrl();
+	const [sender, setSender] = useCampaignSender();
+
+	const newCampaign = (
+		<Button asChild>
+			<NextLink
+				href={href(
+					sender === "unifers"
+						? "/outreach/campaigns/new?sender=unifers"
+						: "/outreach/campaigns/new",
+				)}
+			>
+				<Icon icon={Add} data-icon="inline-start" />
+				New campaign
+			</NextLink>
+		</Button>
+	);
+	const tabs = <SenderTabs value={sender} onChange={setSender} />;
+
+	if (sender === "unifers") {
+		return (
+			<UnifersPage
+				title="Campaigns"
+				description="Campaigns sent by Unifers from your Unifers mailboxes."
+				actions={newCampaign}
+				lead={tabs}
+			>
+				<UnifersCampaignsTable />
+			</UnifersPage>
+		);
+	}
 
 	return (
 		<OutreachPage
 			title="Campaigns"
 			description="Each campaign emails one list from your sending inboxes, inside its sending window."
-			actions={
-				<Button asChild>
-					<NextLink href={href("/outreach/campaigns/new")}>
-						<Icon icon={Add} data-icon="inline-start" />
-						New campaign
-					</NextLink>
-				</Button>
-			}
+			actions={newCampaign}
+			lead={tabs}
 		>
 			<CampaignsTable />
 		</OutreachPage>
