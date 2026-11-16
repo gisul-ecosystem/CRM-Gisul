@@ -18,6 +18,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from .competitor_info import competitor_of, services_in
 from .util import person_key
 
 log = logging.getLogger(__name__)
@@ -30,7 +31,8 @@ SHEET = "leads"
 COLUMNS = [
     "company", "domain", "company_linkedin", "india", "country", "segment", "intent", "intent_score",
     "intent_signals", "early", "founded", "stage",
-    "team_size", "source", "source_ref", "signal", "signal_url", "date_found",
+    "team_size", "source", "source_ref", "signal", "signal_url", "competitor", "competitor_service",
+    "date_found",
     "full_name", "title", "linkedin_url",
     "email", "email_type", "email_source", "email_candidates", "verified_status",
     "phone", "score", "ready", "status", "last_updated",
@@ -46,11 +48,24 @@ NO_CONTACT = "no_contact"       # nothing usable found; kept for the record
 
 _COL_WIDTHS = {
     "company": 24, "domain": 22, "company_linkedin": 34, "segment": 18, "intent": 8, "intent_score": 8, "intent_signals": 50, "early": 7, "founded": 9, "stage": 12, "team_size": 10, "india": 7, "country": 11, "source": 18, "source_ref": 22, "signal": 40,
-    "signal_url": 30, "date_found": 12, "full_name": 22, "title": 22, "linkedin_url": 30,
+    "signal_url": 30, "competitor": 20, "competitor_service": 30, "date_found": 12, "full_name": 22, "title": 22, "linkedin_url": 30,
     "email": 30, "email_type": 11, "email_source": 16, "email_candidates": 30,
     "verified_status": 14, "phone": 16, "score": 7, "ready": 7, "status": 14,
     "last_updated": 18,
 }
+
+
+def fill_competitor(df: pd.DataFrame) -> pd.DataFrame:
+    """Competitor clients found before these columns: the provider from source_ref, the service
+    from the saved quote or case study title."""
+    for col in ("competitor", "competitor_service"):
+        if col not in df.columns:
+            df[col] = ""
+    missing = df["competitor"] == ""
+    df.loc[missing, "competitor"] = df.loc[missing, "source_ref"].map(competitor_of)
+    todo = (df["competitor"] != "") & (df["competitor_service"] == "")
+    df.loc[todo, "competitor_service"] = df.loc[todo, "signal"].map(services_in)
+    return df
 
 
 def fill_country(df: pd.DataFrame) -> pd.DataFrame:
@@ -66,7 +81,7 @@ class Candidate:
 
     def __init__(self, name, domain, source, signal, signal_url="", source_ref="", india="",
                  segment="", founded=None, stage="", team_size=None, phone="",
-                 person_name="", person_title=""):
+                 person_name="", person_title="", competitor_service=""):
         self.name = name or domain
         self.domain = domain
         self.source = source
@@ -81,6 +96,7 @@ class Candidate:
         self.phone = phone          # if the source lists one (e.g. Google Maps)
         self.person_name = person_name
         self.person_title = person_title
+        self.competitor_service = competitor_service  # what a competitor client buys -- competitor_info.py
 
 
 def _strip_hon(name: str) -> str:
@@ -146,7 +162,7 @@ class Store:
             for c in COLUMNS:
                 if c not in df.columns:
                     df[c] = ""
-            return fill_country(df[COLUMNS].astype(object).reset_index(drop=True))
+            return fill_competitor(fill_country(df[COLUMNS].astype(object).reset_index(drop=True)))
         return pd.DataFrame(columns=COLUMNS, dtype=object)
 
     def _load_state(self) -> dict:
@@ -385,6 +401,12 @@ class Store:
                     self.df.at[j, "india"] = "yes"
             self.merge_evidence(c.domain, segment=c.segment, founded=c.founded, stage=c.stage,
                                 team_size=c.team_size)
+            competitor = competitor_of(c.source_ref)
+            if competitor:
+                for j in existing:
+                    if not self.df.at[j, "competitor"]:
+                        self.df.at[j, "competitor"] = competitor
+                        self.df.at[j, "competitor_service"] = getattr(c, "competitor_service", "") or ""
             person = getattr(c, "person_name", "") or ""
             title = getattr(c, "person_title", "") or ""
             if person and not self.df.at[i, "full_name"]:
@@ -411,6 +433,8 @@ class Store:
             signal=c.signal, signal_url=c.signal_url, date_found=date.today().isoformat(),
             full_name=person, title=title,
             status=status, last_updated=_now(), phone=getattr(c, "phone", "") or "",
+            competitor=competitor_of(c.source_ref),
+            competitor_service=getattr(c, "competitor_service", "") or "",
         )
         self._append(row)
         return "new"

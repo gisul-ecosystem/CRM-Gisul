@@ -153,7 +153,7 @@ function ConnectionCard({
 	});
 
 	const viewer =
-		status.inDocker && viewerBaseUrl
+		status.inDocker && viewerBaseUrl && status.browserViewerUrl
 			? `${viewerBaseUrl}${status.browserViewerUrl}`
 			: null;
 
@@ -162,7 +162,8 @@ function ConnectionCard({
 			<CardHeader>
 				<CardTitle>LinkedIn account</CardTitle>
 				<CardDescription>
-					Everyone in the CRM shares this one LinkedIn sign-in.
+					Your own LinkedIn sign-in and browser. Other CRM users connect and run
+					their own at the same time.
 				</CardDescription>
 				<CardAction>
 					<StatusIndicator
@@ -177,7 +178,9 @@ function ConnectionCard({
 					{status.inDocker
 						? viewer
 							? "Click Connect LinkedIn, then sign in in the browser below. Use email and password, not Google."
-							: "The scraper runs in Docker. Set LINKEDIN_SCRAPER_VIEWER_URL to open its browser viewer from here."
+							: viewerBaseUrl
+								? "Your private browser viewer appears here once you click Connect LinkedIn or start a scrape."
+								: "The scraper runs in Docker. Set LINKEDIN_SCRAPER_VIEWER_URL to open its browser viewer from here."
 						: "A Chromium window opens on the scraper's computer. Sign in there with email and password, not Google."}
 				</p>
 				<div className="flex flex-wrap gap-2">

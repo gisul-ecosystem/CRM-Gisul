@@ -47,10 +47,19 @@ browser ──► CRM app /api/linkedin-scraper/<path>   (apps/app/app/api/linke
   `LINKEDIN_SCRAPER_LEGACY_OWNER_EMAIL` to the CRM user who keeps it and the
   LinkedIn account already connected; that user's requests go to `local`.
   Unset, the data stays in MongoDB but no CRM user reaches it.
-- **One browser job at a time across users.** There is one Chromium screen and
-  one viewer. While one user's connect, scrape, post search, import or send
-  runs, another user's start gets `409 BROWSER_BUSY`. Anyone who opens the viewer
-  at that moment sees the other user's browser.
+- **One browser per user, several users at once.** The container starts
+  `LINKEDIN_BROWSER_SLOTS` screens (default 3, at most 6; display `:99` and up,
+  VNC `5900` and up, viewer `6080` and up). A user who starts a connect, scrape,
+  post or company search, import or send gets a free slot (`src/slots.js`) and
+  keeps it while they use it. When every slot is held by a running job, a new
+  start gets `409 BROWSER_BUSY`. A slot whose user is idle (and claimed more than
+  2 minutes ago) goes to the next user.
+- **Each viewer is private.** A slot has a random token. `/api/status` returns the
+  user's own viewer path with `&path=websockify/<token>`, and the WebSocket proxy
+  connects a token only to its own slot; an unknown or old token gets `403`. The
+  link works in a new tab ("Open in a new tab" on the overview, "Watch my
+  browser" next to a running scrape). Port `6081` on the server host still shows
+  slot 0 without a token; it is bound to `127.0.0.1` only.
 - **The header is trusted, so the scraper must stay private.** Anyone who
   reaches port 6363 directly can act as any user. Only the CRM may reach it.
 - **The scraper has no login of its own.** The CRM session is the only gate. Keep
@@ -179,8 +188,15 @@ browser ──► CRM app /api/linkedin-scraper/<path>   (apps/app/app/api/linke
   pages, then opens each company's About page and saves name, website, industry,
   size, LinkedIn members, headquarters, founded, type, specialties, phone,
   followers and overview (`src/companies.js`, MongoDB `companies`, per
-  `ownerId`). There is no AI check. A company whose headquarters is not in a
-  chosen country is skipped; a run that skips them all says to check the
+  `ownerId`). There is no AI check. "Any country" searches worldwide: no country filter and no headquarters check;
+  each company still gets a country from its headquarters when the place is known.
+  A company whose headquarters is not in a
+  chosen country is skipped. LinkedIn writes a headquarters as "City, State"
+  without the country, so each country in `COMPANY_SEARCH` lists its states,
+  emirates and main cities (`match`), compared as whole words. LinkedIn's country
+  filter also returns foreign companies with an office in that country; this
+  check removes them. A run whose About pages give no fields saves
+  `company-about-debug.html`; a run that skips them all says to check the
   country filter. Companies already saved are skipped unless "read again" is
   ticked.
 - **Company search is paced for account safety.** 20 companies by default, 40 at

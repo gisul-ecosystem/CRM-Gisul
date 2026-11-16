@@ -261,3 +261,14 @@ day the pipeline first found the lead. A value that is not a date is ignored.
 - **One more pass.** `EMAIL_RULES_VERSION` in `stages.py` gives companies left without an email one
   more pass when the rules change, if their site shows an address the new rules accept. Companies
   searched for people with the old India-only search are searched once more in their own country.
+
+## Competitor clients: who and what
+
+Each competitor client has `competitor` (the provider whose case study or testimonial named it)
+and `competitor_service` (what it buys there, up to three: GPU cloud by GPU model, AI model
+training, inference, bare metal, VMs, Kubernetes, HPC, storage, colocation, managed cloud,
+backup, CDN, databases). `leads/competitor_info.py` holds the words. The service is read from
+the case study page, or from the text around a client link on a testimonials page. Rows from
+before these columns get the provider from `source_ref` and the service from the saved quote
+when the sheet loads. The Leads page shows Competitor and "Service they take" in place of
+Segment for the competitors profile.

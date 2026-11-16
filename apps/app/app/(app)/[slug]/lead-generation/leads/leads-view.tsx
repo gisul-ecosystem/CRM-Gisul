@@ -124,6 +124,7 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 	const [filters, setFilters] = useState<LeadFilters>(NO_FILTERS);
 	const [page, setPage] = useState(1);
 	const [open, setOpen] = useState<Lead | null>(null);
+	const isCompetitors = status.profile === "competitors";
 	const [selected, setSelected] = useState<ReadonlyMap<string, Lead>>(
 		() => new Map(),
 	);
@@ -505,7 +506,12 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 						{ id: "company", header: "Company" },
 						{ id: "person", header: "Person" },
 						{ id: "email", header: "Email" },
-						{ id: "segment", header: "Segment" },
+						...(isCompetitors
+							? [
+									{ id: "competitor", header: "Competitor" },
+									{ id: "service", header: "Service they take" },
+								]
+							: [{ id: "segment", header: "Segment" }]),
 						{ id: "intent", header: "Intent" },
 						{ id: "found", header: "Found" },
 						{ id: "score", header: "Score", align: "right" },
@@ -550,9 +556,20 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 									"—"
 								)}
 							</TableCell>
-							<TableCell className="max-w-48 truncate px-3">
-								{segmentList(row.segment) || "—"}
-							</TableCell>
+							{isCompetitors ? (
+								<>
+									<TableCell className="max-w-40 truncate px-3">
+										{row.competitor || "—"}
+									</TableCell>
+									<TableCell className="max-w-56 truncate px-3 text-xs">
+										{row.competitor_service || "—"}
+									</TableCell>
+								</>
+							) : (
+								<TableCell className="max-w-48 truncate px-3">
+									{segmentList(row.segment) || "—"}
+								</TableCell>
+							)}
 							<TableCell className="px-3">
 								{row.intent ? (
 									<StatusIndicator

@@ -20,6 +20,7 @@ from bs4 import BeautifulSoup
 from ..config import Settings
 from ..fetch import Fetcher
 from ..store import Candidate, Store
+from ..competitor_info import services_in
 from ..util import extract_domain, is_blocked
 
 log = logging.getLogger(__name__)
@@ -202,6 +203,7 @@ def parse_case_study(html: str, page_url: str, provider: dict) -> Optional[dict]
         client_name = client_domain.split(".")[0].replace("-", " ").title()
 
     summary = quote if quote else f"Case study on cloud compute usage: {title_text[:120]}"
+    service = services_in(f"{title_text} {soup.get_text(' ')}")
 
     return {
         "name": client_name,
@@ -210,6 +212,7 @@ def parse_case_study(html: str, page_url: str, provider: dict) -> Optional[dict]
         "person_title": person_title,
         "signal": f"Client of {provider['provider']}: {summary}",
         "signal_url": page_url,
+        "service": service,
     }
 
 
@@ -282,8 +285,10 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int,
             if not d or d == own_domain or d in SKIP_DOMAINS or is_blocked(d):
                 continue
             name = a.get_text(" ", strip=True) or d.split(".")[0].replace("-", " ").title()
+            card = a.find_parent(["li", "article", "section", "div"])
             card_clients.append({"name": name, "domain": d, "person_name": "", "person_title": "",
-                                 "signal": f"Client testimonial on {comp['provider']}", "signal_url": url})
+                                 "signal": f"Client testimonial on {comp['provider']}", "signal_url": url,
+                                 "service": services_in(card.get_text(" ", strip=True) if card else "")})
 
         # 2. Find and recursively follow detailed case study subpages
         subpages = find_case_study_subpages(html, url, comp)
@@ -321,6 +326,7 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int,
                 segment="competitor_clients",
                 person_name=c.get("person_name", ""),
                 person_title=c.get("person_title", ""),
+                competitor_service=c.get("service", ""),
             ))
             if len(out) >= limit:
                 break

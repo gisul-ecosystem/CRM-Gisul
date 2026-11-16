@@ -50,13 +50,21 @@ async function readResultCards(page) {
         .split('\n')
         .map(clean)
         .filter(Boolean);
-      const name = clean(link.innerText) || lines[0] || '';
+      const linkLines = String(link.innerText || '')
+        .split('\n')
+        .map(clean)
+        .filter(Boolean);
+      const name = linkLines[0] || lines[0] || '';
       if (!name) continue;
       seen.add(slug);
+      const rest = lines.filter(
+        (line) => line !== name && !/^follow(ing)?$/i.test(line) && !/followers?$/i.test(line)
+      );
+      const dotted = lines.find((line) => line.includes('•') && line !== name);
       cards.push({
         slug,
         name,
-        line: lines.find((line) => line.includes('•')) || '',
+        line: dotted || (rest.length >= 2 ? `${rest[0]} • ${rest[1]}` : ''),
         followers: (lines.find((line) => /followers?$/i.test(line)) || '').replace(/\s*followers?$/i, ''),
       });
     }
@@ -145,10 +153,23 @@ function realWebsite(field) {
   }
 }
 
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const TOKEN_PATTERNS = new Map();
+
+function tokenPattern(token) {
+  if (!TOKEN_PATTERNS.has(token)) {
+    TOKEN_PATTERNS.set(token, new RegExp(`(^|[^a-z])${escapeRegex(token)}($|[^a-z])`, 'i'));
+  }
+  return TOKEN_PATTERNS.get(token);
+}
+
 function matchedCountry(text, countries) {
-  const value = String(text || '').toLowerCase();
+  const value = String(text || '').toLowerCase().replace(/\s+/g, ' ');
   if (!value) return null;
-  return countries.find((country) => country.match.some((token) => value.includes(token))) || null;
+  return countries.find((country) => country.match.some((token) => tokenPattern(token).test(value))) || null;
 }
 
 function companyRecord(card, about, search) {
@@ -156,7 +177,8 @@ function companyRecord(card, about, search) {
   const value = (label) => (f[label] ? f[label].text : '');
   const sizeExtra = f['company size'] ? f['company size'].extra.join(' ') : '';
   const headquarters = value('headquarters');
-  const country = matchedCountry(headquarters, search.countries) || matchedCountry(card.line, search.countries);
+  const known = search.countries.length ? search.countries : COMPANY_SEARCH.countries;
+  const country = matchedCountry(headquarters, known) || matchedCountry(card.line, known);
   return {
     slug: card.slug,
     linkedinUrl: `https://www.linkedin.com/company/${card.slug}/`,
@@ -226,10 +248,16 @@ async function collectCompanies(
   return found;
 }
 
-async function scrapeCompanies(page, cards, search, { shouldStop = () => false, log = console.log, onCompany }) {
+async function scrapeCompanies(
+  page,
+  cards,
+  search,
+  { shouldStop = () => false, log = console.log, onCompany, debugDir = '' }
+) {
   const strict = search.countries.length > 0;
   let kept = 0;
   let outside = 0;
+  let emptyAbout = 0;
   for (let i = 0; i < cards.length; i += 1) {
     if (shouldStop()) break;
     const card = cards[i];
@@ -241,6 +269,16 @@ async function scrapeCompanies(page, cards, search, { shouldStop = () => false, 
       if (about.unavailable) {
         await log(`[${i + 1}/${cards.length}] ${card.name}: page not available`);
         continue;
+      }
+      if (!Object.keys(about.fields).length) {
+        emptyAbout += 1;
+        if (emptyAbout === 1 && debugDir) {
+          const markup = await page.content().catch(() => '');
+          if (markup) {
+            await fs.promises.writeFile(path.join(debugDir, 'company-about-debug.html'), markup).catch(() => {});
+          }
+          await log(`About page check: no labelled fields read on ${page.url()} (saved company-about-debug.html)`);
+        }
       }
       const record = companyRecord(card, about, search);
       if (strict && !record.country) {

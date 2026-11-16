@@ -68,6 +68,7 @@ export function CompanySearchForm({ disabled }: { disabled: boolean }) {
 	const keywordsId = useId();
 	const maxId = useId();
 	const rescrapeId = useId();
+	const anyCountryId = useId();
 	const { companies: defaults } = LINKEDIN_SCRAPER;
 
 	const options = useQuery({
@@ -82,6 +83,7 @@ export function CompanySearchForm({ disabled }: { disabled: boolean }) {
 	const [countries, setCountries] = useState<string[]>([
 		...defaults.defaultCountries,
 	]);
+	const [anyCountry, setAnyCountry] = useState(false);
 	const [maxCompanies, setMaxCompanies] = useState<number | null>(null);
 	const [rescrape, setRescrape] = useState(false);
 
@@ -90,7 +92,8 @@ export function CompanySearchForm({ disabled }: { disabled: boolean }) {
 			scrapeApi.companies({
 				keywords: keywords.trim(),
 				industries,
-				countries,
+				countries: anyCountry ? [] : countries,
+				anyCountry,
 				maxCompanies: maxCompanies ?? options.data?.defaultMaxCompanies ?? 20,
 				rescrape,
 			}),
@@ -109,7 +112,8 @@ export function CompanySearchForm({ disabled }: { disabled: boolean }) {
 	const { data } = options;
 	const left = Math.max(0, data.dailyRunLimit - data.runsToday);
 	const ready =
-		countries.length > 0 && (industries.length > 0 || keywords.trim() !== "");
+		(anyCountry || countries.length > 0) &&
+		(industries.length > 0 || keywords.trim() !== "");
 
 	return (
 		<form
@@ -127,13 +131,25 @@ export function CompanySearchForm({ disabled }: { disabled: boolean }) {
 					selected={industries}
 					onChange={setIndustries}
 				/>
-				<OptionChecks
-					legend="Headquarters country"
-					description="LinkedIn's country filter. A company whose headquarters is elsewhere is skipped."
-					options={data.countries}
-					selected={countries}
-					onChange={setCountries}
-				/>
+				<Field orientation="horizontal">
+					<Checkbox
+						id={anyCountryId}
+						checked={anyCountry}
+						onCheckedChange={(checked) => setAnyCountry(checked === true)}
+					/>
+					<FieldLabel htmlFor={anyCountryId}>
+						Any country (worldwide, no headquarters check)
+					</FieldLabel>
+				</Field>
+				{anyCountry ? null : (
+					<OptionChecks
+						legend="Headquarters country"
+						description="LinkedIn's country filter. A company whose headquarters is elsewhere is skipped."
+						options={data.countries}
+						selected={countries}
+						onChange={setCountries}
+					/>
+				)}
 				<div className="grid gap-4 sm:grid-cols-2">
 					<Field>
 						<FieldLabel htmlFor={keywordsId}>Keywords (optional)</FieldLabel>

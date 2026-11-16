@@ -85,19 +85,27 @@ const MESSAGE_MODES = [
 
 type MessageMode = (typeof MESSAGE_MODES)[number]["value"];
 
-export function ScrapeView() {
+export function ScrapeView({
+	viewerBaseUrl,
+}: {
+	viewerBaseUrl: string | null;
+}) {
 	return (
 		<ScraperPage
 			title="Search and scrape"
 			description="Find people on LinkedIn, read their profiles, and queue an AI draft or your own template for each one."
 		>
-			<ScrapeBody />
+			<ScrapeBody viewerBaseUrl={viewerBaseUrl} />
 		</ScraperPage>
 	);
 }
 
-function ScrapeBody() {
+function ScrapeBody({ viewerBaseUrl }: { viewerBaseUrl: string | null }) {
 	const status = useScraperStatus();
+	const viewer =
+		status.data?.inDocker && viewerBaseUrl && status.data.browserViewerUrl
+			? `${viewerBaseUrl}${status.data.browserViewerUrl}`
+			: null;
 	const cache = useScraperCache();
 	const job = status.data?.scrapeJob;
 	const busy =
@@ -160,8 +168,9 @@ function ScrapeBody() {
 					<CardHeader>
 						<CardTitle>Current scrape</CardTitle>
 						<CardDescription>
-							Your own scrapes and LinkedIn account. The browser runs one job at
-							a time, so a colleague's job can make you wait.
+							Your own scrapes, LinkedIn account and browser. Colleagues run
+							theirs at the same time, up to the number of browsers set on the
+							scraper.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="flex flex-col gap-3">
@@ -180,6 +189,13 @@ function ScrapeBody() {
 												{COUNT.format(job.processed)} /{" "}
 												{COUNT.format(job.total)}
 											</span>
+										) : null}
+										{job.status === "running" && viewer ? (
+											<Button asChild variant="outline" size="sm">
+												<a href={viewer} target="_blank" rel="noreferrer">
+													Watch my browser
+												</a>
+											</Button>
 										) : null}
 										{job.status === "running" ? (
 											<Button
