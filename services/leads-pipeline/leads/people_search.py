@@ -45,7 +45,10 @@ def _plain(text: str) -> str:
 
 
 def query_for(company: str) -> str:
-    name = company.strip()
+    name = re.split(r"\s*[:|\-–—]\s*", company.strip())[0].strip()
+    words = name.split()
+    if len(words) > 6:
+        name = " ".join(words[:6])
     return f'site:linkedin.com/in {quote_name(name)} {TITLES}'
 
 
@@ -105,42 +108,42 @@ SWITCH = {400, 401, 402, 403, 429, 432, 433}
 
 
 def _search(name: str, key: str, fetcher, q: str, country: str):
-    """(status, [(title, description, url)]) from one search API, in the company's country."""
     from .geo import COUNTRIES
     code = COUNTRIES.get(country or "", {}).get("code", "IN" if not country else "")
+    clean_key = (key or "").strip().strip('"\'')
     if name == "serper":
         status, data = fetcher.post_json(
             SERPER_URL, {"q": q, "num": 20, **({"gl": code.lower()} if code else {})},
-            headers={"X-API-KEY": key, "Content-Type": "application/json"})
+            headers={"X-API-KEY": clean_key, "Content-Type": "application/json"})
         rows = (data or {}).get("organic", []) if isinstance(data, dict) else []
-        return status, [(r.get("title", ""), r.get("snippet", ""), r.get("link", "")) for r in rows]
+        return status, [(r.get("title", ""), r.get("snippet", ""), r.get("link", "")) for r in rows], data
     if name == "tavily":
         status, data = fetcher.post_json(
             TAVILY_URL, {"query": q, "max_results": 20, "search_depth": "basic",
                          **({"country": (country or "India").lower()} if code else {})},
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+            headers={"Authorization": f"Bearer {clean_key}", "Content-Type": "application/json"})
         rows = (data or {}).get("results", []) if isinstance(data, dict) else []
-        return status, [(r.get("title", ""), r.get("content", ""), r.get("url", "")) for r in rows]
+        return status, [(r.get("title", ""), r.get("content", ""), r.get("url", "")) for r in rows], data
     status, data, _ = fetcher.get_json(
         BRAVE_URL, params={"q": q, "count": 20, "country": brave_country(country), "search_lang": "en"},
-        headers={"X-Subscription-Token": key, "Accept": "application/json"})
+        headers={"X-Subscription-Token": clean_key, "Accept": "application/json"})
     rows = ((data or {}).get("web") or {}).get("results") or [] if isinstance(data, dict) else []
-    return status, [(r.get("title", ""), r.get("description", ""), r.get("url", "")) for r in rows]
+    return status, [(r.get("title", ""), r.get("description", ""), r.get("url", "")) for r in rows], data
 
 
 def find_people(apis: List[Tuple[str, str]], fetcher, company: str, domain: str, limit: int = 3,
                 country: str = "") -> Tuple[List[dict], str]:
-    """(people, status). apis: [(name, key)] in order of use (Serper, Tavily, Brave); the next one
-    is used when one cannot search now. status: ok | off | rate_limited | error"""
     if not apis:
         return [], "off"
     status, rows = 0, []
     for name, key in apis:
-        status, rows = _search(name, key, fetcher, query_for(company), country)
+        status, rows, data = _search(name, key, fetcher, query_for(company), country)
         time.sleep(PAUSE)
         if status not in SWITCH:
             break
-        log.warning("people search: %s cannot search now (HTTP %s)", name, status)
+        msg = (data or {}).get("message") if isinstance(data, dict) else ""
+        log.warning("people search: %s cannot search now (HTTP %s%s)",
+                    name, status, f" - {msg}" if msg else "")
     if status in SWITCH:
         return [], "rate_limited"
     if status != 200:

@@ -99,7 +99,7 @@ function OverviewBody({ viewerBaseUrl }: { viewerBaseUrl: string | null }) {
 					job={data.scrapeJob}
 					link={{
 						path: hubPath("find", LEAD_HUB.views.find.linkedin),
-						label: "Find leads",
+						label: "Custom search leads",
 					}}
 				/>
 				<JobCard

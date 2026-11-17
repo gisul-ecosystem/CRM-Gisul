@@ -30,7 +30,7 @@ except ImportError:  # Windows
 ROOT = Path(__file__).resolve().parent.parent
 SOURCES = ["seeds", "incubators", "search", "maps", "funding", "github", "huggingface", "hn"]  # GPU; yc stays off
 TRAINING_SOURCES = ["seeds", "directories", "search", "maps", "funding", "github"]  # its own lists only
-COMPETITORS_SOURCES = ["competitors", "seeds", "search"]
+COMPETITORS_SOURCES = ["competitors"]
 SEGMENTS = GPU_SEGMENTS
 INTENTS = ["high", "medium", "low"]
 SORTS = ["score", "company", "newest", "oldest"]
