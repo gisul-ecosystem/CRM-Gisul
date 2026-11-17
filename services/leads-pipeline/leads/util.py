@@ -186,3 +186,8 @@ def time_limit(seconds: int):
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, old)
+
+
+def name_from_domain(domain: str) -> str:
+    """'cloud-blitz.in' -> 'Cloud Blitz'."""
+    return _extract(domain or "").domain.replace("-", " ").title() or (domain or "")

@@ -160,6 +160,7 @@ export class ContactsService {
 					product: { select: PRODUCT_SELECT },
 					company: { select: COMPANY_SELECT },
 					owner: { select: OWNER_SELECT },
+					primaryOf: { select: { id: true } },
 					lastActivityAt: true,
 					createdAt: true,
 					archivedAt: true,
@@ -175,8 +176,9 @@ export class ContactsService {
 		);
 
 		return {
-			rows: rows.map((row) => ({
+			rows: rows.map(({ primaryOf, ...row }) => ({
 				...row,
+				isPrimaryContact: primaryOf !== null,
 				nextFollowUpAt: row.nextFollowUpAt?.toISOString() ?? null,
 				lastActivityAt: row.lastActivityAt?.toISOString() ?? null,
 				createdAt: row.createdAt.toISOString(),

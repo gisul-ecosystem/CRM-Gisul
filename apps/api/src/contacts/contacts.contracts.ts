@@ -175,6 +175,7 @@ export const contactRowOutput = z.object({
 	product: contactProductOutput.nullable(),
 	company: contactCompanyOutput.nullable(),
 	owner: contactOwnerOutput.nullable(),
+	isPrimaryContact: z.boolean(),
 	lastActivityAt: z.string().nullable(),
 	createdAt: z.string(),
 	archivedAt: z.string().nullable(),
