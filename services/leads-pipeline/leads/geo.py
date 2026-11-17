@@ -135,6 +135,37 @@ _OTHER = {name: (c["code"], re.compile(c["reg"], re.I if name != "Thailand" else
 _BY_CODE = {c["code"]: name for name, c in COUNTRIES.items()}
 _BY_TLD = {c["tld"]: name for name, c in COUNTRIES.items()}
 
+# Places a search result title names that are never a company ('Best AWS Course | Nagpur | X').
+_INDIAN_PLACES = [
+    "India", "Bengaluru", "Bangalore", "Hyderabad", "Secunderabad", "Pune", "Chennai", "Mumbai", "Navi Mumbai",
+    "Thane", "Delhi", "New Delhi", "Delhi NCR", "NCR", "Noida", "Greater Noida", "Gurgaon", "Gurugram",
+    "Faridabad", "Ghaziabad", "Kolkata", "Ahmedabad", "Kochi", "Cochin", "Coimbatore", "Jaipur", "Chandigarh",
+    "Mohali", "Indore", "Lucknow", "Nagpur", "Nashik", "Bhubaneswar", "Visakhapatnam", "Vizag", "Vijayawada",
+    "Thiruvananthapuram", "Trivandrum", "Mysuru", "Mysore", "Mangaluru", "Mangalore", "Vadodara", "Surat",
+    "Rajkot", "Bhopal", "Patna", "Ranchi", "Kanpur", "Agra", "Varanasi", "Dehradun", "Madurai", "Tiruchirappalli",
+    "Trichy", "Salem", "Hubli", "Belgaum", "Aurangabad", "Raipur", "Guwahati", "Amritsar", "Ludhiana", "Jalandhar",
+    "Goa", "Karnataka", "Maharashtra", "Tamil Nadu", "Telangana", "Andhra Pradesh", "Kerala", "Gujarat",
+    "Rajasthan", "Uttar Pradesh", "West Bengal", "Madhya Pradesh", "Punjab", "Haryana", "Odisha", "Bihar",
+]
+PLACE_NAMES = frozenset(
+    p.lower() for p in (
+        _INDIAN_PLACES
+        + list(COUNTRIES)
+        + [p for c in COUNTRIES.values() for p in c["cities"] + c.get("places", [])]
+        + ["Online", "Worldwide", "Global", "Near Me", "USA", "UK", "Singapore", "Dubai", "UAE"]
+    )
+)
+
+
+def is_place_name(text: str) -> bool:
+    """'Nagpur', 'Pune, Maharashtra', 'Dubai UAE' -> True."""
+    words = re.sub(r"[^\w\s,]", " ", (text or "").lower())
+    parts = [p.strip() for p in re.split(r"[,/]|\s+-\s+", words) if p.strip()]
+    if not parts:
+        return False
+    return all(p in PLACE_NAMES or " ".join(p.split()) in PLACE_NAMES
+               or all(w in PLACE_NAMES for w in p.split()) for p in parts)
+
 
 def country_names(raw: str) -> Tuple[str, ...]:
     """'india, MY,singapore' -> ('India', 'Malaysia', 'Singapore'); unknown names are dropped."""

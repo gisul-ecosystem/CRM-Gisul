@@ -18,28 +18,43 @@ import time
 from typing import List
 
 from .. import training
-from ..geo import COUNTRIES, city_country
+from ..geo import COUNTRIES, city_country, is_place_name
 from ..config import Settings
 from ..fetch import Fetcher
 from ..people_search import BRAVE_URL, PAUSE
 from ..store import Candidate, Store
-from ..util import extract_domain, is_blocked
+from ..util import _extract, extract_domain, is_blocked, name_from_domain
 
 log = logging.getLogger(__name__)
 
 
 _NOT_A_NAME = re.compile(r"startups?\b|companies|\bstudios? in\b|"
                          r"training|course|courses|institute in|classes in|best|top \d*|certification|"
-                         r"online|near me|fees|placement|\bin [A-Z]", re.I)
+                         r"online|near me|fees|placement|\bin [A-Z]|"
+                         r"^(?:home|home page|welcome.*|about(?: us)?|contact(?: us)?|official (?:site|website))$",
+                         re.I)
+
+
+def _letters(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (text or "").lower())
 
 
 def name_from_title(title: str, domain: str) -> str:
-    """'Best DevOps Training in Pune | XYZ Academy' -> 'XYZ Academy'; else from the domain."""
-    for part in re.split(r"\s+[|\-–—:]\s+", title or ""):
-        part = part.strip()
-        if 2 <= len(part) <= 50 and not _NOT_A_NAME.search(part):
+    """'Best DevOps Training in Pune | XYZ Academy' -> 'XYZ Academy'. A part that matches the
+    website ('CloudBlitz' for cloudblitz.in) wins; a place ('Nagpur') is never a name; else the
+    domain gives the name."""
+    parts = [re.sub(r"^welcome to\s+", "", p.strip(), flags=re.I)
+             for p in re.split(r"\s+[|\-–—:]\s+", title or "") if p.strip()]
+    stem = _letters(_extract(domain or "").domain)
+    if len(stem) >= 3:
+        for part in parts:
+            letters = _letters(part)
+            if 2 <= len(part) <= 50 and letters and (stem in letters or (len(letters) >= 4 and letters in stem)):
+                return part
+    for part in parts:
+        if 2 <= len(part) <= 50 and not _NOT_A_NAME.search(part) and not is_place_name(part):
             return part
-    return domain.split(".")[0].replace("-", " ").title()
+    return name_from_domain(domain)
 
 
 # ---------------------------------------------------------------- GPU leads' own search list

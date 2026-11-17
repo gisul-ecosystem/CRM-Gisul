@@ -19,7 +19,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from .competitor_info import competitor_of, services_in
-from .util import person_key
+from .geo import is_place_name
+from .util import name_from_domain, person_key
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +54,13 @@ _COL_WIDTHS = {
     "verified_status": 14, "phone": 16, "score": 7, "ready": 7, "status": 14,
     "last_updated": 18,
 }
+
+
+def fix_place_names(df: pd.DataFrame) -> pd.DataFrame:
+    """Rows saved with a place as the company ('Nagpur' for cloudblitz.in) take the website's name."""
+    wrong = df["company"].map(is_place_name) & (df["domain"] != "")
+    df.loc[wrong, "company"] = df.loc[wrong, "domain"].map(name_from_domain)
+    return df
 
 
 def fill_competitor(df: pd.DataFrame) -> pd.DataFrame:
@@ -162,7 +170,9 @@ class Store:
             for c in COLUMNS:
                 if c not in df.columns:
                     df[c] = ""
-            return fill_competitor(fill_country(df[COLUMNS].astype(object).reset_index(drop=True)))
+            return fix_place_names(
+                fill_competitor(fill_country(df[COLUMNS].astype(object).reset_index(drop=True)))
+            )
         return pd.DataFrame(columns=COLUMNS, dtype=object)
 
     def _load_state(self) -> dict:
