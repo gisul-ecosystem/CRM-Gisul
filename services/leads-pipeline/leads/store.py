@@ -63,6 +63,12 @@ def fix_place_names(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def name_competitor_clients(df: pd.DataFrame) -> pd.DataFrame:
+    named = (df["source"] == "competitors") & (df["domain"] != "")
+    df.loc[named, "company"] = df.loc[named, "domain"].map(name_from_domain)
+    return df
+
+
 def fill_competitor(df: pd.DataFrame) -> pd.DataFrame:
     """Competitor clients found before these columns: the provider from source_ref, the service
     from the saved quote or case study title."""
@@ -170,9 +176,9 @@ class Store:
             for c in COLUMNS:
                 if c not in df.columns:
                     df[c] = ""
-            return fix_place_names(
+            return name_competitor_clients(fix_place_names(
                 fill_competitor(fill_country(df[COLUMNS].astype(object).reset_index(drop=True)))
-            )
+            ))
         return pd.DataFrame(columns=COLUMNS, dtype=object)
 
     def _load_state(self) -> dict:

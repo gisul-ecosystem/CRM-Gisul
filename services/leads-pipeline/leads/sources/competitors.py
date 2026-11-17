@@ -22,7 +22,7 @@ from ..config import Settings
 from ..fetch import Fetcher
 from ..store import Candidate, Store
 from ..competitor_info import services_in
-from ..util import extract_domain, is_blocked
+from ..util import extract_domain, is_blocked, name_from_domain
 
 log = logging.getLogger(__name__)
 
@@ -360,7 +360,7 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int,
             seen.add(dom)
             origin[dom] = comp["provider"]
             out.append(Candidate(
-                name=c["name"],
+                name=name_from_domain(dom),
                 domain=dom,
                 source="competitors",
                 signal=c["signal"],

@@ -372,7 +372,7 @@ export function DashboardSummary() {
 						))}
 					</div>
 					{summary.leadSources.every((row) => row.count === 0) ? (
-						<p className={styles.note}>No lead sources yet.</p>
+						<p className={styles.note}>No new leads in this month.</p>
 					) : null}
 				</div>
 
