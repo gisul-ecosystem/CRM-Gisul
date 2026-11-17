@@ -1,7 +1,6 @@
 "use client";
 
 import Activity from "@carbon/icons-react/es/Activity";
-import Analytics from "@carbon/icons-react/es/Analytics";
 import Building from "@carbon/icons-react/es/Building";
 import Close from "@carbon/icons-react/es/Close";
 import Group from "@carbon/icons-react/es/Group";
@@ -36,6 +35,7 @@ import { AgentBuilderSidebar } from "@/components/agent-builder/agent-builder-si
 import { useAppRail } from "@/components/app-rail";
 import { usePrefetchSection } from "@/components/crm/section-prefetch";
 import { useMobileNav } from "@/components/mobile-nav";
+import { ACTIVITY_HUB } from "@/lib/activity-hub/activity-hub-config";
 import { LEAD_HUB } from "@/lib/lead-hub/lead-hub-config";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 
@@ -83,10 +83,11 @@ const GROUPS: NavGroup[] = [
 		label: "Work",
 		items: [
 			{
-				title: "Activities",
-				href: "/activities",
+				title: ACTIVITY_HUB.title,
+				href: ACTIVITY_HUB.tabs[0].href,
 				icon: Activity,
 				match: "prefix",
+				related: [ACTIVITY_HUB.tabs[1].href],
 			},
 			{
 				title: "Chat",
@@ -170,17 +171,6 @@ const GROUPS: NavGroup[] = [
 				title: "Settings",
 				href: LEAD_HUB.pages.settings,
 				icon: SettingsAdjust,
-				match: "prefix",
-			},
-		],
-	},
-	{
-		label: "Insights",
-		items: [
-			{
-				title: "Reports",
-				href: "/reports",
-				icon: Analytics,
 				match: "prefix",
 			},
 		],

@@ -24,6 +24,7 @@ import {
 import type { CarbonIcon } from "@crm/ui/components/icon";
 import { Icon } from "@crm/ui/components/icon";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ActivityHubTabs } from "@/components/activity-hub-tabs";
 import { useTRPC } from "@/lib/trpc/client";
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
@@ -326,6 +327,7 @@ export function ActivitiesPageClient() {
 
 	return (
 		<div className={styles.wrap}>
+			<ActivityHubTabs active="activities" />
 			<header className={styles.top}>
 				<div className={styles.topText}>
 					<h1 className={styles.display}>Activities</h1>
