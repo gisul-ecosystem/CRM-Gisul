@@ -1,23 +1,11 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
-import { PageShellFallback } from "@/components/page-shell";
-import { scraperViewerUrl } from "@/lib/linkedin-scraper/bridge";
-import { requireSession } from "@/lib/session";
-import { LinkedInOverview } from "./linkedin-overview";
+import { redirect } from "next/navigation";
+import { hubPath, LEAD_HUB } from "@/lib/lead-hub/lead-hub-config";
 
-export const metadata: Metadata = {
-	title: "LinkedIn",
-};
+export const instant = false;
 
-export default function LinkedInOverviewPage() {
-	return (
-		<Suspense fallback={<PageShellFallback />}>
-			<Overview />
-		</Suspense>
-	);
-}
-
-async function Overview() {
-	await requireSession();
-	return <LinkedInOverview viewerBaseUrl={scraperViewerUrl()} />;
+export default async function LinkedinRedirect({
+	params,
+}: PageProps<"/[slug]/linkedin">) {
+	const { slug } = await params;
+	redirect(`/${slug}${hubPath("overview", LEAD_HUB.views.overview.linkedin)}`);
 }

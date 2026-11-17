@@ -416,7 +416,10 @@ class Store:
                 for j in existing:
                     if not self.df.at[j, "competitor"]:
                         self.df.at[j, "competitor"] = competitor
-                        self.df.at[j, "competitor_service"] = getattr(c, "competitor_service", "") or ""
+                    if not self.df.at[j, "competitor_service"]:
+                        service = getattr(c, "competitor_service", "") or ""
+                        if service:
+                            self.df.at[j, "competitor_service"] = service
             person = getattr(c, "person_name", "") or ""
             title = getattr(c, "person_title", "") or ""
             if person and not self.df.at[i, "full_name"]:

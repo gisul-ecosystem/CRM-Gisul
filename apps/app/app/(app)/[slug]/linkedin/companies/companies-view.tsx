@@ -22,7 +22,7 @@ import { TablePagination } from "@crm/ui/components/table-pagination";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ScraperPage } from "@/components/linkedin-scraper/scraper-page";
+import { ScraperGate } from "@/components/linkedin-scraper/scraper-page";
 import { LocalDateTime } from "@/components/local-date-time";
 import {
 	FilterSelect,
@@ -41,14 +41,11 @@ import { useDebounced } from "@/lib/outreach/use-debounced";
 
 const ALL = "all";
 
-export function CompaniesView() {
+export function CompaniesPanel() {
 	return (
-		<ScraperPage
-			title="Companies"
-			description="Companies found with LinkedIn company search, newest first. Click a row for every detail."
-		>
+		<ScraperGate>
 			<CompaniesBody />
-		</ScraperPage>
+		</ScraperGate>
 	);
 }
 

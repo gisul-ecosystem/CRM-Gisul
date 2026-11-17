@@ -1,23 +1,11 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
-import { PageShellFallback } from "@/components/page-shell";
-import { pipelineViewerSrc } from "@/lib/leads-pipeline/bridge";
-import { requireSession } from "@/lib/session";
-import { CustomSearchView } from "./custom-search-view";
+import { redirect } from "next/navigation";
+import { hubPath, LEAD_HUB } from "@/lib/lead-hub/lead-hub-config";
 
-export const metadata: Metadata = {
-	title: "Custom search",
-};
+export const instant = false;
 
-export default function CustomSearchPage() {
-	return (
-		<Suspense fallback={<PageShellFallback />}>
-			<CustomSearch />
-		</Suspense>
-	);
-}
-
-async function CustomSearch() {
-	await requireSession();
-	return <CustomSearchView viewerSrc={pipelineViewerSrc()} />;
+export default async function LeadGenerationSearchRedirect({
+	params,
+}: PageProps<"/[slug]/lead-generation/search">) {
+	const { slug } = await params;
+	redirect(`/${slug}${hubPath("find", LEAD_HUB.views.find.website)}`);
 }

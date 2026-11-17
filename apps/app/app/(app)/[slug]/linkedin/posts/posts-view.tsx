@@ -14,7 +14,7 @@ import { TablePagination } from "@crm/ui/components/table-pagination";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { ProfileSheet } from "@/components/linkedin-scraper/profile-sheet";
-import { ScraperPage } from "@/components/linkedin-scraper/scraper-page";
+import { ScraperGate } from "@/components/linkedin-scraper/scraper-page";
 import { LocalDateTime } from "@/components/local-date-time";
 import { OutreachToolbar, SearchBox } from "@/components/outreach/toolbar";
 import { profilesApi } from "@/lib/linkedin-scraper/api";
@@ -45,14 +45,11 @@ function matches(found: FoundPost, query: string): boolean {
 	].some((value) => value.toLowerCase().includes(query));
 }
 
-export function PostsView() {
+export function PostsPanel() {
 	return (
-		<ScraperPage
-			title="Found posts"
-			description="Posts where the AI found a need for our products, newest first. Click a row to see the post and the draft."
-		>
+		<ScraperGate>
 			<PostsBody />
-		</ScraperPage>
+		</ScraperGate>
 	);
 }
 

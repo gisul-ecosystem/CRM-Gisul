@@ -11,16 +11,7 @@ import {
 import { Icon } from "@crm/ui/components/icon";
 import { Tabs, TabsList, TabsTrigger } from "@crm/ui/components/tabs";
 import type { ReactNode } from "react";
-import {
-	PageShell,
-	PageShellActions,
-	PageShellContent,
-	PageShellDescription,
-	PageShellHeader,
-	PageShellHeading,
-	PageShellLoading,
-	PageShellTitle,
-} from "@/components/page-shell";
+import { PageShellLoading } from "@/components/page-shell";
 import { PipelineError } from "@/lib/leads-pipeline/client";
 import { leadProfile, type ProfileStatus } from "@/lib/leads-pipeline/schemas";
 import {
@@ -43,15 +34,9 @@ const UNAVAILABLE = new Map<string, { title: string; description: string }>(
 	}),
 );
 
-export function PipelinePage({
-	title,
-	description,
-	actions,
+export function PipelineGate({
 	children,
 }: {
-	title: ReactNode;
-	description?: ReactNode;
-	actions?: ReactNode;
 	children: (profile: ProfileStatus) => ReactNode;
 }) {
 	const status = usePipelineStatus();
@@ -73,58 +58,44 @@ export function PipelinePage({
 	const current =
 		profiles.find((entry) => entry.profile === profile) ?? profiles[0];
 
+	if (status.isPending) return <PageShellLoading />;
+	if (problem || !current) {
+		return (
+			<Empty>
+				<EmptyHeader>
+					<EmptyMedia variant="icon">
+						<Icon icon={Plug} />
+					</EmptyMedia>
+					<EmptyTitle>
+						{problem?.title ?? "The pipeline has no profiles"}
+					</EmptyTitle>
+					<EmptyDescription>
+						{problem?.description ??
+							"The pipeline answered, but it lists no lead profiles."}
+					</EmptyDescription>
+				</EmptyHeader>
+			</Empty>
+		);
+	}
+
 	return (
-		<PageShell>
-			<PageShellHeader>
-				<PageShellHeading>
-					<PageShellTitle>{title}</PageShellTitle>
-					{description ? (
-						<PageShellDescription>{description}</PageShellDescription>
-					) : null}
-				</PageShellHeading>
-				{actions && !problem ? (
-					<PageShellActions>{actions}</PageShellActions>
-				) : null}
-			</PageShellHeader>
-			<PageShellContent>
-				{status.isPending ? (
-					<PageShellLoading />
-				) : problem || !current ? (
-					<Empty>
-						<EmptyHeader>
-							<EmptyMedia variant="icon">
-								<Icon icon={Plug} />
-							</EmptyMedia>
-							<EmptyTitle>
-								{problem?.title ?? "The pipeline has no profiles"}
-							</EmptyTitle>
-							<EmptyDescription>
-								{problem?.description ??
-									"The pipeline answered, but it lists no lead profiles."}
-							</EmptyDescription>
-						</EmptyHeader>
-					</Empty>
-				) : (
-					<div className="flex flex-col gap-6">
-						<Tabs
-							value={current.profile}
-							onValueChange={(next) => {
-								const parsed = leadProfile.safeParse(next);
-								if (parsed.success) void setProfile(parsed.data);
-							}}
-						>
-							<TabsList>
-								{profiles.map((entry) => (
-									<TabsTrigger key={entry.profile} value={entry.profile}>
-										{entry.label}
-									</TabsTrigger>
-								))}
-							</TabsList>
-						</Tabs>
-						{children(current)}
-					</div>
-				)}
-			</PageShellContent>
-		</PageShell>
+		<div className="flex flex-col gap-6">
+			<Tabs
+				value={current.profile}
+				onValueChange={(next) => {
+					const parsed = leadProfile.safeParse(next);
+					if (parsed.success) void setProfile(parsed.data);
+				}}
+			>
+				<TabsList>
+					{profiles.map((entry) => (
+						<TabsTrigger key={entry.profile} value={entry.profile}>
+							{entry.label}
+						</TabsTrigger>
+					))}
+				</TabsList>
+			</Tabs>
+			{children(current)}
+		</div>
 	);
 }

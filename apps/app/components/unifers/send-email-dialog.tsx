@@ -42,6 +42,8 @@ import { useUnifersCache } from "@/lib/unifers/cache";
 import {
 	defaultFollowUpDay,
 	followUpSubject,
+	senderNameForAccount,
+	swapSenderName,
 	waitDaysUntil,
 } from "@/lib/unifers/single-send";
 import { UNIFERS } from "@/lib/unifers/unifers-config";
@@ -104,6 +106,7 @@ export function SendEmailDialog({
 	);
 	const [followUpBody, setFollowUpBody] = useState("");
 	const drafted = useRef(false);
+	const activeSenderNameRef = useRef("");
 
 	const chosenSender =
 		sender ||
@@ -111,12 +114,34 @@ export function SendEmailDialog({
 		verified[0]?.email ||
 		"";
 
+	const chosenAccount = verified.find(
+		(account) => account.email === chosenSender,
+	);
+	const initialChosenName = senderNameForAccount(chosenAccount);
+	if (!activeSenderNameRef.current && initialChosenName) {
+		activeSenderNameRef.current = initialChosenName;
+	}
+
 	const draft = useMutation(
 		trpc.contacts.draftEmail.mutationOptions({
 			onSuccess: (result) => {
 				setSubject(result.subject);
-				setBody(result.body);
-				setFollowUpBody(result.followUpBody);
+				const targetName =
+					senderNameForAccount(
+						verified.find((account) => account.email === chosenSender),
+					) || activeSenderNameRef.current;
+				const prevName = activeSenderNameRef.current;
+				const updatedBody = targetName
+					? swapSenderName(result.body, prevName, targetName)
+					: result.body;
+				const updatedFollowUp = targetName
+					? swapSenderName(result.followUpBody, prevName, targetName)
+					: result.followUpBody;
+				setBody(updatedBody);
+				setFollowUpBody(updatedFollowUp);
+				if (targetName) {
+					activeSenderNameRef.current = targetName;
+				}
 			},
 			onError: (error) => toast.error(error.message),
 		}),
@@ -126,13 +151,20 @@ export function SendEmailDialog({
 	useEffect(() => {
 		if (!open || drafted.current) return;
 		drafted.current = true;
+		const initialAccount =
+			verified.find((account) => account.isDefault) || verified[0];
+		const initialName = senderNameForAccount(initialAccount);
+		if (initialName) {
+			activeSenderNameRef.current = initialName;
+		}
 		writeDraft({
 			id: recipient.contactId,
 			productId: recipient.productId,
 			category: null,
+			senderName: initialName || null,
 			purpose: null,
 		});
-	}, [open, recipient.contactId, recipient.productId, writeDraft]);
+	}, [open, recipient.contactId, recipient.productId, verified, writeDraft]);
 
 	const rewrite = (
 		next: Partial<{ product: string; category: string; purpose: string }> = {},
@@ -142,8 +174,23 @@ export function SendEmailDialog({
 			id: recipient.contactId,
 			productId: nextProduct === NO_PRODUCT ? null : nextProduct,
 			category: categoryOf(next.category ?? category),
+			senderName: activeSenderNameRef.current || null,
 			purpose: (next.purpose ?? purpose).trim() || null,
 		});
+	};
+
+	const handleSenderChange = (nextEmail: string) => {
+		setSender(nextEmail);
+		const nextAccount = verified.find((account) => account.email === nextEmail);
+		const nextName = senderNameForAccount(nextAccount);
+		if (nextName) {
+			const prevName = activeSenderNameRef.current;
+			if (prevName !== nextName) {
+				setBody((prev) => swapSenderName(prev, prevName, nextName));
+				setFollowUpBody((prev) => swapSenderName(prev, prevName, nextName));
+				activeSenderNameRef.current = nextName;
+			}
+		}
 	};
 
 	const logSend = useMutation(
@@ -251,7 +298,7 @@ export function SendEmailDialog({
 						<Field>
 							<FieldLabel htmlFor={ids.from}>From</FieldLabel>
 							{verified.length > 0 ? (
-								<Select value={chosenSender} onValueChange={setSender}>
+								<Select value={chosenSender} onValueChange={handleSenderChange}>
 									<SelectTrigger id={ids.from}>
 										<SelectValue />
 									</SelectTrigger>

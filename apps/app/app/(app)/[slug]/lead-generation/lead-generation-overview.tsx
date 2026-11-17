@@ -24,8 +24,8 @@ import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { useMutation } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { toast } from "sonner";
-import { PipelinePage } from "@/components/leads-pipeline/pipeline-page";
 import { CountryPicker } from "@/components/leads-pipeline/country-picker";
+import { PipelineGate } from "@/components/leads-pipeline/pipeline-page";
 import { RunLog } from "@/components/leads-pipeline/run-log";
 import { LocalDateTime } from "@/components/local-date-time";
 import { pipelineApi } from "@/lib/leads-pipeline/api";
@@ -34,14 +34,11 @@ import { sourceLabel } from "@/lib/leads-pipeline/labels";
 import type { ProfileStatus } from "@/lib/leads-pipeline/schemas";
 import { COUNT, DATE_TIME } from "@/lib/outreach/format";
 
-export function LeadGenerationOverview() {
+export function PipelineOverviewPanel() {
 	return (
-		<PipelinePage
-			title="Lead generation"
-			description="Finds companies and decision makers from public sources, checks their emails, and scores each lead."
-		>
+		<PipelineGate>
 			{(profile) => <OverviewBody key={profile.profile} status={profile} />}
-		</PipelinePage>
+		</PipelineGate>
 	);
 }
 

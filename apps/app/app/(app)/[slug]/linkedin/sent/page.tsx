@@ -1,22 +1,11 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
-import { PageShellFallback } from "@/components/page-shell";
-import { requireSession } from "@/lib/session";
-import { SentView } from "./sent-view";
+import { redirect } from "next/navigation";
+import { hubPath, LEAD_HUB } from "@/lib/lead-hub/lead-hub-config";
 
-export const metadata: Metadata = {
-	title: "LinkedIn sent",
-};
+export const instant = false;
 
-export default function LinkedInSentPage() {
-	return (
-		<Suspense fallback={<PageShellFallback />}>
-			<Sent />
-		</Suspense>
-	);
-}
-
-async function Sent() {
-	await requireSession();
-	return <SentView />;
+export default async function LinkedinSentRedirect({
+	params,
+}: PageProps<"/[slug]/linkedin/sent">) {
+	const { slug } = await params;
+	redirect(`/${slug}${hubPath("messages", LEAD_HUB.views.messages.sent)}`);
 }

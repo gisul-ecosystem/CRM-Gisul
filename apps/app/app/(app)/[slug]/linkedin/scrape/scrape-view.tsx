@@ -40,7 +40,7 @@ import { toast } from "sonner";
 import { CompanySearchForm } from "@/components/linkedin-scraper/company-search-form";
 import { JobLog } from "@/components/linkedin-scraper/job-log";
 import { MessageTemplateField } from "@/components/linkedin-scraper/message-template-field";
-import { ScraperPage } from "@/components/linkedin-scraper/scraper-page";
+import { ScraperGate } from "@/components/linkedin-scraper/scraper-page";
 import { LocalDateTime } from "@/components/local-date-time";
 import { Meter } from "@/components/outreach/meter";
 import { scrapeApi, scraperApi } from "@/lib/linkedin-scraper/api";
@@ -85,18 +85,15 @@ const MESSAGE_MODES = [
 
 type MessageMode = (typeof MESSAGE_MODES)[number]["value"];
 
-export function ScrapeView({
+export function ScrapePanel({
 	viewerBaseUrl,
 }: {
 	viewerBaseUrl: string | null;
 }) {
 	return (
-		<ScraperPage
-			title="Search and scrape"
-			description="Find people on LinkedIn, read their profiles, and queue an AI draft or your own template for each one."
-		>
+		<ScraperGate>
 			<ScrapeBody viewerBaseUrl={viewerBaseUrl} />
-		</ScraperPage>
+		</ScraperGate>
 	);
 }
 
@@ -127,7 +124,8 @@ function ScrapeBody({ viewerBaseUrl }: { viewerBaseUrl: string | null }) {
 				<Alert variant="warning">
 					<AlertTitle>LinkedIn is not connected</AlertTitle>
 					<AlertDescription>
-						Connect LinkedIn on the LinkedIn overview before you start a scrape.
+						Connect LinkedIn on Lead generation → Overview → LinkedIn before you
+						start a scrape.
 					</AlertDescription>
 				</Alert>
 			) : null}

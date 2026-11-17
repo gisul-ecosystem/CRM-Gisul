@@ -37,7 +37,7 @@ import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 import { CountryPicker } from "@/components/leads-pipeline/country-picker";
-import { PipelinePage } from "@/components/leads-pipeline/pipeline-page";
+import { PipelineGate } from "@/components/leads-pipeline/pipeline-page";
 import { RunLog } from "@/components/leads-pipeline/run-log";
 import { BrowserViewer } from "@/components/linkedin-scraper/browser-viewer";
 import { LocalDateTime } from "@/components/local-date-time";
@@ -73,12 +73,9 @@ function words(value: string): string[] {
 		.filter(Boolean);
 }
 
-export function CustomSearchView({ viewerSrc }: { viewerSrc: string | null }) {
+export function CustomSearchPanel({ viewerSrc }: { viewerSrc: string | null }) {
 	return (
-		<PipelinePage
-			title="Custom search"
-			description="Describe the companies you want. The pipeline searches the web in its own browser, reads each website, finds people and emails, and scores them."
-		>
+		<PipelineGate>
 			{(profile) => (
 				<CustomSearchBody
 					key={profile.profile}
@@ -86,7 +83,7 @@ export function CustomSearchView({ viewerSrc }: { viewerSrc: string | null }) {
 					viewerSrc={viewerSrc}
 				/>
 			)}
-		</PipelinePage>
+		</PipelineGate>
 	);
 }
 

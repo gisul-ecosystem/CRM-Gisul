@@ -137,6 +137,9 @@ browser ──► CRM app /api/linkedin-scraper/<path>   (apps/app/app/api/linke
 
 ## Screens
 
+The LinkedIn screens are tabs in the Lead generation section; see "One Lead
+generation section" in `docs/leads-pipeline.md`. Old `/linkedin/*` addresses redirect.
+
 | CRM page | Scraper endpoints |
 | --- | --- |
 | Overview | `/status`, `/products`, `/rag/rebuild`, `/linkedin/*` |

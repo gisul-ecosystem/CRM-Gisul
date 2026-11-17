@@ -1,22 +1,11 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
-import { PageShellFallback } from "@/components/page-shell";
-import { requireSession } from "@/lib/session";
-import { QueueView } from "./queue-view";
+import { redirect } from "next/navigation";
+import { hubPath, LEAD_HUB } from "@/lib/lead-hub/lead-hub-config";
 
-export const metadata: Metadata = {
-	title: "LinkedIn queue",
-};
+export const instant = false;
 
-export default function LinkedInQueuePage() {
-	return (
-		<Suspense fallback={<PageShellFallback />}>
-			<Queue />
-		</Suspense>
-	);
-}
-
-async function Queue() {
-	await requireSession();
-	return <QueueView />;
+export default async function LinkedinQueueRedirect({
+	params,
+}: PageProps<"/[slug]/linkedin/queue">) {
+	const { slug } = await params;
+	redirect(`/${slug}${hubPath("messages", LEAD_HUB.views.messages.queue)}`);
 }

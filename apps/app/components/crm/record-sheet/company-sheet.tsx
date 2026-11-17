@@ -153,8 +153,8 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 
 	const location = company
 		? [company.city, company.stateCode, company.country]
-				.filter(Boolean)
-				.join(", ")
+			.filter(Boolean)
+			.join(", ")
 		: null;
 
 	const openDeals =
@@ -172,49 +172,49 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 
 	const tabs: DetailSheetTab[] = company
 		? [
-				{
-					value: "overview",
-					label: "Overview",
-					content: <CompanyOverview company={company} />,
-				},
-				{
-					value: "contacts",
-					label: "Contacts",
-					count: company.contacts.length,
-					content: (
-						<CompanyContacts
-							company={company}
-							adding={adding === "contact"}
-							onAdd={() => setAdding("contact")}
-							onDone={() => setAdding(null)}
-						/>
-					),
-				},
-				{
-					value: "deals",
-					label: "Deals",
-					count: company.deals.length,
-					content: (
-						<CompanyDeals
-							company={company}
-							adding={adding === "deal"}
-							onAdd={() => setAdding("deal")}
-							onDone={() => setAdding(null)}
-						/>
-					),
-				},
-				{
-					value: "activity",
-					label: "Activity",
-					content: <Timeline anchor={{ companyId: company.id }} />,
-				},
-				{
-					value: "agent",
-					label: "Agent",
-					content: <AgentPanel record={{ kind: "company", id: company.id }} />,
-					keepMounted: true,
-				},
-			]
+			{
+				value: "overview",
+				label: "Overview",
+				content: <CompanyOverview company={company} />,
+			},
+			{
+				value: "contacts",
+				label: "Contacts",
+				count: company.contacts.length,
+				content: (
+					<CompanyContacts
+						company={company}
+						adding={adding === "contact"}
+						onAdd={() => setAdding("contact")}
+						onDone={() => setAdding(null)}
+					/>
+				),
+			},
+			{
+				value: "deals",
+				label: "Deals",
+				count: company.deals.length,
+				content: (
+					<CompanyDeals
+						company={company}
+						adding={adding === "deal"}
+						onAdd={() => setAdding("deal")}
+						onDone={() => setAdding(null)}
+					/>
+				),
+			},
+			{
+				value: "activity",
+				label: "Activity",
+				content: <Timeline anchor={{ companyId: company.id }} />,
+			},
+			{
+				value: "agent",
+				label: "Agent",
+				content: <AgentPanel record={{ kind: "company", id: company.id }} />,
+				keepMounted: true,
+			},
+		]
 		: [];
 
 	return (
@@ -507,12 +507,12 @@ function CompanyContacts({
 										>
 											<Icon icon={isPrimary ? StarFilled : Star} />
 											<span className="sr-only">
-												{isPrimary ? "Primary contact" : "Make primary"}
+												{isPrimary ? "Primary contact" : "Make Primary Contact"}
 											</span>
 										</Button>
 									</TooltipTrigger>
 									<TooltipContent>
-										{isPrimary ? "Primary contact" : "Make primary"}
+										{isPrimary ? "Primary contact" : "Make Primary Contact"}
 									</TooltipContent>
 								</Tooltip>
 							</TableCell>
