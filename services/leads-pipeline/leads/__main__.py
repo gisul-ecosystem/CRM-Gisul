@@ -159,6 +159,21 @@ def cmd_stats(args) -> int:
     return 0
 
 
+def cmd_backfill(args) -> int:
+    s = load_settings()
+    store = Store(s.data_dir)
+    fetcher = Fetcher(s)
+    try:
+        from .sources.competitors import backfill_services
+        pages = args.pages if args.pages and args.pages > 0 else None
+        filled = backfill_services(fetcher, store, pages=pages)
+        store.save()
+        log.info("backfill complete: %d client service(s) updated", filled)
+        return 0
+    finally:
+        fetcher.close()
+
+
 def main() -> int:
     setup_logging()
     p = argparse.ArgumentParser(prog="leads")
@@ -168,11 +183,14 @@ def main() -> int:
     r.add_argument("--sources", help=f"comma list from {list(stages.SOURCES)} (default: all)")
     r.add_argument("--batch", type=int, help="override BATCH_SIZE")
     st = sub.add_parser("stats", help="print counts from the workbook")
-    for sp in (r, st):  # read before import by profile.current(); listed here for --help
+    bf = sub.add_parser("backfill", help="backfill competitor client services from saved pages")
+    bf.add_argument("--pages", type=int, default=0, help="maximum pages to re-fetch (default: 0 for all)")
+    for sp in (r, st, bf):
         sp.add_argument("--profile", choices=list(LABELS), default=GPU,
                         help="gpu (default) or training: separate data, settings, sources and rules")
     r.set_defaults(func=cmd_run)
     st.set_defaults(func=cmd_stats)
+    bf.set_defaults(func=cmd_backfill)
     args = p.parse_args()
     return args.func(args)
 

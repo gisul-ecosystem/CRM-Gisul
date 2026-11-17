@@ -1,22 +1,11 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
-import { PageShellFallback } from "@/components/page-shell";
-import { requireSession } from "@/lib/session";
-import { CompaniesView } from "./companies-view";
+import { redirect } from "next/navigation";
+import { hubPath, LEAD_HUB } from "@/lib/lead-hub/lead-hub-config";
 
-export const metadata: Metadata = {
-	title: "LinkedIn companies",
-};
+export const instant = false;
 
-export default function LinkedInCompaniesPage() {
-	return (
-		<Suspense fallback={<PageShellFallback />}>
-			<Companies />
-		</Suspense>
-	);
-}
-
-async function Companies() {
-	await requireSession();
-	return <CompaniesView />;
+export default async function LinkedinCompaniesRedirect({
+	params,
+}: PageProps<"/[slug]/linkedin/companies">) {
+	const { slug } = await params;
+	redirect(`/${slug}${hubPath("leads", LEAD_HUB.views.leads.companies)}`);
 }

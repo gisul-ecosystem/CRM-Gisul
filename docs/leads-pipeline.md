@@ -71,6 +71,26 @@ browser ──► CRM app /api/leads-pipeline/<path>   (apps/app/app/api/leads-p
 - **Status polls every 5 s while a run is in progress, and every 30 s otherwise.**
 - **The API reads `leads.xlsx` again only when the file changes.**
 
+## One Lead generation section
+
+The LinkedIn scraper and the lead pipeline share one menu group, **Leads & LinkedIn**
+(`/[slug]/lead-generation/*`). Each page is a set of tabs; the tab is the `view`
+query parameter. Each tab shows its source: a LinkedIn logo or a globe (`source` on a tab). Routes and tab names live in `apps/app/lib/lead-hub/lead-hub-config.ts`,
+and `components/lead-hub/lead-hub-page.tsx` draws the page.
+
+| Menu item | Tabs (`?view=`) |
+| --- | --- |
+| Overview `/lead-generation` | Website pipeline (`website`) · LinkedIn (`linkedin`) |
+| Find leads `/lead-generation/find` | Website search (`website`) · LinkedIn search (`linkedin`) |
+| Leads `/lead-generation/leads` | Website leads (`website`) · LinkedIn profiles (`profiles`) · Found posts (`posts`) · LinkedIn companies (`companies`) |
+| Messages `/lead-generation/messages` | LinkedIn queue (`queue`) · LinkedIn sent (`sent`) |
+| Settings `/lead-generation/settings` | Website pipeline settings |
+
+Each screen exports a panel (`LeadsPanel`, `ScrapePanel`, …) wrapped in a gate:
+`PipelineGate` (pipeline unreachable, profile tabs) or `ScraperGate` (scraper
+unreachable). The view files stay in their old folders. Every old address
+(`/linkedin`, `/linkedin/*`, `/lead-generation/search`) redirects to its new page and tab.
+
 ## Screens
 
 | CRM page | Pipeline endpoints |

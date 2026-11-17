@@ -1,22 +1,11 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
-import { PageShellFallback } from "@/components/page-shell";
-import { requireSession } from "@/lib/session";
-import { PostsView } from "./posts-view";
+import { redirect } from "next/navigation";
+import { hubPath, LEAD_HUB } from "@/lib/lead-hub/lead-hub-config";
 
-export const metadata: Metadata = {
-	title: "LinkedIn found posts",
-};
+export const instant = false;
 
-export default function LinkedInPostsPage() {
-	return (
-		<Suspense fallback={<PageShellFallback />}>
-			<Posts />
-		</Suspense>
-	);
-}
-
-async function Posts() {
-	await requireSession();
-	return <PostsView />;
+export default async function LinkedinPostsRedirect({
+	params,
+}: PageProps<"/[slug]/linkedin/posts">) {
+	const { slug } = await params;
+	redirect(`/${slug}${hubPath("leads", LEAD_HUB.views.leads.posts)}`);
 }

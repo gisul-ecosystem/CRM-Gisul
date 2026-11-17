@@ -22,7 +22,7 @@ import { useQueryState } from "nuqs";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 import { LeadSheet } from "@/components/leads-pipeline/lead-sheet";
-import { PipelinePage } from "@/components/leads-pipeline/pipeline-page";
+import { PipelineGate } from "@/components/leads-pipeline/pipeline-page";
 import { ConfirmDialog } from "@/components/outreach/confirm-dialog";
 import {
 	ALL,
@@ -107,14 +107,11 @@ function leadKey(row: Lead): string {
 	return `${row.domain}|${row.full_name}|${row.email}`;
 }
 
-export function LeadsView() {
+export function LeadsPanel() {
 	return (
-		<PipelinePage
-			title="Leads"
-			description="Every company and decision maker the pipeline found, best score first."
-		>
+		<PipelineGate>
 			{(profile) => <LeadsBody key={profile.profile} status={profile} />}
-		</PipelinePage>
+		</PipelineGate>
 	);
 }
 

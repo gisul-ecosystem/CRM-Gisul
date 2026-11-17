@@ -1,22 +1,11 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
-import { PageShellFallback } from "@/components/page-shell";
-import { requireSession } from "@/lib/session";
-import { ProfilesView } from "./profiles-view";
+import { redirect } from "next/navigation";
+import { hubPath, LEAD_HUB } from "@/lib/lead-hub/lead-hub-config";
 
-export const metadata: Metadata = {
-	title: "LinkedIn profiles",
-};
+export const instant = false;
 
-export default function LinkedInProfilesPage() {
-	return (
-		<Suspense fallback={<PageShellFallback />}>
-			<Profiles />
-		</Suspense>
-	);
-}
-
-async function Profiles() {
-	await requireSession();
-	return <ProfilesView />;
+export default async function LinkedinProfilesRedirect({
+	params,
+}: PageProps<"/[slug]/linkedin/profiles">) {
+	const { slug } = await params;
+	redirect(`/${slug}${hubPath("leads", LEAD_HUB.views.leads.profiles)}`);
 }

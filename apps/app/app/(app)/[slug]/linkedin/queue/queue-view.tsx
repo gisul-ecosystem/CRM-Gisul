@@ -37,7 +37,7 @@ import { toast } from "sonner";
 import { JobLog } from "@/components/linkedin-scraper/job-log";
 import { MessageTemplateField } from "@/components/linkedin-scraper/message-template-field";
 import { ProfileSheet } from "@/components/linkedin-scraper/profile-sheet";
-import { ScraperPage } from "@/components/linkedin-scraper/scraper-page";
+import { ScraperGate } from "@/components/linkedin-scraper/scraper-page";
 import { ConfirmDialog } from "@/components/outreach/confirm-dialog";
 import { Meter } from "@/components/outreach/meter";
 import { OutreachToolbar, SearchBox } from "@/components/outreach/toolbar";
@@ -52,14 +52,11 @@ import { useDebounced } from "@/lib/outreach/use-debounced";
 
 type Pending = { kind: "send" | "clear"; slugs: string[] } | null;
 
-export function QueueView() {
+export function QueuePanel() {
 	return (
-		<ScraperPage
-			title="Message queue"
-			description="Drafts waiting for review. Edit a draft, put one template on all of them, skip, or send from the shared LinkedIn account."
-		>
+		<ScraperGate>
 			<QueueBody />
-		</ScraperPage>
+		</ScraperGate>
 	);
 }
 

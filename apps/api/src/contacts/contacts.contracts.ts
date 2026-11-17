@@ -399,6 +399,7 @@ export const contactDraftEmailInput = z.object({
 	id: z.string().trim().min(1),
 	productId: z.string().trim().min(1).nullable(),
 	category: leadCategory.nullable(),
+	senderName: z.string().trim().max(EMAIL_DRAFT_LIMITS.senderName).nullable().optional(),
 	purpose: z.string().trim().max(EMAIL_DRAFT_LIMITS.purpose).nullable(),
 });
 

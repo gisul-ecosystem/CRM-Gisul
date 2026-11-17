@@ -11,6 +11,7 @@ for cloud GPUs, VMs, and compute infrastructure right now.
 import csv
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 from urllib.parse import urljoin, urlparse
@@ -39,6 +40,7 @@ SKIP_DOMAINS = frozenset({
 })
 
 MAX_FOLLOW_PER_PROVIDER = 25  # case study pages read per cloud provider per run
+SERVICE_BACKFILL_PAGES = 40
 PAUSE_AFTER = 40              # checked clients with no good lead before a provider is paused
 
 _TITLE_PATTERNS = [
@@ -245,9 +247,51 @@ def find_case_study_subpages(html: str, index_url: str, provider: dict) -> List[
     return subpages
 
 
+def _service_on_page(html: str, domain: str, case_study: bool) -> str:
+    soup = BeautifulSoup(html, "lxml")
+    if case_study:
+        return services_in(soup.get_text(" "))
+    for a in soup.find_all("a", href=True):
+        if extract_domain(a["href"].strip()) == domain:
+            card = a.find_parent(["li", "article", "section", "div"])
+            return services_in(card.get_text(" ", strip=True) if card else "")
+    return ""
+
+
+def backfill_services(fetcher: Fetcher, store: Store, pages: Optional[int] = SERVICE_BACKFILL_PAGES) -> int:
+    tried = store.state.setdefault("service_backfill", {})
+    df = store.df
+    todo = df[(df["competitor"] != "") & (df["competitor_service"] == "") & (df["signal_url"] != "")
+              & ~df["domain"].isin(list(tried))]
+    if todo.empty:
+        return 0
+    filled = 0
+    by_url = todo.groupby("signal_url")["domain"].apply(lambda d: sorted(set(d)))
+    items = list(by_url.items()) if pages is None or pages <= 0 else list(by_url.items())[:pages]
+    for url, domains in items:
+        html = fetcher.get_html(url)
+        if not html and hasattr(fetcher, "render"):
+            html = fetcher.render(url)
+        for domain in domains:
+            tried[domain] = time.strftime("%Y-%m-%d")
+            if not html:
+                continue
+            rows = store.domain_indices(domain)
+            case_study = any(str(store.df.at[i, "signal"] or "").startswith("Client of ") for i in rows)
+            service = _service_on_page(html, domain, case_study)
+            if service:
+                for i in rows:
+                    store.set(i, competitor_service=service)
+                filled += 1
+    log.info("competitor services: %d of %d old clients filled from %d page(s)",
+             filled, sum(len(d) for _, d in items), len(items))
+    return filled
+
+
 def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int,
              list_file: Path = LIST_FILE) -> List[Candidate]:
     """Discover competitor clients from cloud provider testimonials and case studies."""
+    backfill_services(fetcher, store)
     cursor = "competitors_seen"
     seen = set(store.state["cursors"].get(cursor, []))
     origin = store.state.setdefault("competitor_of", {})

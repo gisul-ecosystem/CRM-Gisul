@@ -124,29 +124,29 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 
 	const tabs: DetailSheetTab[] = contact
 		? [
-				{
-					value: "overview",
-					label: "Overview",
-					content: <ContactOverview contact={contact} />,
-				},
-				{
-					value: "deals",
-					label: "Deals",
-					count: contact.deals.length,
-					content: <ContactDeals contact={contact} />,
-				},
-				{
-					value: "activity",
-					label: "Activity",
-					content: <Timeline anchor={{ contactId: contact.id }} />,
-				},
-				{
-					value: "agent",
-					label: "Agent",
-					content: <AgentPanel record={{ kind: "contact", id: contact.id }} />,
-					keepMounted: true,
-				},
-			]
+			{
+				value: "overview",
+				label: "Overview",
+				content: <ContactOverview contact={contact} />,
+			},
+			{
+				value: "deals",
+				label: "Deals",
+				count: contact.deals.length,
+				content: <ContactDeals contact={contact} />,
+			},
+			{
+				value: "activity",
+				label: "Activity",
+				content: <Timeline anchor={{ contactId: contact.id }} />,
+			},
+			{
+				value: "agent",
+				label: "Agent",
+				content: <AgentPanel record={{ kind: "contact", id: contact.id }} />,
+				keepMounted: true,
+			},
+		]
 		: [];
 
 	return (
@@ -233,7 +233,7 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 								}
 							>
 								<Icon icon={Star} data-icon="inline-start" />
-								<span className="hidden sm:inline">Make primary</span>
+								<span className="hidden sm:inline">Make Primary Contact</span>
 							</Button>
 						) : null}
 						<RecordActions

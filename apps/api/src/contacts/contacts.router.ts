@@ -244,7 +244,7 @@ export class ContactsRouter {
 			contactId: input.id,
 			productId: input.productId,
 			category: input.category,
-			senderName: ctx.user.name?.trim() || null,
+			senderName: input.senderName ?? ctx.user.name?.trim() ?? null,
 			purpose: input.purpose || null,
 		});
 	}

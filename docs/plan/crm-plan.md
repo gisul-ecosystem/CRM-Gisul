@@ -514,7 +514,7 @@ Each phase ends green on `bun run check-types` and `bun run lint`.
 
 ### Phase 3 — Contacts
 - `contacts` router; list DataTable (name, title, email, company, owner, last
-  activity); detail page; company link; "make primary contact" action.
+  activity); detail page; company link; "Make Primary Contact contact" action.
 - Replace the existing `contacts/page.tsx` placeholder.
 
 ### Phase 4 — Deals

@@ -4,7 +4,9 @@ import {
 	defaultFollowUpDay,
 	engagementLine,
 	followUpSubject,
+	senderNameForAccount,
 	sendStatus,
+	swapSenderName,
 	waitDaysUntil,
 } from "../lib/unifers/single-send";
 
@@ -152,5 +154,48 @@ describe("send status", () => {
 		expect(
 			engagementLine(sendStatus(analytics({}, null), null).engagement),
 		).toBe("Not opened · No clicks · No reply");
+	});
+});
+
+describe("sender switching", () => {
+	it("derives display name from fromName or email", () => {
+		expect(
+			senderNameForAccount({ fromName: "Nikhil Gupta", email: "nikhil@gisul.co.in" }),
+		).toBe("Nikhil Gupta");
+		expect(
+			senderNameForAccount({ fromName: null, email: "sales.team@gisul.co.in" }),
+		).toBe("Sales Team");
+		expect(
+			senderNameForAccount({ fromName: "", email: "alex-turner@gisul.co.in" }),
+		).toBe("Alex Turner");
+		expect(senderNameForAccount(null)).toBe("");
+	});
+
+	it("swaps sign-off name without changing the recipient greeting", () => {
+		const body = "Hi Nikhil,\n\nI saw your post on LinkedIn.\n\nBest,\nNikhil";
+		const swapped = swapSenderName(body, "Nikhil", "Rahul");
+		expect(swapped).toBe("Hi Nikhil,\n\nI saw your post on LinkedIn.\n\nBest,\nRahul");
+	});
+
+	it("swaps intro and sign-off name across multiple senders", () => {
+		const body = "Hi John,\n\nI'm Nikhil from Gisul.\n\nThanks,\nNikhil";
+		const toGisul = swapSenderName(body, "Nikhil", "Gisul Team");
+		expect(toGisul).toBe("Hi John,\n\nI'm Gisul Team from Gisul.\n\nThanks,\nGisul Team");
+		const toPriya = swapSenderName(toGisul, "Gisul Team", "Priya Sharma");
+		expect(toPriya).toBe("Hi John,\n\nI'm Priya Sharma from Gisul.\n\nThanks,\nPriya Sharma");
+	});
+
+	it("replaces signature line when sign-off word exists", () => {
+		const body = "Hi John,\n\nLooking forward to speaking.\n\nWarm regards,\nPrevious Person";
+		expect(swapSenderName(body, "Previous Person", "Nikhil")).toBe(
+			"Hi John,\n\nLooking forward to speaking.\n\nWarm regards,\nNikhil",
+		);
+	});
+
+	it("swaps follow-up signature line", () => {
+		const followUp = "Hi John,\n\nFollowing up on my previous note.\n\nBest,\nNikhil";
+		expect(swapSenderName(followUp, "Nikhil", "Sales Team")).toBe(
+			"Hi John,\n\nFollowing up on my previous note.\n\nBest,\nSales Team",
+		);
 	});
 });

@@ -114,3 +114,76 @@ export function sendStatus(
 		followUp: followUpAt ? `Follow-up on ${followUpAt}` : "Follow-up waiting",
 	};
 }
+
+function escapeRegex(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function senderNameForAccount(
+	account: { fromName?: string | null; email: string } | null | undefined,
+): string {
+	if (!account) return "";
+	const fromName = account.fromName?.trim();
+	if (fromName) return fromName;
+	const local = account.email.split("@")[0] || "";
+	return local
+		.replace(/[._-]+/g, " ")
+		.replace(/\b\w/g, (c) => c.toUpperCase())
+		.trim();
+}
+
+export function swapSenderName(
+	content: string,
+	previousName: string,
+	nextName: string,
+): string {
+	if (!content || !nextName || previousName === nextName) {
+		return content;
+	}
+
+	let updated = content;
+
+	if (previousName.trim()) {
+		const introRegex = new RegExp(
+			`(\\b(?:I'm|I am|My name is|This is)\\s+)${escapeRegex(previousName.trim())}\\b`,
+			"gi",
+		);
+		updated = updated.replace(introRegex, `$1${nextName}`);
+
+		const prevFirst = previousName.trim().split(/\s+/)[0];
+		if (prevFirst && prevFirst !== previousName.trim()) {
+			const introFirstRegex = new RegExp(
+				`(\\b(?:I'm|I am|My name is|This is)\\s+)${escapeRegex(prevFirst)}\\b`,
+				"gi",
+			);
+			updated = updated.replace(introFirstRegex, `$1${nextName}`);
+		}
+	}
+
+	const signOffRegex =
+		/((\n\s*(?:best regards|warm regards|kind regards|best|regards|thanks|thank you|cheers|sincerely|warmly|yours)[,\s]*\n+)[^\n]+)(\s*)$/i;
+
+	if (signOffRegex.test(updated)) {
+		return updated.replace(signOffRegex, `$2${nextName}$3`);
+	}
+
+	if (previousName.trim()) {
+		const trailingExactRegex = new RegExp(
+			`(\\n\\n+)${escapeRegex(previousName.trim())}(\\s*)$`,
+		);
+		if (trailingExactRegex.test(updated)) {
+			return updated.replace(trailingExactRegex, `$1${nextName}$2`);
+		}
+		const prevFirst = previousName.trim().split(/\s+/)[0];
+		if (prevFirst) {
+			const trailingFirstRegex = new RegExp(
+				`(\\n\\n+)${escapeRegex(prevFirst)}(\\s*)$`,
+			);
+			if (trailingFirstRegex.test(updated)) {
+				return updated.replace(trailingFirstRegex, `$1${nextName}$2`);
+			}
+		}
+	}
+
+	return `${updated.trimEnd()}\n\nBest,\n${nextName}`;
+}
