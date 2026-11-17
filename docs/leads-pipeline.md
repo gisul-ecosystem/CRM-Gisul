@@ -292,3 +292,7 @@ the case study page, or from the text around a client link on a testimonials pag
 before these columns get the provider from `source_ref` and the service from the saved quote
 when the sheet loads. The Leads page shows Competitor and "Service they take" in place of
 Segment for the competitors profile.
+
+Old clients whose service is still empty are filled by the next competitors run:
+`backfill_services` reads each saved `signal_url` again (`SERVICE_BACKFILL_PAGES` pages per run,
+each page once) and tries each company once.

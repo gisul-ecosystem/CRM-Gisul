@@ -149,7 +149,7 @@ const GROUPS: NavGroup[] = [
 				match: "exact",
 			},
 			{
-				title: "Find leads",
+				title: "Custom search leads",
 				href: LEAD_HUB.pages.find,
 				icon: Search,
 				match: "prefix",

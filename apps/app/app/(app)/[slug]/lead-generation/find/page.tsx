@@ -10,7 +10,7 @@ import { ScrapePanel } from "../../linkedin/scrape/scrape-view";
 import { CustomSearchPanel } from "../search/custom-search-view";
 
 export const metadata: Metadata = {
-	title: "Find leads",
+	title: "Custom search leads",
 };
 
 export default function FindLeadsPage() {
@@ -26,7 +26,7 @@ async function FindLeads() {
 	const { views } = LEAD_HUB;
 	return (
 		<LeadHubPage
-			title="Find leads"
+			title="Custom search leads"
 			tabs={[
 				{
 					value: views.find.website,

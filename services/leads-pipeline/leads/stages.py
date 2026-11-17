@@ -45,7 +45,7 @@ GPU_SOURCES = {"seeds": seeds, "incubators": incubators, "search": search, "maps
 TRAINING_SOURCES = {"seeds": seeds, "directories": directories, "search": search, "maps": maps,
                     "funding": funding, "github": github, "custom": custom}
 # Competitors profile: cloud & compute provider testimonials/case studies (leads/competitors.csv)
-COMPETITORS_SOURCES = {"competitors": competitors, "seeds": seeds, "search": search, "custom": custom}
+COMPETITORS_SOURCES = {"competitors": competitors, "custom": custom}
 
 if _profile.current() == _profile.TRAINING:
     SOURCES = TRAINING_SOURCES
