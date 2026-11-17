@@ -101,6 +101,8 @@ export class DashboardService {
 		const contactOwned = mine ? { ownerId: actingUserId } : {};
 
 		const contactBase = { ...contactOwned, archivedAt: null };
+		const inMonth = { gte: startOfMonth, lt: startOfNextMonth };
+		const contactInMonth = { ...contactBase, createdAt: inMonth };
 
 		const [
 			openByStage,
@@ -212,6 +214,7 @@ export class DashboardService {
 			this.db.activity.findMany({
 				where: {
 						...(mine || !seesEveryone ? { createdById: actingUserId } : {}),
+						createdAt: { lt: startOfNextMonth },
 						OR: [
 							{ emailThreadId: null, calendarEventId: null },
 							{ companyId: { not: null } },
@@ -236,7 +239,7 @@ export class DashboardService {
 			this.conversion.unconverted(owned),
 			this.db.contact.groupBy({
 				by: ["leadSource"],
-				where: contactBase,
+				where: contactInMonth,
 				_count: { _all: true },
 			}),
 			this.db.product.findMany({
@@ -246,7 +249,7 @@ export class DashboardService {
 			}),
 			this.db.contact.groupBy({
 				by: ["productId"],
-				where: contactBase,
+				where: contactInMonth,
 				_count: { _all: true },
 			}),
 			this.db.deal.groupBy({
@@ -266,7 +269,11 @@ export class DashboardService {
 			}),
 			this.db.deal.groupBy({
 				by: ["productId"],
-				where: { ...owned, stage: DealStage.CLOSED_WON },
+				where: {
+					...owned,
+					stage: DealStage.CLOSED_WON,
+					closedAt: inMonth,
+				},
 				_count: { _all: true },
 			}),
 			this.db.contact.count({ where: contactBase }),
