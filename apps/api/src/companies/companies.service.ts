@@ -812,10 +812,18 @@ export class CompaniesService {
 		}
 
 		try {
-			return await this.db.company.update({
-				where: { id: companyId },
-				data: { primaryContactId: contactId },
-				select: { id: true, primaryContactId: true },
+			return await this.db.$transaction(async (tx) => {
+				if (contactId) {
+					await tx.company.updateMany({
+						where: { primaryContactId: contactId, id: { not: companyId } },
+						data: { primaryContactId: null },
+					});
+				}
+				return tx.company.update({
+					where: { id: companyId },
+					data: { primaryContactId: contactId },
+					select: { id: true, primaryContactId: true },
+				});
 			});
 		} catch (error) {
 			throw this.translate(error, companyId);
