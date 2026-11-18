@@ -23,6 +23,7 @@ from ..fetch import Fetcher
 from ..store import Candidate, Store
 from ..competitor_info import services_in
 from ..util import extract_domain, is_blocked, name_from_domain
+from . import competitor_search
 
 log = logging.getLogger(__name__)
 
@@ -288,18 +289,66 @@ def backfill_services(fetcher: Fetcher, store: Store, pages: Optional[int] = SER
     return filled
 
 
+def _add(out: List[Candidate], seen: set, origin: dict, comp: dict, c: dict) -> None:
+    dom = c["domain"]
+    origin.setdefault(dom, comp["provider"])
+    if dom in seen or is_blocked(dom):
+        return
+    seen.add(dom)
+    origin[dom] = comp["provider"]
+    out.append(Candidate(
+        name=name_from_domain(dom),
+        domain=dom,
+        source="competitors",
+        signal=c["signal"],
+        signal_url=c["signal_url"],
+        source_ref=f"comp:{comp['provider']}",
+        india=comp.get("india") or "check",
+        segment="competitor_clients",
+        person_name=c.get("person_name", ""),
+        person_title=c.get("person_title", ""),
+        competitor_service=c.get("service", ""),
+    ))
+
+
+def _card_clients(html: str, url: str, comp: dict) -> List[dict]:
+    clients = []
+    soup = BeautifulSoup(html, "lxml")
+    own_domain = extract_domain(url)
+    for a in soup.find_all("a", href=True):
+        href = a["href"].strip()
+        if not href.startswith(("http://", "https://")):
+            continue
+        d = extract_domain(href)
+        if not d or d == own_domain or d in SKIP_DOMAINS or is_blocked(d):
+            continue
+        card = a.find_parent(["li", "article", "section", "div"])
+        clients.append({"domain": d, "person_name": "", "person_title": "",
+                        "signal": f"Client testimonial on {comp['provider']}", "signal_url": url,
+                        "service": services_in(card.get_text(" ", strip=True) if card else "")})
+    return clients
+
+
+def all_providers(store: Store, list_file: Path = LIST_FILE) -> List[dict]:
+    listed = read_list(list_file)
+    domains = {extract_domain(c["url"]) for c in listed}
+    return listed + [c for c in competitor_search.found_providers(store)
+                     if extract_domain(c["url"]) not in domains]
+
+
 def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int,
              list_file: Path = LIST_FILE) -> List[Candidate]:
-    """Discover competitor clients from cloud provider testimonials and case studies."""
     backfill_services(fetcher, store)
     cursor = "competitors_seen"
     seen = set(store.state["cursors"].get(cursor, []))
     origin = store.state.setdefault("competitor_of", {})
     followed_state = store.state["cursors"].setdefault("competitors_followed", {})
+    budget = competitor_search.SearchBudget(s, store)
+    competitor_search.find_providers(s, fetcher, store, budget, read_list(list_file))
     measured = yields(store.df, store.state)
     out: List[Candidate] = []
 
-    for comp in ranked(read_list(list_file), measured):
+    for comp in ranked(all_providers(store, list_file), measured):
         if len(out) >= limit:
             break
         y = measured.get(comp["provider"], {})
@@ -312,35 +361,17 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int,
         html = fetcher.get_html(url)
         if not html and hasattr(fetcher, "render"):
             html = fetcher.render(url, expand=True)
-
         if not html:
             log.warning("competitor page unreachable: %s", url)
-            continue
 
-        # 1. Extract clients present directly on the main testimonials page (cards, quotes, logos)
-        card_clients = []
-        soup = BeautifulSoup(html, "lxml")
-        own_domain = extract_domain(url)
-        for a in soup.find_all("a", href=True):
-            href = a["href"].strip()
-            if not href.startswith(("http://", "https://")):
-                continue
-            d = extract_domain(href)
-            if not d or d == own_domain or d in SKIP_DOMAINS or is_blocked(d):
-                continue
-            name = a.get_text(" ", strip=True) or d.split(".")[0].replace("-", " ").title()
-            card = a.find_parent(["li", "article", "section", "div"])
-            card_clients.append({"name": name, "domain": d, "person_name": "", "person_title": "",
-                                 "signal": f"Client testimonial on {comp['provider']}", "signal_url": url,
-                                 "service": services_in(card.get_text(" ", strip=True) if card else "")})
-
-        # 2. Find and recursively follow detailed case study subpages
-        subpages = find_case_study_subpages(html, url, comp)
+        clients = _card_clients(html, url, comp) if html else []
         done_subpages = set(followed_state.setdefault(comp["provider"], []))
-        todo_subpages = [sp for sp in subpages if sp not in done_subpages]
+        subpages = find_case_study_subpages(html, url, comp) if html else []
+        subpages += competitor_search.case_study_urls(fetcher, budget, comp)
+        todo_subpages = list(dict.fromkeys(sp for sp in subpages if sp not in done_subpages and sp != url.rstrip("/")))
 
         for sp in todo_subpages[:MAX_FOLLOW_PER_PROVIDER]:
-            if len(out) >= limit:
+            if len(out) + len(clients) >= limit:
                 break
             done_subpages.add(sp)
             followed_state[comp["provider"]].append(sp)
@@ -349,29 +380,14 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int,
                 sub_html = fetcher.render(sp)
             parsed = parse_case_study(sub_html, sp, comp)
             if parsed:
-                card_clients.append(parsed)
+                clients.append(parsed)
 
-        # 3. Add extracted clients to candidate list
-        for c in card_clients:
-            dom = c["domain"]
-            origin.setdefault(dom, comp["provider"])
-            if dom in seen or is_blocked(dom):
-                continue
-            seen.add(dom)
-            origin[dom] = comp["provider"]
-            out.append(Candidate(
-                name=name_from_domain(dom),
-                domain=dom,
-                source="competitors",
-                signal=c["signal"],
-                signal_url=c["signal_url"],
-                source_ref=f"comp:{comp['provider']}",
-                india=comp.get("india") or "check",
-                segment="competitor_clients",
-                person_name=c.get("person_name", ""),
-                person_title=c.get("person_title", ""),
-                competitor_service=c.get("service", ""),
-            ))
+        for c in competitor_search.mentioned_clients(fetcher, budget, comp):
+            text = c.pop("text", "")
+            clients.append({**c, "service": services_in(text)})
+
+        for c in clients:
+            _add(out, seen, origin, comp, c)
             if len(out) >= limit:
                 break
 

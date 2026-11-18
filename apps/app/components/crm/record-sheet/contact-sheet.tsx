@@ -4,6 +4,7 @@ import Email from "@carbon/icons-react/es/Email";
 import Partnership from "@carbon/icons-react/es/Partnership";
 import Send from "@carbon/icons-react/es/Send";
 import Star from "@carbon/icons-react/es/Star";
+import StarFilled from "@carbon/icons-react/es/StarFilled";
 import type { FieldValueJson } from "@crm/db/fields";
 import {
 	Accordion,
@@ -220,7 +221,7 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 								</a>
 							</Button>
 						) : null}
-						{contact.company && !contact.isPrimaryContact ? (
+						{contact.company ? (
 							<Button
 								variant="outline"
 								size="sm"
@@ -228,12 +229,19 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 								onClick={() =>
 									setPrimary.mutate({
 										companyId: contact.company?.id ?? "",
-										contactId: contact.id,
+										contactId: contact.isPrimaryContact ? null : contact.id,
 									})
 								}
 							>
-								<Icon icon={Star} data-icon="inline-start" />
-								<span className="hidden sm:inline">Make Primary Contact</span>
+								<Icon
+									icon={contact.isPrimaryContact ? StarFilled : Star}
+									data-icon="inline-start"
+								/>
+								<span className="hidden sm:inline">
+									{contact.isPrimaryContact
+										? "Remove as Primary Contact"
+										: "Make Primary Contact"}
+								</span>
 							</Button>
 						) : null}
 						<RecordActions
@@ -320,6 +328,7 @@ function CompanyStat({
 function ContactOverview({ contact }: { contact: Contact }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
+	const openRecord = useOpenRecord();
 
 	const users = useQuery(trpc.users.list.queryOptions());
 	const products = useQuery(trpc.products.options.queryOptions());
@@ -387,6 +396,7 @@ function ContactOverview({ contact }: { contact: Contact }) {
 						onSave={(companyId) =>
 							save({ companyId: companyId === NONE ? null : companyId })
 						}
+						onOpen={(id) => openRecord({ kind: "company", id })}
 					/>
 					<InlineField
 						label="Email"

@@ -853,6 +853,16 @@ export class ContactsService {
 					await this.fields.applyValues(tx, "CONTACT", id, input.fields);
 				}
 
+				if (input.companyId !== undefined) {
+					await tx.company.updateMany({
+						where: {
+							primaryContactId: id,
+							...(input.companyId ? { id: { not: input.companyId } } : {}),
+						},
+						data: { primaryContactId: null },
+					});
+				}
+
 				const updated = await tx.contact.update({
 					where: { id },
 					data,
@@ -910,10 +920,19 @@ export class ContactsService {
 		}
 
 		const ids = [...new Set(input.ids)];
-		const { count } = await this.db.contact.updateMany({
-			where: { id: { in: ids } },
-			data: { companyId },
-		});
+		const [, { count }] = await this.db.$transaction([
+			this.db.company.updateMany({
+				where: {
+					primaryContactId: { in: ids },
+					...(companyId ? { id: { not: companyId } } : {}),
+				},
+				data: { primaryContactId: null },
+			}),
+			this.db.contact.updateMany({
+				where: { id: { in: ids } },
+				data: { companyId },
+			}),
+		]);
 
 		this.logger.log({
 			message: "Contacts moved",

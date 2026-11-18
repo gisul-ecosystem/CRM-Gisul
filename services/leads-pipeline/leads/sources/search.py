@@ -165,21 +165,23 @@ def run_query(name: str, key: str, fetcher: Fetcher, q: str):
     if name == "serper":
         status, data = fetcher.post_json(SERPER_URL, {"q": q, "gl": code.lower(), "num": 10},
                                          headers={"X-API-KEY": key, "Content-Type": "application/json"})
-        rows = [{"url": r.get("link", ""), "title": r.get("title", "")} for r in (data or {}).get("organic", [])] \
+        rows = [{"url": r.get("link", ""), "title": r.get("title", ""), "snippet": r.get("snippet", "")}
+                for r in (data or {}).get("organic", [])] \
             if isinstance(data, dict) else []
         return status, rows
     if name == "tavily":
         status, data = fetcher.post_json(TAVILY_URL, {"query": q, "max_results": 20, "search_depth": "basic",
                                                       "country": country.lower()},
                                          headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
-        rows = [{"url": r.get("url", ""), "title": r.get("title", "")} for r in (data or {}).get("results", [])] \
+        rows = [{"url": r.get("url", ""), "title": r.get("title", ""), "snippet": r.get("content", "")}
+                for r in (data or {}).get("results", [])] \
             if isinstance(data, dict) else []
         return status, rows
     status, data, _ = fetcher.get_json(
         BRAVE_URL, params={"q": q, "count": 20, "country": code if code in BRAVE_COUNTRIES else "ALL",
                             "search_lang": "en"},
         headers={"X-Subscription-Token": key, "Accept": "application/json"})
-    rows = [{"url": r.get("url", ""), "title": r.get("title", "")}
+    rows = [{"url": r.get("url", ""), "title": r.get("title", ""), "snippet": r.get("description", "")}
             for r in ((data or {}).get("web") or {}).get("results") or []] if isinstance(data, dict) else []
     return status, rows
 

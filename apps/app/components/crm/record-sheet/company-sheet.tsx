@@ -31,6 +31,7 @@ import { FieldsCog, RecordFields } from "@/components/crm/fields/record-fields";
 import {
 	InlineField,
 	InlineSelectField,
+	InlineTextArea,
 	savingValue,
 } from "@/components/crm/inline-field";
 import { OwnerCell } from "@/components/crm/owner-cell";
@@ -44,7 +45,6 @@ import {
 	DetailSheetMain,
 	DetailSheetPending,
 	DetailSheetProperties,
-	DetailSheetProse,
 	DetailSheetRail,
 	DetailSheetSection,
 	DetailSheetSplit,
@@ -69,6 +69,7 @@ import {
 	MetaLine,
 	RecordSheetFrame,
 } from "./record-parts";
+import sheetStyles from "./record-sheet-design.module.css";
 import { useOpenRecord, useRecordSheetView } from "./record-stack";
 
 type Company = RouterOutputs["companies"]["byId"];
@@ -325,11 +326,17 @@ function CompanyOverview({ company }: { company: Company }) {
 		<DetailSheetBody>
 			<DetailSheetSplit>
 				<DetailSheetMain>
-					{company.description ? (
-						<DetailSheetSection title="About">
-							<DetailSheetProse>{company.description}</DetailSheetProse>
-						</DetailSheetSection>
-					) : null}
+					<DetailSheetSection title="About">
+						<div className={sheetStyles.prose}>
+							<InlineTextArea
+								label="About"
+								value={company.description}
+								placeholder={`What ${company.name} does, who it sells to, and why it matters to us.`}
+								saving={isSaving("description")}
+								onSave={(description) => save({ description })}
+							/>
+						</div>
+					</DetailSheetSection>
 
 					<WebsiteActivity companyId={company.id} />
 				</DetailSheetMain>
@@ -377,10 +384,31 @@ function CompanyOverview({ company }: { company: Company }) {
 								onSave={(email) => save({ email })}
 							/>
 							<InlineField
+								label="Industry"
+								value={company.industry}
+								placeholder="Software"
+								saving={isSaving("industry")}
+								onSave={(industry) => save({ industry })}
+							/>
+							<InlineField
+								label="LinkedIn"
+								value={company.linkedinUrl}
+								type="url"
+								placeholder="https://linkedin.com/company/stripe"
+								saving={isSaving("linkedinUrl")}
+								onSave={(linkedinUrl) => save({ linkedinUrl })}
+							/>
+							<InlineField
 								label="City"
 								value={company.city}
 								saving={isSaving("city")}
 								onSave={(city) => save({ city })}
+							/>
+							<InlineField
+								label="State"
+								value={company.stateCode}
+								saving={isSaving("stateCode")}
+								onSave={(stateCode) => save({ stateCode })}
 							/>
 							<InlineField
 								label="Country"
@@ -496,23 +524,27 @@ function CompanyContacts({
 											variant="ghost"
 											size="icon-xs"
 											aria-pressed={isPrimary}
-											disabled={isPrimary || setPrimary.isPending}
+											disabled={setPrimary.isPending}
 											onClick={(event) => {
 												event.stopPropagation();
 												setPrimary.mutate({
 													companyId: company.id,
-													contactId: contact.id,
+													contactId: isPrimary ? null : contact.id,
 												});
 											}}
 										>
 											<Icon icon={isPrimary ? StarFilled : Star} />
 											<span className="sr-only">
-												{isPrimary ? "Primary contact" : "Make Primary Contact"}
+												{isPrimary
+													? "Remove as Primary Contact"
+													: "Make Primary Contact"}
 											</span>
 										</Button>
 									</TooltipTrigger>
 									<TooltipContent>
-										{isPrimary ? "Primary contact" : "Make Primary Contact"}
+										{isPrimary
+											? "Remove as Primary Contact"
+											: "Make Primary Contact"}
 									</TooltipContent>
 								</Tooltip>
 							</TableCell>

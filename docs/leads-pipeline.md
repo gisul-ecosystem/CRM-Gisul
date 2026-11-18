@@ -300,3 +300,28 @@ banner. `name_competitor_clients` in `leads/store.py` renames saved rows when th
 Old clients whose service is still empty are filled by the next competitors run:
 `backfill_services` reads each saved `signal_url` again (`SERVICE_BACKFILL_PAGES` pages per run,
 each page once) and tries each company once.
+
+
+## Competitor clients: found by search
+
+The competitors run does not rely only on `leads/competitors.csv`. With a search key (Serper,
+Tavily or Brave) and `SEARCH_DISCOVERY_PER_RUN` above 0 on the Competitor clients tab, each run
+also searches. `leads/sources/competitor_search.py` holds every number and word list
+(`COMPETITOR_SEARCH`).
+
+1. **New providers.** It searches "GPU cloud provider <country>", "rent H100 GPU cloud
+   <country>" and the other `provider_topics`, plus "alternatives to <provider> GPU cloud" for
+   listed providers. A result counts as a provider when its home page shows at least 3 GPU-cloud
+   words (H100, bare metal, per hour, GPU instances...). It finds the provider's customers or
+   case-studies page from the home page links. Found providers go into `state.json`
+   (`competitor_providers_found`) and are crawled like the CSV ones from then on. A site that fails
+   the check is remembered and not checked again. At most 10 new providers a run, 80 in all.
+2. **More case studies.** For every provider it searches `site:<domain> "case study"`, and reads
+   the case studies the testimonials page does not link.
+3. **Clients that name the provider.** It searches `"<provider>" GPU "case study" OR "powered by"
+   OR "we use"` off the provider's site. A result is a client when its title or summary names the
+   provider and a usage word ("uses", "powered by", "migrated"). Comparison, pricing, review and
+   "top 10" pages are skipped. The signal reads "Mentions using <provider>".
+
+Each search runs again only after 30 days (`repeat_days`). Every search counts against
+`SEARCH_DISCOVERY_PER_RUN`. Without a key, the run reads the CSV list only, as before.
