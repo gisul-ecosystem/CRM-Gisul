@@ -1,17 +1,13 @@
 import { defineAgent, defineDynamic } from "eve";
 import { z } from "zod";
-import {
-	azureLanguageModel,
-	azureStepSelection,
-	defaultAzureDeployment,
-} from "../../lib/azure-model";
+import { agentStepSelection, defaultAgentModel } from "../../lib/agent-model";
 
 export default defineAgent({
 	description:
 		"Turn one private CRM builder-chat request into a validated, reviewable team-agent version without deploying it.",
 	model: defineDynamic({
-		fallback: azureLanguageModel(defaultAzureDeployment()),
-		events: { "step.started": () => azureStepSelection() },
+		fallback: defaultAgentModel(),
+		events: { "step.started": () => agentStepSelection() },
 	}),
 	outputSchema: z.object({
 		status: z.literal("draft_ready"),
