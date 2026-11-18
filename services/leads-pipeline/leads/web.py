@@ -19,7 +19,7 @@ from .geo import COUNTRIES
 from .people_search import google_url
 from .profile import GPU, LABELS, OWN_KEYS, TRAINING, COMPETITORS, env_name
 from .segments import GPU_SEGMENTS, TRAINING_SEGMENTS, COMPETITOR_SEGMENTS
-from .store import Store, fill_country, to_xlsx
+from .store import Store, fill_country, fix_place_names, name_competitor_clients, to_xlsx
 
 try:
     import fcntl
@@ -448,7 +448,7 @@ class SheetCache:
                 return cached[1]
         df = load_sheet(xlsx)
         if not df.empty:
-            df = fill_country(df)
+            df = name_competitor_clients(fix_place_names(fill_country(df)))
         with self.lock:
             self.entries[xlsx] = (stamp, df)
         return df

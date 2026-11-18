@@ -11,9 +11,20 @@ are in `docs/setup.md`.
 
 ## Model
 
-Default Azure deployment `gpt-4o`; `DEFAULT_AGENT_MODEL` in `@crm/db/settings`
-because the agent and the API both need it. Override the default name with
-`AZURE_OPENAI_DEPLOYMENT`.
+**Claude when `ANTHROPIC_API_KEY` is set.** `lib/agent-model.ts` picks the model for
+the agent and both subagents: `claude-opus-5-5`, or `ANTHROPIC_AGENT_MODEL`
+(`lib/agent-model-config.ts`). The startup log prints which model is in use.
+**Effort is `low`** to spend the fewest tokens; raise it in the config only where
+quality drops. **Prompt caching is eve's**: it marks the tools, the system prompt
+and the latest turns whenever the provider is Anthropic. Do not add a top-level
+`cacheControl` — a request allows four breakpoints and eve already uses them. While
+Claude is active, the Settings model chooser does not apply. A team agent whose
+saved version names an Azure deployment still runs on that deployment.
+
+**Azure OpenAI when the key is unset.** Default Azure deployment `gpt-4o`;
+`DEFAULT_AGENT_MODEL` in `@crm/db/settings` because the agent and the API both need
+it. Override the default name with `AZURE_OPENAI_DEPLOYMENT`. The rules below are
+for the Azure path.
 
 - **A row (`AppSetting`), not an env var**, via `defineDynamic` on `step.started`.
   The handler returns an Azure `LanguageModel`. A string id would still route
