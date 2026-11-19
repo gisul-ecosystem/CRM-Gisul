@@ -5,6 +5,7 @@ import {
 	readProductDisplay,
 	writeProductDisplay,
 } from "@crm/db/products";
+import { websiteUrl } from "@crm/db/workspace";
 import {
 	BadRequestException,
 	ForbiddenException,
@@ -20,6 +21,17 @@ import type {
 } from "./products.contracts";
 import { storeProductLogo } from "./product-logo";
 import { PRODUCT_META } from "./products.contracts";
+
+function productWebsite(value: string): string | null {
+	if (!value.trim()) return null;
+	const url = websiteUrl(value);
+	if (!url) {
+		throw new BadRequestException(
+			`"${value}" is not a website — try something like "racko.ai".`,
+		);
+	}
+	return url;
+}
 
 @Injectable()
 export class ProductsService {
@@ -63,6 +75,7 @@ export class ProductsService {
 					name: true,
 					shortDescription: true,
 					detailedDescription: true,
+				website: true,
 					category: true,
 					type: true,
 					color: true,
@@ -92,6 +105,7 @@ export class ProductsService {
 				name: row.name,
 				shortDescription: row.shortDescription,
 				detailedDescription: row.detailedDescription,
+				website: row.website,
 				category: row.category,
 				type: row.type,
 				color: row.color,
@@ -176,6 +190,7 @@ export class ProductsService {
 				name: input.name.trim(),
 				shortDescription: input.shortDescription.trim(),
 				detailedDescription: blankToNull(input.detailedDescription ?? ""),
+				website: productWebsite(input.website ?? ""),
 				category: input.category.trim(),
 				type: input.type.trim(),
 				color: input.color.toLowerCase(),
@@ -206,6 +221,9 @@ export class ProductsService {
 		}
 		if (input.detailedDescription !== undefined) {
 			data.detailedDescription = blankToNull(input.detailedDescription);
+		}
+		if (input.website !== undefined) {
+			data.website = productWebsite(input.website);
 		}
 		if (input.category !== undefined) data.category = input.category.trim();
 		if (input.type !== undefined) data.type = input.type.trim();
@@ -254,6 +272,7 @@ export class ProductsService {
 				name: true,
 				shortDescription: true,
 				detailedDescription: true,
+				website: true,
 				category: true,
 				type: true,
 				color: true,
@@ -280,6 +299,7 @@ export class ProductsService {
 			name: row.name,
 			shortDescription: row.shortDescription,
 			detailedDescription: row.detailedDescription,
+			website: row.website,
 			category: row.category,
 			type: row.type,
 			color: row.color,

@@ -49,6 +49,7 @@ export function AddProductSheet({
 		name: string;
 		shortDescription: string;
 		detailedDescription: string | null;
+		website: string | null;
 		category: string;
 		type: string;
 		color: string;
@@ -81,6 +82,7 @@ export function AddProductSheet({
 	const nameId = useId();
 	const shortId = useId();
 	const detailId = useId();
+	const websiteId = useId();
 	const logoId = useId();
 
 	const editing = Boolean(product);
@@ -91,6 +93,7 @@ export function AddProductSheet({
 	const [detailedDescription, setDetailedDescription] = useState(
 		product?.detailedDescription ?? "",
 	);
+	const [website, setWebsite] = useState(product?.website ?? "");
 	const [category, setCategory] = useState(
 		product?.category ?? "Core Software",
 	);
@@ -108,6 +111,7 @@ export function AddProductSheet({
 		setName(product?.name ?? "");
 		setShortDescription(product?.shortDescription ?? "");
 		setDetailedDescription(product?.detailedDescription ?? "");
+		setWebsite(product?.website ?? "");
 		setCategory(product?.category ?? "Core Software");
 		setType(product?.type ?? "SaaS Platform");
 		setColor(product?.color ?? "#5e3da8");
@@ -218,6 +222,7 @@ export function AddProductSheet({
 							name,
 							shortDescription,
 							detailedDescription,
+							website,
 							category,
 							type,
 							color,
@@ -263,6 +268,22 @@ export function AddProductSheet({
 							/>
 							<FieldDescription>
 								{shortDescription.length}/150 characters
+							</FieldDescription>
+						</Field>
+
+						<Field>
+							<FieldLabel htmlFor={websiteId}>Website</FieldLabel>
+							<Input
+								id={websiteId}
+								type="url"
+								inputMode="url"
+								value={website}
+								onChange={(event) => setWebsite(event.target.value)}
+								placeholder="racko.ai"
+								className="rounded-xl"
+							/>
+							<FieldDescription>
+								Emails about this product link here.
 							</FieldDescription>
 						</Field>
 

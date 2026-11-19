@@ -304,6 +304,7 @@ model Product {
   name               String
   shortDescription   String
   detailedDescription String?
+  website            String?
   category           String
   type               String
   color              String

@@ -19,7 +19,7 @@ import { CATEGORY_BRIEF, GISUL, PROOF_BY_REGION } from "./email-knowledge";
 const SYSTEM = [
 	"You write one short, personal sales email from a CRM user to one person.",
 	"Write plain text only. No markdown, no placeholders in square brackets.",
-	"When the sender's website is given, put it once in the first email, written out in full near the ask, so the reader can see more. Use no other links.",
+	"Put one link once in the first email, written out in full near the ask, so the reader can see more: the product's website when the product has one, otherwise the sender's website. Use no other links.",
 	`Keep the body under ${EMAIL_DRAFT.body.maxWords} words. Open with a line that shows you know who they are, then make one clear point, then ask one easy question.`,
 	"Use only the facts you are given. Do not invent numbers, customers, meetings or past contact.",
 	"When a product is given, the whole email is about that product. Name it. Take one concrete benefit from its description and tie it to this person's role and their company. Do not list features.",
@@ -49,6 +49,7 @@ const PRODUCT_SELECT = {
 	name: true,
 	shortDescription: true,
 	detailedDescription: true,
+	website: true,
 	category: true,
 	type: true,
 } as const;
@@ -151,6 +152,7 @@ async function contactContext(
 			`Product: ${product.name}`,
 			`Category: ${product.category} · ${product.type}`,
 			`Summary: ${product.shortDescription}`,
+			product.website ? `Website: ${product.website}` : null,
 			product.detailedDescription
 				? `Detail: ${clip(product.detailedDescription, EMAIL_DRAFT.product.maxDescriptionChars)}`
 				: null,
