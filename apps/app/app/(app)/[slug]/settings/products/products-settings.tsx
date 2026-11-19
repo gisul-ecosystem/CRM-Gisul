@@ -206,6 +206,7 @@ export function ProductsSettings() {
 									name: `${row.name} (Copy)`,
 									shortDescription: row.shortDescription,
 									detailedDescription: row.detailedDescription ?? "",
+									website: row.website ?? "",
 									category: row.category,
 									type: row.type,
 									color: row.color,
