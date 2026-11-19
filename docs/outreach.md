@@ -113,7 +113,8 @@ browser ──► CRM app /api/unifers/<path>      (apps/app/app/api/unifers/[..
 
 - **Only `campaigns` and `email-accounts` pass** (`upstreamPath` in
   `lib/unifers/bridge.ts`). The paid people endpoints (search, enrich, reveal)
-  are blocked, so nobody spends credits by accident.
+  are blocked, so nobody spends credits by accident. The research agent calls
+  enrich and reveal itself, server side; see "Unifers" in `docs/agent.md`.
 - **Owners and admins only** (`adminOnly`): connecting or disconnecting a
   mailbox, `campaigns/{id}/status` (start, schedule, pause, cancel), and
   creating a campaign with `startAt`. Members create drafts and add leads.

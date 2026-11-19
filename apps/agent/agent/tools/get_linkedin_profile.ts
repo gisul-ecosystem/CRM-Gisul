@@ -1,14 +1,13 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import {
-	CONTEXT_DEV_PEOPLE,
-	CONTEXT_DEV_SOURCE,
-	enabled,
+	LINKEDIN_SOURCE,
+	linkedinReadable,
 	unavailable,
 } from "../lib/capabilities";
 import { spend } from "../lib/focus";
 import { verdictFor } from "../lib/identity";
-import { personByProfileUrl } from "../lib/people";
+import { profileByUrl } from "../lib/people";
 import { storePortrait } from "../lib/portrait";
 
 export default defineTool({
@@ -27,15 +26,15 @@ export default defineTool({
 			),
 	}),
 	async execute({ slug, email, companyName, companyDomain, contactId }) {
-		if (!(await enabled(CONTEXT_DEV_PEOPLE))) {
-			return { found: false as const, ...unavailable(CONTEXT_DEV_SOURCE) };
+		if (!(await linkedinReadable())) {
+			return { found: false as const, ...unavailable(LINKEDIN_SOURCE) };
 		}
 
 		const charge = spend(2);
 		if (!charge.ok) return { found: false as const, reason: charge.reason };
 
 		const requestedUrl = `https://www.linkedin.com/in/${slug}`;
-		const result = await personByProfileUrl(requestedUrl);
+		const result = await profileByUrl(requestedUrl);
 
 		if (result.outcome !== "found") {
 			return { found: false as const, reason: result.reason };

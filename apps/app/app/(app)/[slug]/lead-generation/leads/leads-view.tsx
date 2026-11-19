@@ -601,7 +601,11 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 				/>
 			) : null}
 
-			<LeadSheet lead={open} onClose={() => setOpen(null)} />
+			<LeadSheet
+				lead={open}
+				category={status.profile}
+				onClose={() => setOpen(null)}
+			/>
 
 			<AddToUnifersDialog
 				open={unifersOpen}

@@ -14,6 +14,7 @@ import type { FieldDefinitionWithOptions } from "@crm/db/fields";
 import {
 	LEAD_CATEGORY_LABEL,
 	LEAD_ORIGIN_KIND,
+	leadCategoryOf,
 	leadOriginMeta,
 } from "@crm/validation/lead-origin";
 import {
@@ -547,10 +548,14 @@ export class ContactsService {
 			throw new NotFoundException(`No contact with id ${id}.`);
 		}
 
-		const relationship = await this.relationship(
-			id,
-			contact.company?.id ?? null,
-		);
+		const [relationship, origin] = await Promise.all([
+			this.relationship(id, contact.company?.id ?? null),
+			this.db.activity.findFirst({
+				where: { contactId: id, meta: { path: ["kind"], equals: LEAD_ORIGIN_KIND } },
+				orderBy: { occurredAt: "asc" },
+				select: { meta: true },
+			}),
+		]);
 
 		const {
 			deals,
@@ -566,6 +571,7 @@ export class ContactsService {
 		return {
 			...rest,
 			company,
+			leadCategory: origin ? leadCategoryOf(origin.meta) : null,
 			nextFollowUpAt: nextFollowUpAt?.toISOString() ?? null,
 			fields: await this.fields.valuesFor("CONTACT", id),
 			queued: await this.queue.isQueued({ contactId: id }),

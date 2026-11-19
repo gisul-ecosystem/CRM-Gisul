@@ -23,6 +23,7 @@ import { PersonAvatar } from "@crm/ui/components/person-avatar";
 import { SimpleTable, SimpleTableRow } from "@crm/ui/components/simple-table";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { TableCell } from "@crm/ui/components/table";
+import { LEAD_CATEGORY_LABEL } from "@crm/validation/lead-origin";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -36,6 +37,7 @@ import { FieldsCog, RecordFields } from "@/components/crm/fields/record-fields";
 import {
 	InlineField,
 	InlineSelectField,
+	InlineStaticField,
 	savingValue,
 } from "@/components/crm/inline-field";
 import { OwnerCell } from "@/components/crm/owner-cell";
@@ -463,6 +465,12 @@ function ContactOverview({ contact }: { contact: Contact }) {
 							save({ leadSource: leadSource === NONE ? null : leadSource })
 						}
 					/>
+					{contact.leadCategory ? (
+						<InlineStaticField
+							label="Lead type"
+							value={LEAD_CATEGORY_LABEL[contact.leadCategory]}
+						/>
+					) : null}
 					<InlineField
 						label="Next follow-up"
 						value={toDateInputValue(contact.nextFollowUpAt)}

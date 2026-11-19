@@ -232,6 +232,30 @@ missing key removes a place to look. **Never an error, never throws.**
 `capabilitiesFrom()`/`markdownFor()` are the pure halves. `contextDevKey()` is the only
 resolver, and `lib/context-dev.ts` memoises its client on the key string.
 
+### Unifers
+
+`UNIFERS_API_KEY` turns on two things in the agent. Both spend Unifers credits.
+
+- **LinkedIn profile fallback.** `get_linkedin_profile` and
+  `get_contact_work_history` call `profileByUrl` (`lib/people.ts`). It asks
+  Context.dev first. When Context.dev has no key or no match, it asks Unifers
+  `POST /client-apis/people/enrich/linkedin`. Unifers returns the name,
+  headline, current title and employer. It returns no photo and no usable work
+  history, so the portrait path still uses Context.dev only.
+- **`reveal_contact_details`.** It asks Unifers
+  `POST /client-apis/people/reveal/linkedin` for the email and phone of the
+  LinkedIn URL on the contact. It asks only for the empty fields, so Unifers
+  charges only for those. It writes a work email and a mobile into empty fields
+  only, with a conditional update, so a value a person typed always stays. It
+  skips an email that another contact already holds. Every charged call leaves a
+  timeline note with the values, the credits charged and the Unifers `logId`.
+  The note is also the lock: the tool refuses a second call for the same
+  contact for `UNIFERS.reveal.repeatAfterMs`.
+- **The client is `lib/unifers.ts`.** It parses every response with Zod at the
+  boundary. A body it cannot read is an error with the failing paths, never an
+  empty result. A 404 is "no data", not a failure. Tunables are in
+  `lib/unifers-config.ts`.
+
 ## Budget and scheduling
 
 - `lib/focus.ts` — per-session budget in `defineState`; running out is a normal ending.
