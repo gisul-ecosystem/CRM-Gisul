@@ -270,6 +270,7 @@ export const contactByIdOutput = z.object({
 	imageUrl: z.string().nullable(),
 	leadStatus: leadStatusEnum,
 	leadSource: leadSourceEnum.nullable(),
+	leadCategory: leadCategory.nullable(),
 	nextFollowUpAt: z.string().nullable(),
 	product: contactProductOutput.nullable(),
 	enrichmentStatus: z.enum(

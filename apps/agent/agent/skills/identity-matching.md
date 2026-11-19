@@ -59,6 +59,17 @@ Somebody whose LinkedIn URL is **already on the record** has been through all of
 this before. Do not re-run it to get a picture — `fetch_contact_photo` is one
 call, and the URL sitting there is the verification.
 
+## Email and phone from Unifers
+
+Once the LinkedIn URL on the record is settled, and only then, call
+`reveal_contact_details` when the contact has no email or no phone. It asks
+Unifers for the missing ones only, writes them into empty fields, and leaves a
+timeline note with what came back. Call it once per contact. It refuses a second
+call for 30 days, and it never replaces a value a person typed.
+
+Never call it to identify somebody. A revealed address belongs to whoever owns
+that LinkedIn profile, so a wrong profile gives a wrong email.
+
 ## Reporting the match
 
 Call `identify_contact` with what you actually saw:

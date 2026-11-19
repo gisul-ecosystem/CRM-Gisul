@@ -36,3 +36,8 @@ export const leadOriginMeta = leadOriginDetails.extend({
 });
 
 export type LeadOriginMeta = z.infer<typeof leadOriginMeta>;
+
+export function leadCategoryOf(meta: unknown): LeadCategory | null {
+	const parsed = leadOriginMeta.safeParse(meta);
+	return parsed.success ? parsed.data.category : null;
+}
