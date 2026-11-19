@@ -171,6 +171,7 @@ export const contactRowOutput = z.object({
 	leadSource: z
 		.enum(Object.values(LeadSource) as [LeadSource, ...LeadSource[]])
 		.nullable(),
+	leadCategory: leadCategory.nullable(),
 	nextFollowUpAt: z.string().nullable(),
 	product: contactProductOutput.nullable(),
 	company: contactCompanyOutput.nullable(),
@@ -378,6 +379,25 @@ export const contactImportLeadsInput = z.object({
 });
 
 export type ContactImportLeadsInput = z.infer<typeof contactImportLeadsInput>;
+
+export const contactMatchLeadsInput = z.object({
+	leads: z
+		.array(
+			z.object({
+				key: z.string().min(1),
+				fullName: z.string().trim().default(""),
+				email: z.string().trim().default(""),
+				domain: z.string().trim().default(""),
+			}),
+		)
+		.max(CONTACT_IO.leads.maxRows),
+});
+
+export type ContactMatchLeadsInput = z.infer<typeof contactMatchLeadsInput>;
+
+export const contactMatchLeadsOutput = z.object({
+	matches: z.array(z.object({ key: z.string(), contactId: z.string() })),
+});
 
 export const contactImportLeadsOutput = z.object({
 	created: z.number(),

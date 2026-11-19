@@ -288,6 +288,22 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 	).size;
 	const rows = leads.data?.rows ?? [];
 	const total = leads.data?.total ?? 0;
+	const inCrm = useQuery(
+		trpc.contacts.matchLeads.queryOptions(
+			{
+				leads: rows.map((row) => ({
+					key: leadKey(row),
+					fullName: row.full_name,
+					email: row.email,
+					domain: row.domain,
+				})),
+			},
+			{ enabled: rows.length > 0, placeholderData: keepPreviousData },
+		),
+	);
+	const crmKeys = new Set(
+		(inCrm.data?.matches ?? []).map((match) => match.key),
+	);
 	const selectable = rows;
 	const noValidEmail = rows.filter(
 		(row) => !row.email || row.verified_status !== "valid",
@@ -541,6 +557,9 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 								<p className="truncate text-muted-foreground text-xs">
 									{row.title}
 								</p>
+								{crmKeys.has(leadKey(row)) ? (
+									<StatusIndicator tone="success" label="In CRM" size="sm" />
+								) : null}
 							</TableCell>
 							<TableCell className="max-w-64 px-3">
 								{row.email ? (

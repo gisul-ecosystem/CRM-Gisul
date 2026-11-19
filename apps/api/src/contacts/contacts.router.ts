@@ -36,6 +36,8 @@ import {
 	contactListOutput,
 	contactLogUnifersSendInput,
 	contactLogUnifersSendOutput,
+	contactMatchLeadsInput,
+	contactMatchLeadsOutput,
 	contactNameOutput,
 	contactUnifersSendsOutput,
 	contactUpdateArgs,
@@ -86,6 +88,15 @@ export class ContactsRouter {
 	})
 	async importCsv(@Input() input: z.infer<typeof contactImportInput>) {
 		return this.contacts.importCsv(input);
+	}
+
+	@Query({
+		input: contactMatchLeadsInput,
+		output: contactMatchLeadsOutput,
+		meta: restMeta("POST", "/contacts/match-leads", ["Contacts"]),
+	})
+	async matchLeads(@Input() input: z.infer<typeof contactMatchLeadsInput>) {
+		return this.contacts.matchLeads(input);
 	}
 
 	@Mutation({

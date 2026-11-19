@@ -14,6 +14,7 @@ import type { FieldDefinitionWithOptions } from "@crm/db/fields";
 import {
 	LEAD_CATEGORY_LABEL,
 	LEAD_ORIGIN_KIND,
+	type LeadCategory,
 	leadCategoryOf,
 	leadOriginMeta,
 } from "@crm/validation/lead-origin";
@@ -28,6 +29,7 @@ import { AgentQueueService } from "../agent/agent-queue.service";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { ARCHIVE } from "../archive/archive-config";
 import { CompanyDirectoryService } from "../companies/company-directory.service";
+import { domainFromEmail, normalizeDomain } from "../companies/domain";
 import {
 	ActivityStampService,
 	type StampTargets,
@@ -65,6 +67,7 @@ import type {
 	ContactImportInput,
 	ContactImportLeadsInput,
 	ContactListInput,
+	ContactMatchLeadsInput,
 	ContactRow,
 	ContactUpdateInput,
 	FactDecisionInput,
@@ -171,14 +174,16 @@ export class ContactsService {
 			this.facetCounts(input, filterableFields),
 		]);
 
-		const tableFields = await this.fields.tableValuesFor(
-			"CONTACT",
-			rows.map((row) => row.id),
-		);
+		const ids = rows.map((row) => row.id);
+		const [tableFields, categories] = await Promise.all([
+			this.fields.tableValuesFor("CONTACT", ids),
+			this.leadCategories(ids),
+		]);
 
 		return {
 			rows: rows.map(({ primaryOf, ...row }) => ({
 				...row,
+				leadCategory: categories.get(row.id) ?? null,
 				isPrimaryContact: primaryOf !== null,
 				nextFollowUpAt: row.nextFollowUpAt?.toISOString() ?? null,
 				lastActivityAt: row.lastActivityAt?.toISOString() ?? null,
@@ -189,6 +194,27 @@ export class ContactsService {
 			total,
 			facetCounts,
 		};
+	}
+
+	private async leadCategories(
+		contactIds: string[],
+	): Promise<Map<string, LeadCategory>> {
+		if (contactIds.length === 0) return new Map();
+		const origins = await this.db.activity.findMany({
+			where: {
+				contactId: { in: contactIds },
+				meta: { path: ["kind"], equals: LEAD_ORIGIN_KIND },
+			},
+			orderBy: { occurredAt: "asc" },
+			select: { contactId: true, meta: true },
+		});
+		const categories = new Map<string, LeadCategory>();
+		for (const origin of origins) {
+			if (!origin.contactId || categories.has(origin.contactId)) continue;
+			const category = leadCategoryOf(origin.meta);
+			if (category) categories.set(origin.contactId, category);
+		}
+		return categories;
 	}
 
 	async exportCsv(input: ContactExportInput) {
@@ -252,6 +278,111 @@ export class ContactsService {
 			csv: contactCsvTemplate(),
 			filename: "leads-import-template.csv",
 		};
+	}
+
+	async matchLeads(input: ContactMatchLeadsInput) {
+		const leads = input.leads.map((lead) => {
+			const [firstName = "", ...rest] = lead.fullName.split(/\s+/);
+			return {
+				key: lead.key,
+				firstName: firstName.toLowerCase(),
+				lastName: rest.join(" ").toLowerCase(),
+				email: normalizeEmail(lead.email),
+				domain: lead.domain
+					? domainFromEmail(`lead@${normalizeDomain(lead.domain) ?? ""}`)
+					: null,
+			};
+		});
+
+		const emails = [
+			...new Set(leads.flatMap((lead) => (lead.email ? [lead.email] : []))),
+		];
+		const domains = [
+			...new Set(leads.flatMap((lead) => (lead.domain ? [lead.domain] : []))),
+		];
+
+		const [byEmail, companies] = await Promise.all([
+			emails.length > 0
+				? this.db.contact.findMany({
+						where: {
+							archivedAt: null,
+							OR: emails.map((email) => ({
+								email: { equals: email, mode: "insensitive" as const },
+							})),
+						},
+						select: { id: true, email: true },
+					})
+				: [],
+			domains.length > 0
+				? this.db.company.findMany({
+						where: { archivedAt: null, domain: { in: domains } },
+						select: { id: true, domain: true },
+					})
+				: [],
+		]);
+
+		const contactByEmail = new Map(
+			byEmail.map((row) => [row.email?.toLowerCase() ?? "", row.id]),
+		);
+		const companyByDomain = new Map(
+			companies.map((row) => [row.domain ?? "", row.id]),
+		);
+
+		const named = leads.flatMap(
+			(lead): ((typeof leads)[number] & { companyId: string | null })[] => {
+				if (lead.email || !lead.firstName) return [];
+				if (!lead.domain) return [{ ...lead, companyId: null }];
+				const companyId = companyByDomain.get(lead.domain);
+				return companyId ? [{ ...lead, companyId }] : [];
+			},
+		);
+
+		const byName =
+			named.length > 0
+				? await this.db.contact.findMany({
+						where: {
+							archivedAt: null,
+							OR: named.map((lead) => ({
+								firstName: {
+									equals: lead.firstName,
+									mode: "insensitive" as const,
+								},
+								lastName: lead.lastName
+									? { equals: lead.lastName, mode: "insensitive" as const }
+									: null,
+								companyId: lead.companyId,
+							})),
+						},
+						select: {
+							id: true,
+							firstName: true,
+							lastName: true,
+							companyId: true,
+						},
+					})
+				: [];
+
+		const contactByName = new Map(
+			byName.map((row) => [
+				`${row.firstName.toLowerCase()}|${row.lastName?.toLowerCase() ?? ""}|${row.companyId ?? ""}`,
+				row.id,
+			]),
+		);
+
+		const matches = [
+			...leads.flatMap((lead) => {
+				const contactId = lead.email && contactByEmail.get(lead.email);
+				return contactId ? [{ key: lead.key, contactId }] : [];
+			}),
+			...named.flatMap((lead) => {
+				const contactId = contactByName.get(
+					`${lead.firstName}|${lead.lastName}|${lead.companyId ?? ""}`,
+				);
+				return contactId ? [{ key: lead.key, contactId }] : [];
+			}),
+		];
+
+		return { matches };
 	}
 
 	async importLeads(input: ContactImportLeadsInput, actingUserId: string) {
