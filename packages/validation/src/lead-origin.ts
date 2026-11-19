@@ -8,7 +8,7 @@ export type LeadCategory = z.infer<typeof leadCategory>;
 
 export const LEAD_CATEGORY_LABEL = {
 	gpu: "GPU lead",
-	training: "Training lead",
+	training: "Training lab lead",
 	competitors: "Competitor client",
 } as const satisfies Record<LeadCategory, string>;
 

@@ -125,6 +125,14 @@ unreachable). The view files stay in their old folders. Every old address
   person already in the CRM (same email, or same name at the same company) is
   counted as existing and left unchanged. A row without a person name cannot be
   ticked.
+- **A lead already in the CRM shows "In CRM"** under the person's name. The page
+  asks `contacts.matchLeads` for its rows, with the same rule as the import: same
+  email, or, with no email, same name at the company with that domain. It changes
+  after Add to CRM contacts, because `listKeys()` in `lib/trpc/cache.ts` includes it.
+- **The Contacts table names the profile in Source**: `Cold outreach (GPU lead)`,
+  `(Training lab lead)` or `(Competitor client)`. `contacts.list` reads it from the
+  contact's first `lead_origin` note, the same note the contact sheet's Lead type
+  reads.
 - **Custom search finds companies from your own description.** The page takes a
   name, what to find (one kind per line), where (one place per line), words a
   result must mention or must not mention, and how many companies. Each line of

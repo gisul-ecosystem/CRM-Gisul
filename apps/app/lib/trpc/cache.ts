@@ -76,6 +76,7 @@ export function useCrmCache(): CrmCache {
 	const listKeys = () => [
 		trpc.companies.list.queryKey(),
 		trpc.contacts.list.queryKey(),
+		trpc.contacts.matchLeads.queryKey(),
 		trpc.deals.list.queryKey(),
 		trpc.search.quick.queryKey(),
 	];

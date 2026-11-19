@@ -13,6 +13,7 @@ import { Icon } from "@crm/ui/components/icon";
 import { TablePagination } from "@crm/ui/components/table-pagination";
 import { useSearchInput } from "@crm/ui/hooks/use-search-input";
 import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
+import { LEAD_CATEGORY_LABEL } from "@crm/validation/lead-origin";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useQueryStates } from "nuqs";
@@ -317,7 +318,11 @@ export function ContactsTable() {
 										</td>
 										<td>
 											{row.leadSource ? (
-												leadSourceLabel(row.leadSource)
+												row.leadCategory ? (
+													`${leadSourceLabel(row.leadSource)} (${LEAD_CATEGORY_LABEL[row.leadCategory]})`
+												) : (
+													leadSourceLabel(row.leadSource)
+												)
 											) : (
 												<span className={styles.blank}>—</span>
 											)}
