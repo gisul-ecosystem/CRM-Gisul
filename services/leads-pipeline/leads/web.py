@@ -16,6 +16,14 @@ from flask import Flask, jsonify, request, send_file
 from .config import DEFAULT_COUNTRIES
 from .custom_search import CUSTOM_SEARCH, SpecError, parse_spec, read_history, write_spec
 from .geo import COUNTRIES
+from .partners.config import PARTNERS
+from .partners.spec import SpecError as PartnerSpecError
+from .partners.spec import datasets_for as partner_datasets
+from .partners.spec import parse_spec as parse_partner_spec
+from .partners.spec import read_history as partner_history
+from .partners.spec import read_json as read_partner_json
+from .partners.spec import run_path as partner_run_path
+from .partners.spec import write_spec as write_partner_spec
 from .people_search import google_url
 from .profile import GPU, LABELS, OWN_KEYS, TRAINING, COMPETITORS, env_name
 from .segments import GPU_SEGMENTS, TRAINING_SEGMENTS, COMPETITOR_SEGMENTS
@@ -65,7 +73,11 @@ TEXTS = {
     "USER_AGENT": "Bot name and contact (User-Agent)",
     "REACHER_URL": "Reacher URL (empty = MX check only)",
     "RUN_AT": "Daily run time, HH:MM (empty = off; Docker uses this, a plain server uses cron)",
+    "AZURE_OPENAI_ENDPOINT": "Azure OpenAI endpoint for partner research wording (empty = templates only)",
+    "AZURE_OPENAI_DEPLOYMENT": "Azure OpenAI deployment for partner research, e.g. gpt-4o-mini",
 }
+MODEL_KEYS = ("AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_DEPLOYMENT", "AZURE_OPENAI_API_KEY")
+SEARCH_KEYS = ("SERPER_API_KEY", "TAVILY_API_KEY", "BRAVE_API_KEY")
 # Each tab of the page is one profile (profile.py): its own data, settings, sources and rules.
 TRAINING_FLAGS = {  # target countries only: always on for this profile, so not a checkbox
     "SMALL_ONLY": "Only small & medium organisations (drops 50k+ learners, 10+ branches, 300+ staff, listed companies)",
@@ -97,14 +109,16 @@ PROFILES = {
 SECRETS = {"GITHUB_TOKEN": "GitHub token",
            "SERPER_API_KEY": "Serper API key (training search: 2,500 free searches, no card)",
            "TAVILY_API_KEY": "Tavily API key (training search: 1,000 free a month, no card)",
-           "BRAVE_API_KEY": "Brave Search API key (people search; also training search if no Serper/Tavily key)"}
+           "BRAVE_API_KEY": "Brave Search API key (people search; also training search if no Serper/Tavily key)",
+           "AZURE_OPENAI_API_KEY": "Azure OpenAI key (partner research wording; empty = templates only)",
+           "UNIFERS_API_KEY": "Unifers API key (partner research: email and phone from a contact's LinkedIn URL; spends credits)"}
 DEFAULTS = {"MAX_AGE_YEARS": "5", "MAX_TEAM_SIZE": "50", "BATCH_SIZE": "200", "MIN_SCORE": "5",
             "DOMAIN_DELAY": "3", "SEARCH_MAX_PER_RUN": "30", "MAX_PEOPLE": "5", "ROUND_SIZE": "200", "WORKERS": "6", "SEARCH_DISCOVERY_PER_RUN": "40", "MAPS_PER_RUN": "40"}  # same as config.py, for an older .env without these lines
 LISTS = {"SEGMENTS": list(SEGMENTS), "SKIP_SOURCES": SOURCES, "EARLY_EXEMPT_SEGMENTS": list(SEGMENTS),
          "COUNTRIES": list(COUNTRIES)}
 OTHER_COUNTRY = "Other / unknown"  # filter choice: rows whose country is none of COUNTRIES
 SETTING_KEYS = set(FLAGS) | set(TRAINING_FLAGS) | set(COMPETITORS_FLAGS) | set(NUMBERS) | set(TEXTS) | set(SECRETS) | set(LISTS)
-SHARED_KEYS = {"USER_AGENT", "REACHER_URL"} | set(SECRETS)  # edited on the GPU tab, used by both tabs
+SHARED_KEYS = {"USER_AGENT", "REACHER_URL", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_DEPLOYMENT"} | set(SECRETS)  # edited on the GPU tab, used by both tabs
 STARTUP_NUMBERS = {"MAX_AGE_YEARS", "MAX_TEAM_SIZE"}  # early-stage limits: GPU tab only
 TRAINING_NUMBERS = set()  # (search discovery is on both tabs now, each with its own value)
 
@@ -358,22 +372,24 @@ class Runner:
         with self.lock:
             if self.any_running():
                 raise RuntimeError("A run is already in progress")
-            env = {k: v for k, v in os.environ.items() if k not in SETTING_KEYS | OWN_KEYS - {"DATA_DIR"}}
-            env.update(PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8", PROFILE=self.profile)
-            if countries:
-                env["COUNTRIES"] = ",".join(countries)
             cmd = [sys.executable, "-u", "-m", "leads", "run", "--profile", self.profile,
                    "--batch", str(batch), "--sources", ",".join(sources)]
-            self.data_dir().mkdir(parents=True, exist_ok=True)
-            log = open(self.log_path(), "a", encoding="utf-8")
-            log.write(f"\n=== run started {why} {datetime.now():%Y-%m-%d %H:%M} "
-                      f"(batch {batch}, sources {','.join(sources)}"
-                      f"{', countries ' + ','.join(countries) if countries else ''})\n")
-            log.flush()
-            extra = {"start_new_session": True} if os.name == "posix" else {}
-            self.proc = subprocess.Popen(cmd, cwd=self.root, env=env, stdout=log,
-                                         stderr=subprocess.STDOUT, **extra)
-            log.close()
+            self._spawn(cmd, f"run started {why} {datetime.now():%Y-%m-%d %H:%M} "
+                             f"(batch {batch}, sources {','.join(sources)}"
+                             f"{', countries ' + ','.join(countries) if countries else ''})",
+                        {"COUNTRIES": ",".join(countries)} if countries else {})
+
+    def _spawn(self, cmd: List[str], header: str, extra_env: Dict[str, str]) -> None:
+        env = {k: v for k, v in os.environ.items() if k not in SETTING_KEYS | OWN_KEYS - {"DATA_DIR"}}
+        env.update(PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8", PROFILE=self.profile, **extra_env)
+        self.data_dir().mkdir(parents=True, exist_ok=True)
+        log = open(self.log_path(), "a", encoding="utf-8")
+        log.write(f"\n=== {header}\n")
+        log.flush()
+        extra = {"start_new_session": True} if os.name == "posix" else {}
+        self.proc = subprocess.Popen(cmd, cwd=self.root, env=env, stdout=log,
+                                     stderr=subprocess.STDOUT, **extra)
+        log.close()
 
     def stop(self) -> bool:
         with self.lock:
@@ -396,6 +412,43 @@ class Runner:
             fh.seek(max(0, fh.tell() - 200_000))
             lines = fh.read().decode("utf-8", "replace").splitlines()
         return [ln for ln in lines if "urllib3" not in ln][-n:]
+
+
+class PartnerRunner(Runner):
+    def __init__(self, root: Path, env_path: Path):
+        super().__init__(root, env_path, GPU)
+
+    def data_dir(self) -> Path:
+        return super().data_dir() / PARTNERS["files"]["dir"]
+
+    def log_path(self) -> Path:
+        return self.data_dir() / PARTNERS["files"]["log"]
+
+    def start_partners(self, name: str) -> None:
+        with self.lock:
+            if self.any_running():
+                raise RuntimeError("A partner research run is already in progress")
+            self._spawn([sys.executable, "-u", "-m", "leads", "partners"],
+                        f"partner research {name} started {datetime.now():%Y-%m-%d %H:%M}", {})
+
+
+def partner_options() -> dict:
+    return {
+        "countries": list(PARTNERS["countries"]),
+        "sectors": [{"id": k, "label": v["label"]} for k, v in PARTNERS["sectors"].items()],
+        "signals": [{"id": k, "label": v["label"], "countries": list(v.get("countries", ()))}
+                    for k, v in PARTNERS["signals"].items()],
+        "months": list(PARTNERS["limits"]["months"]),
+        "sizes": [{"id": k, "label": v["label"]} for k, v in PARTNERS["sizes"].items()],
+    }
+
+
+def partner_limits() -> dict:
+    keys = ("max_name_chars", "max_words", "max_past_work_chars", "max_queries", "max_companies",
+            "default_companies", "default_months", "default_size")
+    return {**{k: PARTNERS["limits"][k] for k in keys},
+            "unifers_max_people": PARTNERS["unifers"]["max_people"],
+            "unifers_repeat_days": PARTNERS["unifers"]["repeat_days"]}
 
 
 
@@ -593,9 +646,11 @@ def create_app(root: Path = ROOT) -> Flask:
     app = Flask(__name__)
     env_path = env_file(root)
     runners = {p: Runner(root, env_path, p) for p in PROFILES}
+    partners = PartnerRunner(root, env_path)
     sheets = SheetCache()
     app.config["runner"] = runners[GPU]
     app.config["runners"] = runners
+    app.config["partners"] = partners
 
     def runner_for(value) -> Runner:
         profile = str(value or GPU)
@@ -704,6 +759,64 @@ def create_app(root: Path = ROOT) -> Flask:
             raise ApiError(409, "RUN_IN_PROGRESS", str(error))
         return jsonify(ok=True, message=f"Custom search {spec['name']} started: {len(spec['queries'])} searches, "
                                         f"up to {spec['companies']} companies.")
+
+    def partner_spec(data: dict) -> dict:
+        try:
+            return parse_partner_spec(data)
+        except PartnerSpecError as error:
+            raise ApiError(400, "INVALID_SEARCH", str(error))
+
+    @app.get("/api/partners")
+    def partner_overview():
+        env = read_env(env_path)
+        running = partners.any_running()
+        runs = [{**r, "status": "stopped"} if r.get("status") == "running" and not running else r
+                for r in partner_history(partners.data_dir())]
+        return jsonify(running=running, searchReady=any(env.get(k) for k in SEARCH_KEYS),
+                       modelReady=all(env.get(k) for k in MODEL_KEYS), unifersReady=bool(env.get("UNIFERS_API_KEY")),
+                       options=partner_options(),
+                       limits=partner_limits(), runs=runs)
+
+    @app.post("/api/partners/preview")
+    def partner_preview():
+        data = body()
+        spec = partner_spec({**data, "name": data.get("name") or "Preview"})
+        datasets = [PARTNERS["datasets"][d["dataset"]] for d in partner_datasets(spec)]
+        return jsonify(queries=[q["q"] for q in spec["queries"]], datasets=datasets,
+                       maxQueries=PARTNERS["limits"]["max_queries"])
+
+    @app.post("/api/partners")
+    def partner_start():
+        spec = partner_spec(body())
+        if partners.any_running():
+            raise ApiError(409, "RUN_IN_PROGRESS", "A partner research run is already in progress.")
+        write_partner_spec(partners.data_dir(), spec)
+        try:
+            partners.start_partners(spec["name"])
+        except RuntimeError as error:
+            raise ApiError(409, "RUN_IN_PROGRESS", str(error))
+        return jsonify(ok=True, message=f"Partner research {spec['name']} started: {len(spec['queries'])} searches, "
+                                        f"up to {spec['companies']} companies.")
+
+    @app.get("/api/partners/results")
+    def partner_results():
+        path = partner_run_path(partners.data_dir(), request.args.get("run") or "")
+        if path is None:
+            raise ApiError(400, "INVALID_RUN", "No such partner research run.")
+        result = read_partner_json(path, None)
+        if not isinstance(result, dict):
+            raise ApiError(404, "RUN_NOT_FOUND", "This run has no results yet.")
+        return jsonify(id=result["id"], rows=result.get("rows") or [], stats=result.get("stats") or {})
+
+    @app.get("/api/partners/log")
+    def partner_log():
+        return jsonify(running=partners.any_running(), lines=partners.tail())
+
+    @app.post("/api/partners/stop")
+    def partner_stop():
+        if not partners.stop():
+            raise ApiError(409, "NOT_RUNNING", "No partner research run started from the CRM is in progress.")
+        return jsonify(ok=True, message="Partner research stopped.")
 
     @app.post("/api/stop")
     def stop():

@@ -21,4 +21,14 @@ export const LEADS_PIPELINE = {
 	searchDebounceMs: 300,
 	defaultProfile: "gpu",
 	addToCrm: { maxLeads: 200, defaultLeadSource: "COLD_OUTREACH" },
+	partners: {
+		evidenceShown: 3,
+		leadSource: "COLD_OUTREACH",
+		leadCategory: "partners",
+		linkedinQueue: {
+			connectionType: "all_connections",
+			maxResults: 1,
+			startIndex: 0,
+		},
+	},
 } as const;

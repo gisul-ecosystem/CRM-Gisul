@@ -100,6 +100,8 @@ const PRODUCT_SELECT = {
 const NO_COMPANY = "none";
 const NO_PRODUCT = "none";
 const NO_LEAD_SOURCE = "none";
+const LINKEDIN_ON_FILE_REASON =
+	"Added from Lead generation with a LinkedIn profile on file. Read that profile, then fill the missing work email and mobile with reveal_contact_details";
 
 type FactColumns = Record<string, string | undefined>;
 
@@ -417,6 +419,18 @@ export class ContactsService {
 				});
 				if (match) {
 					existing += 1;
+					if (lead.linkedinUrl) {
+						const filled = await this.db.contact.updateMany({
+							where: { id: match.id, linkedinUrl: null },
+							data: { linkedinUrl: lead.linkedinUrl },
+						});
+						if (filled.count > 0) {
+							await this.agent.contactCreated(
+								match.id,
+								LINKEDIN_ON_FILE_REASON,
+							);
+						}
+					}
 					await this.recordLeadOrigin(
 						match.id,
 						companyId,
@@ -433,6 +447,7 @@ export class ContactsService {
 					email: email ?? undefined,
 					phone: lead.phone || undefined,
 					title: lead.title || undefined,
+					linkedinUrl: lead.linkedinUrl || undefined,
 					companyId,
 					leadStatus: "NEW",
 					leadSource: input.leadSource,
@@ -486,9 +501,25 @@ export class ContactsService {
 				type: ActivityType.NOTE,
 				subject: `Added from Lead generation · ${LEAD_CATEGORY_LABEL[meta.category]}`,
 				body:
-					[meta.segment, meta.country, meta.signal]
+					[
+						[meta.segment, meta.country, meta.companySize, meta.signal]
+							.filter(Boolean)
+							.join(" · "),
+						...meta.evidence.map((item) =>
+							[
+								item.title,
+								[item.agency, item.value, item.date]
+									.filter(Boolean)
+									.join(" · "),
+								item.url,
+							]
+								.filter(Boolean)
+								.join(" — "),
+						),
+						meta.opener ? `Opening line: ${meta.opener}` : "",
+					]
 						.filter(Boolean)
-						.join(" · ") || null,
+						.join("\n") || null,
 				occurredAt: new Date(),
 				contactId,
 				companyId,
@@ -768,6 +799,7 @@ export class ContactsService {
 					email,
 					phone: blankToNull(input.phone ?? ""),
 					title: blankToNull(input.title ?? ""),
+					linkedinUrl: blankToNull(input.linkedinUrl ?? ""),
 					companyId,
 					ownerId: input.ownerId ?? null,
 					productId: input.productId ?? null,
@@ -802,7 +834,9 @@ export class ContactsService {
 
 		await this.agent.contactCreated(
 			contact.id,
-			"Added by a rep, with nothing on the record yet",
+			input.linkedinUrl?.trim()
+				? LINKEDIN_ON_FILE_REASON
+				: "Added by a rep, with nothing on the record yet",
 		);
 		this.fields
 			.queueBackfillForNewRecord("CONTACT", contact.id)

@@ -33,7 +33,7 @@ import {
 	type LeadCategory,
 } from "@crm/validation/lead-origin";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useUnifersHealth } from "@/components/unifers/unifers-page";
 import { useTRPC } from "@/lib/trpc/client";
@@ -105,7 +105,6 @@ export function SendEmailDialog({
 		defaultFollowUpDay(recipient.nextFollowUpAt),
 	);
 	const [followUpBody, setFollowUpBody] = useState("");
-	const drafted = useRef(false);
 	const activeSenderNameRef = useRef("");
 
 	const chosenSender =
@@ -147,37 +146,15 @@ export function SendEmailDialog({
 		}),
 	);
 
-	const writeDraft = draft.mutate;
-	useEffect(() => {
-		if (!open || drafted.current) return;
-		drafted.current = true;
-		const initialAccount =
-			verified.find((account) => account.isDefault) || verified[0];
-		const initialName = senderNameForAccount(initialAccount);
-		if (initialName) {
-			activeSenderNameRef.current = initialName;
-		}
-		writeDraft({
-			id: recipient.contactId,
-			productId: recipient.productId,
-			category: null,
-			senderName: initialName || null,
-			purpose: null,
-		});
-	}, [open, recipient.contactId, recipient.productId, verified, writeDraft]);
-
-	const rewrite = (
-		next: Partial<{ product: string; category: string; purpose: string }> = {},
-	) => {
-		const nextProduct = next.product ?? productId;
+	const generate = () =>
 		draft.mutate({
 			id: recipient.contactId,
-			productId: nextProduct === NO_PRODUCT ? null : nextProduct,
-			category: categoryOf(next.category ?? category),
+			productId: productId === NO_PRODUCT ? null : productId,
+			category: categoryOf(category),
 			senderName: activeSenderNameRef.current || null,
-			purpose: (next.purpose ?? purpose).trim() || null,
+			purpose: purpose.trim() || null,
 		});
-	};
+	const written = subject.trim() !== "" || body.trim() !== "";
 
 	const handleSenderChange = (nextEmail: string) => {
 		setSender(nextEmail);
@@ -327,10 +304,7 @@ export function SendEmailDialog({
 							<Select
 								value={productId}
 								disabled={draft.isPending}
-								onValueChange={(next) => {
-									setProductId(next);
-									rewrite({ product: next });
-								}}
+								onValueChange={setProductId}
 							>
 								<SelectTrigger id={ids.product}>
 									<SelectValue />
@@ -345,8 +319,7 @@ export function SendEmailDialog({
 								</SelectContent>
 							</Select>
 							<FieldDescription>
-								Claude writes the email about this product. Changing it rewrites
-								the draft.
+								Claude writes the email about this product.
 							</FieldDescription>
 						</Field>
 						<Field>
@@ -354,10 +327,7 @@ export function SendEmailDialog({
 							<Select
 								value={category}
 								disabled={draft.isPending}
-								onValueChange={(next) => {
-									setCategory(next);
-									rewrite({ category: next });
-								}}
+								onValueChange={setCategory}
 							>
 								<SelectTrigger id={ids.category}>
 									<SelectValue />
@@ -374,9 +344,10 @@ export function SendEmailDialog({
 								</SelectContent>
 							</Select>
 							<FieldDescription>
-								Sets the pitch: GPU compute, training labs, or an alternative to
-								their current cloud. Leads added from Lead generation already
-								carry it.
+								Sets the pitch: GPU compute, training labs, an alternative to
+								their current cloud, or a delivery partnership. Leads added from
+								Lead generation already carry it, with the context they were
+								found with.
 							</FieldDescription>
 						</Field>
 						<Field>
@@ -389,15 +360,27 @@ export function SendEmailDialog({
 									value={purpose}
 									placeholder="A first introduction"
 									onChange={(event) => setPurpose(event.target.value)}
+									onKeyDown={(event) => {
+										if (event.key === "Enter" && !draft.isPending) generate();
+									}}
 								/>
 								<Button
 									variant="outline"
 									disabled={draft.isPending}
-									onClick={() => rewrite()}
+									onClick={generate}
 								>
-									{draft.isPending ? "Writing…" : "Rewrite"}
+									{draft.isPending
+										? "Writing…"
+										: written
+											? "Rewrite"
+											: "Generate"}
 								</Button>
 							</div>
+							<FieldDescription>
+								Nothing is written until you press Generate. Claude writes from
+								this line, the product, the lead type and what the CRM knows
+								about {recipient.name}. You can also type the email yourself.
+							</FieldDescription>
 						</Field>
 						<Field>
 							<FieldLabel htmlFor={ids.subject}>Subject</FieldLabel>

@@ -35,6 +35,7 @@ const SOURCE_BY_LABEL: Record<string, LeadSource> = {
 	"cold outreach": LeadSource.COLD_OUTREACH,
 	cold_outreach: LeadSource.COLD_OUTREACH,
 	direct: LeadSource.DIRECT,
+	partnership: LeadSource.PARTNERSHIP,
 	other: LeadSource.OTHER,
 };
 

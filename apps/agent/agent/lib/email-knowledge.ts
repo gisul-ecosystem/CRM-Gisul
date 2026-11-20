@@ -39,4 +39,10 @@ export const CATEGORY_BRIEF = {
 		"Pitch Racko as an alternative for the same workload: dedicated hardware Gisul owns, lower and predictable cost, direct engineering support. Never name or criticise their current provider; say 'your current setup'.",
 		"Ask whether a cost or performance comparison for one workload would be useful.",
 	].join("\n"),
+	partners: [
+		"## Why we are writing (partnership lead)",
+		"A small systems integrator or software firm that recently won a government contract in AI, cloud, data or application development; the signal names the agency and the award.",
+		"Offer Gisul as their delivery partner: our engineers do the build and run work under their contract and their client relationship, on Racko infrastructure where it fits. Name the award from the signal; never claim to know the contract's details beyond it.",
+		"Ask whether they need delivery capacity for this contract or the next one.",
+	].join("\n"),
 } as const satisfies Record<LeadCategory, string>;

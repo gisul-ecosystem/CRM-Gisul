@@ -15,10 +15,15 @@ export const pipelineKeys = {
 		["leads-pipeline", "settings", profile] as const,
 	customSearches: (profile: LeadProfile) =>
 		["leads-pipeline", "custom-search", profile] as const,
+	partners: ["leads-pipeline", "partners"] as const,
+	partnerLog: ["leads-pipeline", "partners", "log"] as const,
+	partnerResults: (run: string) =>
+		["leads-pipeline", "partners", "results", run] as const,
 };
 
 type PipelineCache = {
 	run(profile: LeadProfile): Promise<void>;
+	partners(): Promise<void>;
 	everything(): Promise<void>;
 };
 
@@ -38,6 +43,7 @@ export function usePipelineCache(): PipelineCache {
 				pipelineKeys.leadsOf(profile),
 				pipelineKeys.customSearches(profile),
 			]),
+		partners: () => refresh([pipelineKeys.partners]),
 		everything: () => refresh([pipelineKeys.all]),
 	};
 }

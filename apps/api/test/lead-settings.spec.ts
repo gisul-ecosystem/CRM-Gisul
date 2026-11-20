@@ -56,6 +56,7 @@ describe("WorkspaceService Lead Settings", () => {
 			"REFERRAL",
 			"COLD_OUTREACH",
 			"DIRECT",
+			"PARTNERSHIP",
 			"OTHER",
 		]);
 		const websiteSource = settings.sources.find((s) => s.id === "WEBSITE");

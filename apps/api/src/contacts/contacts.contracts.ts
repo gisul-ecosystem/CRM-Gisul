@@ -41,6 +41,7 @@ export const contactCreateInput = z.object({
 	email: z.email("That is not an email address.").optional().or(z.literal("")),
 	phone: z.string().trim().optional(),
 	title: z.string().trim().optional(),
+	linkedinUrl: z.string().trim().optional(),
 	companyId: z.string().nullable().optional(),
 	ownerId: z.string().nullable().optional(),
 	productId: z.string().nullable().optional(),
@@ -368,6 +369,7 @@ export const contactImportLeadsInput = z.object({
 				title: z.string().trim().default(""),
 				company: z.string().trim().default(""),
 				domain: z.string().trim().default(""),
+				linkedinUrl: z.string().trim().default(""),
 				origin: leadOriginDetails.nullable().default(null),
 			}),
 		)
