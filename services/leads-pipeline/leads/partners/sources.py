@@ -177,33 +177,42 @@ def usaspending_awards(fetcher, terms: List[str], months: int, small: bool, stat
     return out
 
 
-def _gebiz_records(fetcher, term: str, stats: Dict) -> List[Dict]:
+def _gebiz_records(fetcher, term: str, stats: Dict, cache: "SearchCache") -> List[Dict]:
     out: List[Dict] = []
     for page in range(GEBIZ["pages"]):
-        params = {"resource_id": GEBIZ["resource_id"], "q": term, "limit": GEBIZ["page_size"],
-                  "offset": page * GEBIZ["page_size"]}
-        status, data = 0, None
-        for _ in range(GEBIZ["attempts"]):
+        key = f"gebiz|{term.lower()}|{page}"
+        records = cache.get(key)
+        if records is None:
+            if stats["gebiz_blocked"]:
+                break
+            if stats["gebiz_calls"]:
+                time.sleep(GEBIZ["delay_s"])
+            params = {"resource_id": GEBIZ["resource_id"], "q": term, "limit": GEBIZ["page_size"],
+                      "offset": page * GEBIZ["page_size"]}
             status, data, _ = fetcher.get_json(GEBIZ["url"], params=params)
             stats["gebiz_calls"] += 1
-            if status == 200 and isinstance(data, dict):
+            if status != 200 or not isinstance(data, dict):
+                stats["gebiz_blocked"] = 1
+                log.warning("partners: GeBIZ dataset answered HTTP %s for '%s'; GeBIZ is skipped for the rest "
+                            "of this run (data.gov.sg limits how often it can be asked)", status, term)
                 break
-        if status != 200 or not isinstance(data, dict):
-            log.warning("partners: GeBIZ dataset answered HTTP %s for '%s'", status, term)
-            break
-        records = ((data.get("result") or {}).get("records")) or []
+            records = ((data.get("result") or {}).get("records")) or []
+            cache.put(key, records)
+        else:
+            stats["gebiz_cached"] += 1
         out += records
         if len(records) < GEBIZ["page_size"]:
             break
     return out
 
 
-def gebiz_awards(fetcher, terms: List[str], months: int, stats: Dict, seen: set) -> List[Dict]:
+def gebiz_awards(fetcher, terms: List[str], months: int, stats: Dict, seen: set,
+                 cache: "SearchCache") -> List[Dict]:
     fields = GEBIZ["fields"]
     since = datetime.now() - timedelta(days=months * 31)
     out: List[Dict] = []
     for term in terms:
-        records = _gebiz_records(fetcher, term, stats)
+        records = _gebiz_records(fetcher, term, stats, cache)
         if records and fields["supplier"] not in records[0]:
             log.warning("partners: GeBIZ records have no '%s' field; fields are %s",
                         fields["supplier"], ", ".join(sorted(records[0])[:12]))
