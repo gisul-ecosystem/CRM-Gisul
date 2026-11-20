@@ -45,9 +45,13 @@ export default function RootLayout({
 		<html
 			lang="en"
 			suppressHydrationWarning
-			className={cn(fontSans.variable, fontMono.variable, "h-full antialiased")}
+			className={cn(
+				fontSans.variable,
+				fontMono.variable,
+				"h-full overscroll-none antialiased",
+			)}
 		>
-			<body className="flex min-h-full flex-col font-sans">
+			<body className="flex min-h-full flex-col overscroll-none font-sans">
 				<NuqsAdapter>
 					<TRPCReactProvider>
 						<ThemeProvider>

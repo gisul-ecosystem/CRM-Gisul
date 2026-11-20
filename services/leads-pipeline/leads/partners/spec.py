@@ -181,6 +181,31 @@ def record_run(base: Path, entry: Dict) -> None:
     write_json(base / PARTNERS["files"]["history"], rows[:LIMITS["history_size"]])
 
 
+ALL_RUNS = "all"
+
+
+def _with_run(row: Dict, data: Dict) -> Dict:
+    spec = data.get("spec") or {}
+    return {**row, "runId": data.get("id") or "", "runName": spec.get("name") or "",
+            "runAt": spec.get("startedAt") or ""}
+
+
+def run_rows(data: Dict) -> List[Dict]:
+    return [_with_run(row, data) for row in data.get("rows") or []]
+
+
+def all_rows(base: Path) -> List[Dict]:
+    newest: Dict[str, Dict] = {}
+    for path in sorted((base / PARTNERS["files"]["runs"]).glob("*.json")):
+        data = read_json(path, None)
+        if not isinstance(data, dict):
+            continue
+        for row in run_rows(data):
+            newest[row["key"]] = row
+    rows = sorted(newest.values(), key=lambda r: r.get("score") or 0, reverse=True)
+    return rows[:PARTNERS["limits"]["all_runs_rows"]]
+
+
 def run_path(base: Path, run_id: str) -> Optional[Path]:
     if not re.fullmatch(r"[0-9]{8}-[0-9]{6}-[a-z0-9-]{1,40}", run_id or ""):
         return None

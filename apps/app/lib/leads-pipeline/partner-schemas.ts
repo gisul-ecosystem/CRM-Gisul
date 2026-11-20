@@ -101,6 +101,9 @@ const partnerRow = z.object({
 	sectors: z.array(z.string()),
 	agencies: z.array(z.string()),
 	value: z.string(),
+	valueUsd: z.number().default(0),
+	sizeLow: z.number().nullable().default(null),
+	sizeHigh: z.number().nullable().default(null),
 	date: z.string(),
 	score: z.number(),
 	people: z.array(partnerPerson),
@@ -108,6 +111,9 @@ const partnerRow = z.object({
 	hook: z.string(),
 	polished: z.boolean(),
 	evidence: z.array(partnerEvidence),
+	runId: z.string().default(""),
+	runName: z.string().default(""),
+	runAt: z.string().default(""),
 });
 
 export const partnerResults = z.object({

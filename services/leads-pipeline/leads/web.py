@@ -21,7 +21,10 @@ from .partners.spec import SpecError as PartnerSpecError
 from .partners.spec import datasets_for as partner_datasets
 from .partners.spec import parse_spec as parse_partner_spec
 from .partners.spec import read_history as partner_history
+from .partners.spec import ALL_RUNS as PARTNER_ALL_RUNS
+from .partners.spec import all_rows as partner_all_rows
 from .partners.spec import read_json as read_partner_json
+from .partners.spec import run_rows as partner_run_rows
 from .partners.spec import run_path as partner_run_path
 from .partners.spec import write_spec as write_partner_spec
 from .people_search import google_url
@@ -798,13 +801,16 @@ def create_app(root: Path = ROOT) -> Flask:
 
     @app.get("/api/partners/results")
     def partner_results():
-        path = partner_run_path(partners.data_dir(), request.args.get("run") or "")
+        run = request.args.get("run") or ""
+        if run == PARTNER_ALL_RUNS:
+            return jsonify(id=PARTNER_ALL_RUNS, rows=partner_all_rows(partners.data_dir()), stats={})
+        path = partner_run_path(partners.data_dir(), run)
         if path is None:
             raise ApiError(400, "INVALID_RUN", "No such partner research run.")
         result = read_partner_json(path, None)
         if not isinstance(result, dict):
             raise ApiError(404, "RUN_NOT_FOUND", "This run has no results yet.")
-        return jsonify(id=result["id"], rows=result.get("rows") or [], stats=result.get("stats") or {})
+        return jsonify(id=result["id"], rows=partner_run_rows(result), stats=result.get("stats") or {})
 
     @app.get("/api/partners/log")
     def partner_log():
