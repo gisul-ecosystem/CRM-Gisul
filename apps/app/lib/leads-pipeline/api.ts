@@ -4,6 +4,13 @@ import {
 	pipelineJson,
 } from "./client";
 import {
+	type PartnerSearchInput,
+	partnerLog,
+	partnerOverview,
+	partnerPreview,
+	partnerResults,
+} from "./partner-schemas";
+import {
 	type CustomSearchInput,
 	customSearchList,
 	customSearchPreview,
@@ -105,6 +112,22 @@ export const customSearchApi = {
 			method: "POST",
 			json: input,
 		}),
+};
+
+export const partnersApi = {
+	overview: () => pipelineJson("/partners", partnerOverview),
+	preview: (input: PartnerSearchInput) =>
+		pipelineJson("/partners/preview", partnerPreview, {
+			method: "POST",
+			json: input,
+		}),
+	start: (input: PartnerSearchInput) =>
+		pipelineJson("/partners", okMessage, { method: "POST", json: input }),
+	results: (run: string) =>
+		pipelineJson("/partners/results", partnerResults, { query: { run } }),
+	log: () => pipelineJson("/partners/log", partnerLog),
+	stop: () =>
+		pipelineJson("/partners/stop", okMessage, { method: "POST", json: {} }),
 };
 
 export const settingsApi = {

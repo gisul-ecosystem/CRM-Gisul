@@ -7,6 +7,7 @@ import { pipelineViewerSrc } from "@/lib/leads-pipeline/bridge";
 import { scraperViewerUrl } from "@/lib/linkedin-scraper/bridge";
 import { requireSession } from "@/lib/session";
 import { ScrapePanel } from "../../linkedin/scrape/scrape-view";
+import { PartnerResearchPanel } from "../partners/partner-research-view";
 import { CustomSearchPanel } from "../search/custom-search-view";
 
 export const metadata: Metadata = {
@@ -43,6 +44,14 @@ async function FindLeads() {
 					description:
 						"Search LinkedIn for people, posts or companies, or import a file of profile links. Each person gets an AI draft or your template.",
 					content: <ScrapePanel viewerBaseUrl={scraperViewerUrl()} />,
+				},
+				{
+					value: views.find.partners,
+					label: "Partner research",
+					source: "website",
+					description:
+						"Find system integrators with fresh government contracts or partner deals, the person to contact, and an opening line. Every fact links to its source.",
+					content: <PartnerResearchPanel />,
 				},
 			]}
 		/>

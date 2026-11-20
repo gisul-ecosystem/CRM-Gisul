@@ -81,7 +81,7 @@ and `components/lead-hub/lead-hub-page.tsx` draws the page.
 | Menu item | Tabs (`?view=`) |
 | --- | --- |
 | Overview `/lead-generation` | Website pipeline (`website`) · LinkedIn (`linkedin`) |
-| Find leads `/lead-generation/find` | Website search (`website`) · LinkedIn search (`linkedin`) |
+| Find leads `/lead-generation/find` | Website search (`website`) · LinkedIn search (`linkedin`) · Partner research (`partners`) |
 | Leads `/lead-generation/leads` | Website leads (`website`) · LinkedIn profiles (`profiles`) · Found posts (`posts`) · LinkedIn companies (`companies`) |
 | Messages `/lead-generation/messages` | LinkedIn queue (`queue`) · LinkedIn sent (`sent`) |
 | Settings `/lead-generation/settings` | Website pipeline settings |
@@ -99,6 +99,7 @@ unreachable). The view files stay in their old folders. Every old address
 | Leads | `/leads`, `/download` |
 | Settings | `/settings` (GET and POST) |
 | Custom search | `/custom-search` (GET and POST), `/custom-search/preview`, `/log` |
+| Partner research | `/partners` (GET and POST), `/partners/preview`, `/partners/results`, `/partners/log`, `/partners/stop` |
 
 - **Leads sort in the pipeline, not the browser.** `/leads` and `/download` take
   `sort`: `score` (default, best first), `company` (A to Z, the domain when the
@@ -125,6 +126,14 @@ unreachable). The view files stay in their old folders. Every old address
   person already in the CRM (same email, or same name at the same company) is
   counted as existing and left unchanged. A row without a person name cannot be
   ticked.
+- **A LinkedIn URL on the lead goes onto the contact.** `importLeads` also takes
+  `linkedinUrl`. A new contact stores it. An existing contact gets it only when
+  its own LinkedIn URL is empty. Either way the API queues an agent `identify`
+  task that says a LinkedIn profile is on file. The agent reads the profile
+  (Context.dev, then Unifers `people/enrich/linkedin`) and fills a missing work
+  email and mobile with `reveal_contact_details` (Unifers `people/reveal/linkedin`).
+  The API calls no vendor: see `docs/agent.md` → Unifers. Without
+  `UNIFERS_API_KEY` the agent skips the Unifers steps.
 - **A lead already in the CRM shows "In CRM"** under the person's name. The page
   asks `contacts.matchLeads` for its rows, with the same rule as the import: same
   email, or, with no email, same name at the company with that domain. It changes
@@ -248,15 +257,21 @@ python -m leads.web               # http://127.0.0.1:8501
 
 and set `LEADS_PIPELINE_URL="http://127.0.0.1:8501"` in the CRM's `.env`.
 
-## Gulf countries
+## Countries
 
-`leads/geo.py` lists six Gulf countries: United Arab Emirates, Saudi Arabia, Qatar, Kuwait,
-Bahrain and Oman (`GULF`). Each has its domain ending, phone code, cities, places (English and
-Arabic) and company-registration markers (FZ-LLC, DMCC, a Saudi C.R. number, QFC, K.S.C., B.S.C. (c),
-SAOG). Pick them in the Countries choice of a run. Search, Maps and Custom search then query their
+Every lead generation pipeline (GPU, Training, Competitor clients and Partner research) offers the
+same 10 countries: India, Malaysia, Singapore, Thailand, Indonesia, United Arab Emirates, Saudi
+Arabia, Qatar, Australia and United States. Each pipeline keeps its own default selection.
+
+`leads/geo.py` (`COUNTRIES`) holds them for the GPU, Training and Competitor profiles. Each has its
+domain ending, phone code, cities, places (English and Arabic for the Gulf) and
+company-registration markers (FZ-LLC, DMCC, a Saudi C.R. number, QFC, an Australian ABN or Pty
+Ltd, a US EIN or Delaware corporation). `GULF` is United Arab Emirates, Saudi Arabia and Qatar.
+Pick them in the Countries choice of a run. Search, Maps and Custom search then query their
 cities, and the country check reads `.ae`, `+971` and the other markers.
 
-`GULF_SKIP` in `sources/search.py` drops Gulf job boards, news sites and directories. The GPU
+`GULF_SKIP` in `sources/search.py` drops Gulf job boards, news sites and directories;
+`AU_US_SKIP` does the same for Australia and the United States. The GPU
 profile also reads two Gulf incubators in `incubators.csv`: in5 (plain HTML) and Hub71 (needs
 `RENDER_JS=1`). Both use `india=check`, so each startup's own site decides its country.
 
@@ -333,3 +348,107 @@ also searches. `leads/sources/competitor_search.py` holds every number and word 
 
 Each search runs again only after 30 days (`repeat_days`). Every search counts against
 `SEARCH_DISCOVERY_PER_RUN`. Without a key, the run reads the CSV list only, as before.
+## Partner research
+
+Find leads, Partner research tab. It finds system integrators that win government work, so you
+can offer to deliver under them. It is not a profile: it has its own job (`python -m leads
+partners`), its own data folder (`data/partners/`), lock and log, and runs beside a profile run.
+Every number and word list is in `leads/partners/config.py` (`PARTNERS`).
+
+```
+spec -> searches + GeBIZ -> facts -> merge -> score -> website + person -> wording
+```
+
+1. **Spec.** The form sends countries (a multi-select of the 10 countries above; each has its
+   own news sites, agencies, currency and query words in `PARTNERS.countries`; only Singapore
+   (GeBIZ) and the United States (USAspending) have a free awards dataset), fields (AI, cloud, data engineering, application development,
+   Microsoft), signals, a time window and one sentence of past work. `partners/spec.py` builds
+   at most 40 searches from fixed templates. Each country has its own news sites, agencies,
+   currency, government word ("ministry", "federal agency") and award phrase
+   (`PARTNERS.countries`). A new country is one entry there.
+2. **Sources.** Serper (news or web), then Tavily, then Brave, as for people search. Each search
+   result is cached for 7 days (`cache.json`), so a repeated search spends no credits. A country
+   with a `dataset` also reads free contract awards, no key: Singapore the GeBIZ dataset on
+   data.gov.sg (`datastore_search`), the United States USAspending.gov
+   (`spending_by_award`, contracts only; with a size filter, small business recipients only).
+   Malaysia and the UAE have no open awards data and rely on news. Without a search key only
+   the datasets run. The UAE has its own query templates (`queries` on the country): UAE press
+   writes "partners with" and "signs agreement with", not "awarded a contract".
+   The signal "Names government clients on its website" (`clients`, kind `site`) searches for
+   firms whose own site names an agency ("clients include DEWA OR RTA …"). The company and its
+   domain come from the result itself. Only home, about, clients, case-study and portfolio
+   pages count; articles, listings and `.gov`, `.edu`, `.ac`, `.mil` sites are skipped. A page
+   whose summary names no agency is opened (at most 40 a run) and kept only if the page names
+   one. A generic agency ("UAE Government") does not count as a client. This is the main
+   source of SMEs where the news covers only large firms.
+3. **Facts, with no model.** `partners/extract.py` reads each result title and summary: the
+   company from the headline ("X wins …", "X appointed …", or agency-first "U.S. Navy awards X",
+   "Digital Dubai partners with X") or a company suffix (Bhd, Sdn Bhd, Pte Ltd, Inc, LLC,
+   FZ-LLC), the value (RM, S$, US$, AED), the agency from a word list per country, the date, the
+   field and the signal. With a partnering verb the company after the verb is tried first.
+   Agencies, public bodies (university, chamber, ministry acronyms such as MoEI) and big
+   vendors (`big_vendors`: Oracle, Microsoft, Canva …) are never the company. A result with no company, no field or no signal is dropped. Up to 30 pages are
+   opened to fill a missing value, agency or date.
+   The country of a result comes from the article, not the query: place names per country
+   (`places`), the news site and the domain ending count. An article that names only another
+   country (`other_places`, for example Poland) is dropped. A company whose legal form belongs
+   to another country (`legal_forms`: GmbH, Sdn Bhd, Pty Ltd …) is dropped. A GeBIZ award whose
+   description names non-IT work (`gebiz.not_ict_words`: vehicle, event, laboratory …) is
+   dropped, and the IT fallback needs a specific IT phrase (`gebiz.ict_words`).
+4. **Merge and score.** Results join by company name. The score adds recency, signal, value,
+   agency, fields, number of sources and a found person (`PARTNERS.score`).
+5. **Company size.** "Company size" defaults to fewer than 100 employees; 11-50 and any size are
+   the other choices (`PARTNERS.sizes`). One search per company,
+   `site:linkedin.com/company <name> "company size"`, reads the size from the result summary,
+   for example "Company size: 11-50 employees" or "15,000-strong team". The company page whose
+   name matches best, on the country's LinkedIn subdomain, wins. LinkedIn sizes come in
+   bands: a band that only partly fits (51-200 for fewer than 100) counts as unknown. Unknown
+   sizes are dropped unless "Keep companies whose size is unknown" is ticked. When the full
+   name finds no size, a second lookup uses the parent name without country and generic words
+   (`size.parent_tails`): "Illumina Singapore Pte. Ltd" becomes "Illumina". The page's
+   "Headquarters" line, or its LinkedIn subdomain, gives the home country. A foreign
+   headquarters marks the company as too big, except when a full-name match has a local legal
+   form: then the page is a different company with the same name, and the size stays unknown.
+   A company with an unknown size and at least `size.many_awards` (6) awards counts as too big.
+   When LinkedIn gives no size, a web search runs: `"<name>" employees`, then
+   `"<name>" <country> number of employees` (`size.web_queries`). Only results from the sites in
+   `size.web_sites` (ZoomInfo, RocketReach, Apollo, Dun & Bradstreet, StockAnalysis …) or a
+   LinkedIn company page count, and only when the title or address contains the company name.
+   When sources disagree, the largest size wins, so a large firm does not pass as an SME. The
+   size label names the source, for example "11-50 employees (zoominfo.com)".
+   Companies are
+   checked best first until the run has enough, at most 120 lookups a run. A size filter also
+   lowers the smallest GeBIZ award kept from S$0.5M to S$50k, because small firms win small
+   awards. GeBIZ reads up to 5 pages of 100 records per term, at no cost.
+6. **Website and person.** Two searches per company: its website, and a `site:linkedin.com/in`
+   search for the right level. A listed company (Berhad, Bhd, Bursa, SGX) gets delivery
+   leaders; any other gets the CEO or founder. LinkedIn itself is never opened.
+   **Unifers enrichment** (switch "Enrich contacts with Unifers", on when `UNIFERS_API_KEY` is set
+   on the Settings page, GPU leads tab). `partners/unifers.py` sends each found LinkedIn URL to
+   Unifers `people/enrich/linkedin`: full name, current title, employer, location. A person whose
+   employer is another company is dropped and costs no reveal. Then `people/reveal/linkedin` gives
+   the work email and mobile (`PARTNERS.unifers.reveal`; personal email only with
+   `use_personal_email`). At most `unifers.max_people` (20) people a run; each answer is cached
+   per LinkedIn URL for `unifers.repeat_days` (30) days, so a repeat run spends no credits. The
+   credits spent show on the run (`unifersCredits`). Add to CRM contacts then sends the email and
+   phone with the person.
+7. **Wording.** Each row gets a template "why" and opening line. With "Improve the wording" on
+   and `ANTHROPIC_API_KEY` set on Settings (GPU leads tab), one Claude call rewrites the top 10
+   rows. The model is Claude Haiku (`claude-haiku-5-5`, `PARTNERS.llm.model`), the lowest-cost
+   Claude model, at effort `low` with thinking off and a JSON schema for the reply, through the
+   `anthropic` Python SDK. The model sees one short line per row, never page text. A reply
+   with a number that is not in the facts is thrown away and the template stays. Each row is
+   sent once: the answer, or the refusal, is cached.
+
+From the results: **Add to CRM contacts** imports the ticked people (no email needed) with
+their LinkedIn URL, so the agent enriches them through Unifers (see Leads become CRM contacts). The
+lead source defaults to **Cold Outreach** and the lead category is **Partner research**
+(`partners` in `packages/validation/src/lead-origin.ts`), so the contacts table shows "Cold
+Outreach (Partner research)". The lead-origin note carries the whole row: fields, country, the
+reason, the company size, up to 4 evidence items (title, agency, value, date, source, link) and
+the opening line. The email drafter reads all of it (`contactContext` in
+`apps/agent/agent/lib/email-draft.ts`) with the partnership brief (`CATEGORY_BRIEF.partners` in
+`apps/agent/agent/lib/email-knowledge.ts`). The `PARTNERSHIP` lead source exists and can be picked
+by hand. And
+**Queue on LinkedIn** starts a one-profile scrape in the LinkedIn scraper with the opening line
+as the message template, so it waits in the LinkedIn queue for review.

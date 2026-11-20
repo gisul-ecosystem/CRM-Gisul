@@ -1,6 +1,8 @@
 const {
   ANTHROPIC_API_KEY,
   CLAUDE_MODEL,
+  CLAUDE_EFFORT,
+  CLAUDE_MAX_TOKENS,
   OPENAI_API_KEY,
   OPENAI_MODEL,
   AI_CONFIDENCE_MIN_SCORE,
@@ -663,8 +665,8 @@ async function callClaude(system, user) {
     },
     body: JSON.stringify({
       model: CLAUDE_MODEL,
-      max_tokens: 1200,
-      temperature: 0.35,
+      max_tokens: CLAUDE_MAX_TOKENS,
+      output_config: { effort: CLAUDE_EFFORT },
       system: [
         {
           type: 'text',
@@ -682,7 +684,12 @@ async function callClaude(system, user) {
   }
 
   const data = await res.json();
-  return data.content?.map((c) => c.text || '').join('\n') || '';
+  return (
+    data.content
+      ?.filter((c) => c.type === 'text')
+      .map((c) => c.text)
+      .join('\n') || ''
+  );
 }
 
 async function callOpenAI(system, user) {

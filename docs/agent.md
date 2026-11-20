@@ -12,10 +12,14 @@ are in `docs/setup.md`.
 ## Model
 
 **Claude when `ANTHROPIC_API_KEY` is set.** `lib/agent-model.ts` picks the model for
-the agent and both subagents: `claude-opus-5-5`, or `ANTHROPIC_AGENT_MODEL`
+the agent and both subagents: `claude-haiku-5-5`, or `ANTHROPIC_AGENT_MODEL`
 (`lib/agent-model-config.ts`). The startup log prints which model is in use.
+Haiku costs 1/40 of Opus per token; set `ANTHROPIC_AGENT_MODEL` to
+`claude-sonnet-5-5` only where research quality drops.
 **Effort is `low`** to spend the fewest tokens; raise it in the config only where
-quality drops. **Prompt caching is eve's**: it marks the tools, the system prompt
+quality drops. **The context window is set to 100K**, not the model's 1M. eve
+compacts at 90% of it, so a long research session never resends more than about
+90K tokens per step, and Haiku input stays in its cheaper under-100K price tier. **Prompt caching is eve's**: it marks the tools, the system prompt
 and the latest turns whenever the provider is Anthropic. Do not add a top-level
 `cacheControl` — a request allows four breakpoints and eve already uses them. While
 Claude is active, the Settings model chooser does not apply. A team agent whose

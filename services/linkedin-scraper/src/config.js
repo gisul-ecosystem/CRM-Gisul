@@ -28,7 +28,9 @@ const PORT = Number(process.env.PORT || 6363);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-5-20250929';
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-haiku-5-5';
+const CLAUDE_EFFORT = process.env.CLAUDE_EFFORT || 'low';
+const CLAUDE_MAX_TOKENS = Math.max(256, Number(process.env.CLAUDE_MAX_TOKENS || 2000));
 const AI_MESSAGES = String(process.env.AI_MESSAGES || 'true').toLowerCase() === 'true';
 const RAG_TTL_MS = Math.max(60_000, Number(process.env.RAG_TTL_MS || 24 * 60 * 60 * 1000)); // 1 day
 const RAG_TOP_K = Math.max(1, Number(process.env.RAG_TOP_K || 4));
@@ -170,6 +172,8 @@ module.exports = {
   OPENAI_MODEL,
   ANTHROPIC_API_KEY,
   CLAUDE_MODEL,
+  CLAUDE_EFFORT,
+  CLAUDE_MAX_TOKENS,
   AI_MESSAGES,
   RAG_TTL_MS,
   RAG_TOP_K,

@@ -169,6 +169,27 @@ async function contactContext(
 			origin?.segment ? `Segment: ${origin.segment}` : null,
 			origin?.country ? `Country: ${origin.country}` : null,
 			origin?.signal ? `Signal: ${origin.signal}` : null,
+			origin?.companySize ? `Company size: ${origin.companySize}` : null,
+			...(origin?.evidence.length
+				? [
+						"Evidence (public sources; quote only these facts):",
+						...origin.evidence.map(
+							(item) =>
+								`- ${[
+									item.title,
+									[item.agency, item.value, item.date]
+										.filter(Boolean)
+										.join(" · "),
+									item.source,
+								]
+									.filter(Boolean)
+									.join(" — ")}`,
+						),
+					]
+				: []),
+			origin?.opener
+				? `Suggested opening line (rewrite freely, keep the facts): ${origin.opener}`
+				: null,
 			"",
 			CATEGORY_BRIEF[category],
 		);
@@ -225,11 +246,14 @@ export async function draftEmail(
 			apiKey: key,
 			timeout: EMAIL_DRAFT.timeoutMs,
 		});
+		const modelId = model();
+		const fallback = modelId.startsWith(EMAIL_DRAFT.noFallbackModelPrefix)
+			? {}
+			: { betas: [EMAIL_DRAFT.fallbackBeta], fallbacks: "default" as const };
 		const response = await client.beta.messages.parse({
-			model: model(),
+			model: modelId,
 			max_tokens: EMAIL_DRAFT.maxTokens,
-			betas: [EMAIL_DRAFT.fallbackBeta],
-			fallbacks: "default",
+			...fallback,
 			system: SYSTEM,
 			messages: [{ role: "user", content: ask }],
 			output_config: {

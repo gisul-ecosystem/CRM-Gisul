@@ -118,17 +118,18 @@ COUNTRIES = {
     "Qatar": dict(code="QA", tld="qa", phone="+974", cities=["Doha"],
                   places=["Qatar", "Lusail", "Al Wakrah", "Al Rayyan", "قطر", "الدوحة"],
                   reg=r"\bQFC\s+(?:No|Licen[cs]e)|Qatar\s+Financial\s+Cent(?:re|er)|\bQSTP\b"),
-    "Kuwait": dict(code="KW", tld="kw", phone="+965", cities=["Kuwait City"],
-                   places=["Kuwait", "Salmiya", "Hawalli", "Farwaniya", "الكويت"],
-                   reg=r"\bK\.S\.C\.?\s*\((?:Closed|C|Public|P)\)|\bK\.S\.C\.C\b"),
-    "Bahrain": dict(code="BH", tld="bh", phone="+973", cities=["Manama"],
-                    places=["Bahrain", "Muharraq", "Seef", "Juffair", "البحرين", "المنامة"],
-                    reg=r"\bB\.S\.C\.?\s*\((?:c|closed)\)|\bSijilat\b"),
-    "Oman": dict(code="OM", tld="om", phone="+968", cities=["Muscat"],
-                 places=["Oman", "Sohar", "Salalah", "Nizwa", "سلطنة عمان", "مسقط"],
-                 reg=r"\bS\.A\.O\.[GC]\b|\bSAO[GC]\b"),
+    "Australia": dict(code="AU", tld="au", phone="+61", aliases=("AU",),
+                      cities=["Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide"],
+                      places=["Australia", "Canberra", "New South Wales", "NSW", "Queensland", "Gold Coast",
+                              "Hobart", "Darwin", "Parramatta"],
+                      reg=r"\bA\.?B\.?N\.?\s*:?\s*\d{2}\s?\d{3}\s?\d{3}\s?\d{3}\b|\bPty\.?\s*Ltd\b"),
+    "United States": dict(code="US", tld="us", phone="+1", aliases=("USA", "US", "U.S.", "United States of America"),
+                          cities=["San Francisco", "New York", "Austin", "Boston", "Seattle"],
+                          places=["United States", "USA", "Silicon Valley", "California", "Texas", "Palo Alto",
+                                  "Mountain View", "San Jose", "Los Angeles", "Chicago", "Denver", "Atlanta"],
+                          reg=r"\bEIN\s*:?\s*\d{2}-\d{7}\b|\bDelaware\s+(?:corporation|C-Corp)\b"),
 }
-GULF = ("United Arab Emirates", "Saudi Arabia", "Qatar", "Kuwait", "Bahrain", "Oman")
+GULF = ("United Arab Emirates", "Saudi Arabia", "Qatar")
 _OTHER = {name: (c["code"], re.compile(c["reg"], re.I if name != "Thailand" else 0),
                  re.compile(r"\b(?:" + "|".join(re.escape(p) for p in c["cities"] + c["places"]) + r")\b", re.I))
           for name, c in COUNTRIES.items() if name != "India"}

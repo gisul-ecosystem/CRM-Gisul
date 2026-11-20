@@ -13,6 +13,7 @@ export const LEAD_SOURCE_OPTIONS = [
 	{ value: LeadSource.REFERRAL, label: "Referral", color: "#b79ce8" },
 	{ value: LeadSource.COLD_OUTREACH, label: "Cold Outreach", color: "#a888e0" },
 	{ value: LeadSource.DIRECT, label: "Direct", color: "#c9b6ee" },
+	{ value: LeadSource.PARTNERSHIP, label: "Partnership", color: "#8a6bd4" },
 	{ value: LeadSource.OTHER, label: "Other", color: "#ddd0f5" },
 ] as const;
 

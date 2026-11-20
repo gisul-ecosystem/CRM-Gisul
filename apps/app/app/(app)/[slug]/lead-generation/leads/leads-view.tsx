@@ -237,6 +237,7 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 				title: row.title,
 				company: row.company,
 				domain: row.domain,
+				linkedinUrl: row.linkedin_url,
 				origin: {
 					segment: row.segment.slice(0, LEAD_ORIGIN_LIMITS.segment),
 					country: row.country.slice(0, LEAD_ORIGIN_LIMITS.country),

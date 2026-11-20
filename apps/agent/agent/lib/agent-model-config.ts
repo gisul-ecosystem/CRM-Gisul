@@ -1,8 +1,8 @@
 export const AGENT_MODEL = {
 	claude: {
 		env: { apiKey: "ANTHROPIC_API_KEY", model: "ANTHROPIC_AGENT_MODEL" },
-		model: "claude-opus-5-5",
+		model: "claude-haiku-5-5",
 		effort: "low",
-		contextWindowTokens: 1_000_000,
+		contextWindowTokens: 100_000,
 	},
 } as const;

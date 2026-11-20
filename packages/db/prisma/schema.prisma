@@ -296,6 +296,7 @@ enum LeadSource {
   REFERRAL
   COLD_OUTREACH
   DIRECT
+  PARTNERSHIP
   OTHER
 }
 

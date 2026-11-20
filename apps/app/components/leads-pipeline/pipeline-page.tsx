@@ -34,6 +34,43 @@ const UNAVAILABLE = new Map<string, { title: string; description: string }>(
 	}),
 );
 
+type Problem = { title: string; description: string };
+
+function problemFor(error: Error | null): Problem | null {
+	if (!error) return null;
+	const fallback = {
+		title: "The lead generation pipeline is unavailable",
+		description: error.message,
+	};
+	return error instanceof PipelineError
+		? (UNAVAILABLE.get(error.code) ?? fallback)
+		: fallback;
+}
+
+export function PipelineProblem({ error }: { error: Error }) {
+	const problem = problemFor(error);
+	return <ProblemNotice problem={problem} />;
+}
+
+function ProblemNotice({ problem }: { problem: Problem | null }) {
+	return (
+		<Empty>
+			<EmptyHeader>
+				<EmptyMedia variant="icon">
+					<Icon icon={Plug} />
+				</EmptyMedia>
+				<EmptyTitle>
+					{problem?.title ?? "The pipeline has no profiles"}
+				</EmptyTitle>
+				<EmptyDescription>
+					{problem?.description ??
+						"The pipeline answered, but it lists no lead profiles."}
+				</EmptyDescription>
+			</EmptyHeader>
+		</Empty>
+	);
+}
+
 export function PipelineGate({
 	children,
 }: {
@@ -42,17 +79,7 @@ export function PipelineGate({
 	const status = usePipelineStatus();
 	const [profile, setProfile] = useLeadProfile();
 
-	const problem = status.error
-		? status.error instanceof PipelineError
-			? (UNAVAILABLE.get(status.error.code) ?? {
-					title: "The lead generation pipeline is unavailable",
-					description: status.error.message,
-				})
-			: {
-					title: "The lead generation pipeline is unavailable",
-					description: status.error.message,
-				}
-		: null;
+	const problem = problemFor(status.error);
 
 	const profiles = status.data?.profiles ?? [];
 	const current =
@@ -60,22 +87,7 @@ export function PipelineGate({
 
 	if (status.isPending) return <PageShellLoading />;
 	if (problem || !current) {
-		return (
-			<Empty>
-				<EmptyHeader>
-					<EmptyMedia variant="icon">
-						<Icon icon={Plug} />
-					</EmptyMedia>
-					<EmptyTitle>
-						{problem?.title ?? "The pipeline has no profiles"}
-					</EmptyTitle>
-					<EmptyDescription>
-						{problem?.description ??
-							"The pipeline answered, but it lists no lead profiles."}
-					</EmptyDescription>
-				</EmptyHeader>
-			</Empty>
-		);
+		return <ProblemNotice problem={problem} />;
 	}
 
 	return (

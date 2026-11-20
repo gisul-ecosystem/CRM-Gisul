@@ -68,7 +68,7 @@ _STATE_QUERIES = "competitor_search_done"
 
 def _skip_domains() -> Set[str]:
     return (set(COMPETITOR_SEARCH["skip_domains"]) | set(CUSTOM_SEARCH["own_domains"])
-            | set(CUSTOM_SEARCH["listing_domains"]) | search.GPU_SKIP | search.SEA_SKIP | search.GULF_SKIP)
+            | set(CUSTOM_SEARCH["listing_domains"]) | search.GPU_SKIP | search.SEA_SKIP | search.GULF_SKIP | search.AU_US_SKIP)
 
 
 class SearchBudget:

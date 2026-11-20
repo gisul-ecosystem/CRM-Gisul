@@ -9,7 +9,7 @@ export const LEAD_HUB = {
 	},
 	views: {
 		overview: { website: "website", linkedin: "linkedin" },
-		find: { website: "website", linkedin: "linkedin" },
+		find: { website: "website", linkedin: "linkedin", partners: "partners" },
 		leads: {
 			website: "website",
 			profiles: "profiles",
