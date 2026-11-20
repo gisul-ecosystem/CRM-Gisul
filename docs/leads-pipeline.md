@@ -419,7 +419,10 @@ spec -> searches + GeBIZ -> facts -> merge -> score -> website + person -> wordi
    Companies are
    checked best first until the run has enough, at most 120 lookups a run. A size filter also
    lowers the smallest GeBIZ award kept from S$0.5M to S$50k, because small firms win small
-   awards. GeBIZ reads up to 5 pages of 100 records per term, at no cost.
+   awards. GeBIZ reads up to 3 pages of 100 records per term, at no cost, with a 2-second pause
+   between calls (`gebiz.delay_s`). Each page is cached like a search (7 days), so a repeat run
+   makes no GeBIZ calls. data.gov.sg limits how often it can be asked: on the first refused call
+   (HTTP 429 or no answer) the run skips GeBIZ for the rest of that run and says so in the log.
 6. **Website and person.** Two searches per company: its website, and a `site:linkedin.com/in`
    search for the right level. A listed company (Berhad, Bhd, Bursa, SGX) gets delivery
    leaders; any other gets the CEO or founder. LinkedIn itself is never opened.

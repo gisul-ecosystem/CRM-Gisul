@@ -31,14 +31,15 @@ def _skip_domains() -> Dict[str, set]:
     return {"evidence": listing - news, "domain": listing | media}
 
 
-def _dataset_awards(fetcher, dataset: str, terms: List[str], spec: Dict, stats: Dict, seen: set) -> List[Dict]:
+def _dataset_awards(fetcher, dataset: str, terms: List[str], spec: Dict, stats: Dict, seen: set,
+                    scache: SearchCache) -> List[Dict]:
     small = PARTNERS["sizes"][spec["size"]]["max"] is not None
     if dataset == "usaspending":
         return usaspending_awards(fetcher, terms, spec["months"], small, stats, seen)
-    return gebiz_awards(fetcher, terms, spec["months"], stats, seen)
+    return gebiz_awards(fetcher, terms, spec["months"], stats, seen, scache)
 
 
-def _datasets(fetcher, spec: Dict, stats: Dict) -> List[Dict]:
+def _datasets(fetcher, spec: Dict, stats: Dict, scache: SearchCache) -> List[Dict]:
     out = []
     floor = PARTNERS["sizes"][spec["size"]]["min_award_millions"]
     for target in datasets_for(spec):
@@ -46,7 +47,7 @@ def _datasets(fetcher, spec: Dict, stats: Dict) -> List[Dict]:
         kept = 0
         for sector in spec["sectors"]:
             terms = list(PARTNERS["sectors"][sector]["terms"])
-            for ev in _dataset_awards(fetcher, target["dataset"], terms, spec, stats, seen):
+            for ev in _dataset_awards(fetcher, target["dataset"], terms, spec, stats, seen, scache):
                 ev["company"] = clean_company(display_name(ev["company"]), ev["country"])
                 text = ev.pop("text")
                 if any(has_word(text, w) for w in PARTNERS["gebiz"]["not_ict_words"]):
@@ -259,7 +260,7 @@ def _run(settings, fetcher, spec: Dict, cache: Dict, stats: Dict) -> List[Dict]:
         evidence += kept
         log.info("partners: %s -> %d results, %d kept", hit["q"], len(rows), len(kept))
     evidence = _verify_sites(fetcher, evidence, stats)
-    evidence += _datasets(fetcher, spec, stats)
+    evidence += _datasets(fetcher, spec, stats, scache)
     _enrich_pages(fetcher, evidence, spec, stats)
 
     companies = [c for c in merge(evidence) if c["country"] in spec["countries"]]
