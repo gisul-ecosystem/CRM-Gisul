@@ -22,6 +22,7 @@ PARTNERS = {
         "default_months": 12,
         "default_size": "under-100",
         "history_size": 50,
+        "all_runs_rows": 500,
     },
     "search": {
         "results_per_query": 10,

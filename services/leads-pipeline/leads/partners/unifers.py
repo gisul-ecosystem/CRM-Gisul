@@ -76,7 +76,12 @@ def _fresh(hit: Dict) -> bool:
     return (datetime.now() - at).total_seconds() <= UNIFERS["repeat_days"] * DAY_S
 
 
-def _lookup(fetcher, url: str, company: Dict, stats: Dict) -> Optional[Dict]:
+def _missing(person: Dict) -> Dict[str, bool]:
+    return {field: bool(UNIFERS["reveal"].get(field)) and not (person.get(field) or "").strip()
+            for field in ("email", "phone")}
+
+
+def _lookup(fetcher, url: str, company: Dict, stats: Dict, want: Dict[str, bool]) -> Optional[Dict]:
     found = _post(fetcher, UNIFERS["enrich_path"], {"linkedin": url, "fallback": UNIFERS["fallback"]}, stats)
     if found is None:
         return None
@@ -87,7 +92,6 @@ def _lookup(fetcher, url: str, company: Dict, stats: Dict) -> Optional[Dict]:
         out["worksThere"] = _works_at(out["profile"], company)
     if out["worksThere"] is False:
         return out
-    want = {k: bool(v) for k, v in UNIFERS["reveal"].items()}
     if not any(want.values()):
         return out
     shown = _post(fetcher, UNIFERS["reveal_path"],
@@ -113,6 +117,10 @@ def enrich_people(fetcher, companies: List[Dict], cache: Dict, stats: Dict) -> N
         kept = []
         for person in company["people"]:
             kept.append(person)
+            want = _missing(person)
+            if not any(want.values()):
+                stats["unifers_skipped"] += 1
+                continue
             url = person["linkedin"]
             hit = store.get(url)
             if hit and _fresh(hit):
@@ -121,7 +129,7 @@ def enrich_people(fetcher, companies: List[Dict], cache: Dict, stats: Dict) -> N
                 if stats["unifers_people"] >= UNIFERS["max_people"]:
                     continue
                 stats["unifers_people"] += 1
-                hit = _lookup(fetcher, url, company, stats)
+                hit = _lookup(fetcher, url, company, stats, want)
                 if hit is None:
                     continue
                 store[url] = hit
@@ -133,12 +141,14 @@ def enrich_people(fetcher, companies: List[Dict], cache: Dict, stats: Dict) -> N
                 location=profile.get("location", ""),
                 employer=profile.get("employer", ""),
                 worksThere=hit["worksThere"],
-                email=hit["email"], phone=hit["phone"],
+                email=(person.get("email") or "").strip() or hit["email"],
+                phone=(person.get("phone") or "").strip() or hit["phone"],
                 enriched=True,
             )
             if hit["worksThere"] is False:
                 kept.pop()
                 stats["unifers_moved"] += 1
         company["people"] = kept
-    log.info("partners: Unifers: %d people looked up, %d from cache, %d credits",
-             stats["unifers_people"], stats["unifers_cached"], stats["unifers_credits"])
+    log.info("partners: Unifers: %d people looked up, %d from cache, %d skipped (email and phone known), "
+             "%d credits", stats["unifers_people"], stats["unifers_cached"], stats["unifers_skipped"],
+             stats["unifers_credits"])

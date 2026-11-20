@@ -431,7 +431,9 @@ spec -> searches + GeBIZ -> facts -> merge -> score -> website + person -> wordi
    Unifers `people/enrich/linkedin`: full name, current title, employer, location. A person whose
    employer is another company is dropped and costs no reveal. Then `people/reveal/linkedin` gives
    the work email and mobile (`PARTNERS.unifers.reveal`; personal email only with
-   `use_personal_email`). At most `unifers.max_people` (20) people a run; each answer is cached
+   `use_personal_email`). Unifers runs only for what is missing: a person whose email and phone
+   are both known is skipped (`unifers_skipped`), and reveal asks only for the empty field; a
+   known value is never replaced. At most `unifers.max_people` (20) people a run; each answer is cached
    per LinkedIn URL for `unifers.repeat_days` (30) days, so a repeat run spends no credits. The
    credits spent show on the run (`unifersCredits`). Add to CRM contacts then sends the email and
    phone with the person.
@@ -442,6 +444,15 @@ spec -> searches + GeBIZ -> facts -> merge -> score -> website + person -> wordi
    `anthropic` Python SDK. The model sees one short line per row, never page text. A reply
    with a number that is not in the facts is thrown away and the template stays. Each row is
    sent once: the answer, or the refusal, is cached.
+
+The results list has two toolbar rows (`lib/leads-pipeline/partner-view.ts`). Row one: the run
+(one run, or **All runs**: every company found so far, the newest finding per company, at most
+`limits.all_runs_rows` (500), from `GET /api/partners/results?run=all`), the sort (best match,
+newest signal, biggest contract in rough USD, smallest or largest company, most contacts,
+company A–Z, country) and a search over company, agency, person and evidence titles. Row two:
+country, company size fit and contacts (has a contact, has email or phone, no contact yet), with
+the count shown and hidden. Each row shows its contact count, and in All runs the run it came
+from.
 
 From the results: **Add to CRM contacts** imports the ticked people (no email needed) with
 their LinkedIn URL, so the agent enriches them through Unifers (see Leads become CRM contacts). The

@@ -15,7 +15,9 @@ function PageShell({
 				data-slot="page-shell-scroll"
 				className={cn(
 					"flex min-h-0 min-w-0 flex-1 flex-col px-4 pt-4 pb-4 md:px-6 md:pt-6 md:pb-6",
-					contained ? "overflow-hidden" : "overflow-y-auto",
+					contained
+						? "overflow-hidden"
+						: "overflow-y-auto overscroll-y-contain",
 				)}
 			>
 				<div

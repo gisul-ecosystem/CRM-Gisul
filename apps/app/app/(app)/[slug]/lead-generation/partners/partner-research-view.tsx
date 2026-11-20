@@ -46,7 +46,11 @@ import { toast } from "sonner";
 import { PipelineProblem } from "@/components/leads-pipeline/pipeline-page";
 import { LogLines } from "@/components/leads-pipeline/run-log";
 import { LocalDateTime } from "@/components/local-date-time";
-import { FilterSelect } from "@/components/outreach/toolbar";
+import {
+	FilterSelect,
+	OutreachToolbar,
+	SearchBox,
+} from "@/components/outreach/toolbar";
 import { LEAD_SOURCE_OPTIONS } from "@/lib/lead-fields";
 import { partnersApi } from "@/lib/leads-pipeline/api";
 import { pipelineKeys, usePipelineCache } from "@/lib/leads-pipeline/cache";
@@ -57,6 +61,17 @@ import type {
 	PartnerRun,
 	PartnerSearchInput,
 } from "@/lib/leads-pipeline/partner-schemas";
+import {
+	ALL_RUNS,
+	countryOptions,
+	DEFAULT_PARTNER_VIEW,
+	PARTNER_CONTACT_FILTERS,
+	PARTNER_SIZE_FILTERS,
+	PARTNER_SORTS,
+	type PartnerView,
+	viewRows,
+	viewSummary,
+} from "@/lib/leads-pipeline/partner-view";
 import { LEADS_PIPELINE } from "@/lib/leads-pipeline/pipeline-config";
 import { scrapeApi } from "@/lib/linkedin-scraper/api";
 import { useScraperCache } from "@/lib/linkedin-scraper/cache";
@@ -111,6 +126,7 @@ export function PartnerResearchPanel() {
 function PartnerResearchBody({ overview }: { overview: PartnerOverview }) {
 	const latest = overview.runs.find((run) => run.status === "done");
 	const [openRun, setOpenRun] = useState<string | null>(null);
+	const [view, setView] = useState<PartnerView>(DEFAULT_PARTNER_VIEW);
 	const runId = openRun ?? latest?.id ?? null;
 	const labels = {
 		sectors: labelsOf(overview.options.sectors),
@@ -140,6 +156,10 @@ function PartnerResearchBody({ overview }: { overview: PartnerOverview }) {
 					key={runId}
 					run={overview.runs.find((run) => run.id === runId) ?? null}
 					runId={runId}
+					runs={overview.runs}
+					onRunChange={setOpenRun}
+					view={view}
+					onViewChange={setView}
 					labels={labels}
 				/>
 			) : null}
@@ -591,10 +611,18 @@ function personKey(row: PartnerRow, person: PartnerPerson): string {
 function PartnerResults({
 	run,
 	runId,
+	runs,
+	onRunChange,
+	view,
+	onViewChange,
 	labels,
 }: {
 	run: PartnerRun | null;
 	runId: string;
+	runs: PartnerRun[];
+	onRunChange: (run: string) => void;
+	view: PartnerView;
+	onViewChange: (view: PartnerView) => void;
 	labels: { sectors: Labels; signals: Labels };
 }) {
 	const results = useQuery({
@@ -662,6 +690,20 @@ function PartnerResults({
 	}
 
 	const rows = results.data.rows;
+	const shown = viewRows(rows, view);
+	const summary = viewSummary(shown);
+	const allRuns = runId === ALL_RUNS;
+	const runOptions = [
+		{ value: ALL_RUNS, label: "All runs" },
+		...runs
+			.filter((item) => item.status === "done")
+			.map((item) => ({
+				value: item.id,
+				label: `${item.name} · ${item.startedAt.slice(0, 10)}`,
+			})),
+	];
+	const change = (next: Partial<PartnerView>) =>
+		onViewChange({ ...view, ...next });
 	const people = rows.flatMap((row) =>
 		row.people.map((person) => ({ row, person })),
 	);
@@ -697,7 +739,7 @@ function PartnerResults({
 					),
 					country: row.country.slice(0, LEAD_ORIGIN_LIMITS.country),
 					signal: row.why.slice(0, LEAD_ORIGIN_LIMITS.signal),
-					source: `partners-${run?.slug ?? runId}`.slice(
+					source: `partners-${run?.slug ?? (row.runId || runId)}`.slice(
 						0,
 						LEAD_ORIGIN_LIMITS.source,
 					),
@@ -726,13 +768,61 @@ function PartnerResults({
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>{run ? run.name : "Results"}</CardTitle>
+				<CardTitle>
+					{allRuns ? "All runs" : run ? run.name : "Results"}
+				</CardTitle>
 				<CardDescription>
-					Best first. Tick people to add them to the CRM. Check each source
-					before you write: the facts come from public pages.
+					{allRuns
+						? "Every company found so far, newest finding per company. "
+						: ""}
+					Tick people to add them to the CRM. Check each source before you
+					write: the facts come from public pages.
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="flex flex-col gap-4">
+				<OutreachToolbar>
+					<FilterSelect
+						value={runId}
+						onChange={onRunChange}
+						options={runOptions}
+						label="Run"
+					/>
+					<FilterSelect
+						value={view.sort}
+						onChange={(sort) => change({ sort })}
+						options={PARTNER_SORTS}
+						label="Sort"
+					/>
+					<SearchBox
+						value={view.search}
+						onChange={(search) => change({ search })}
+						placeholder="Search company, agency or person"
+					/>
+				</OutreachToolbar>
+				<OutreachToolbar>
+					<FilterSelect
+						value={view.country}
+						onChange={(country) => change({ country })}
+						options={countryOptions(rows)}
+						label="Country"
+					/>
+					<FilterSelect
+						value={view.size}
+						onChange={(size) => change({ size })}
+						options={PARTNER_SIZE_FILTERS}
+						label="Company size"
+					/>
+					<FilterSelect
+						value={view.contacts}
+						onChange={(contacts) => change({ contacts })}
+						options={PARTNER_CONTACT_FILTERS}
+						label="Contacts"
+					/>
+					<p className="text-muted-foreground text-xs">
+						{shown.length} of {rows.length} companies · {summary.withContacts}{" "}
+						with a contact · {summary.reachable} with email or phone
+					</p>
+				</OutreachToolbar>
 				{picked.length > 0 ? (
 					<div className="flex flex-wrap items-center gap-3">
 						<p className="text-sm">
@@ -756,7 +846,23 @@ function PartnerResults({
 						</Button>
 					</div>
 				) : null}
-				{rows.length === 0 ? (
+				{rows.length > 0 && shown.length === 0 ? (
+					<Empty className="border">
+						<EmptyHeader>
+							<EmptyTitle>No company matches these filters</EmptyTitle>
+							<EmptyDescription>
+								{rows.length} companies are hidden by the filters or the search.
+							</EmptyDescription>
+						</EmptyHeader>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => onViewChange(DEFAULT_PARTNER_VIEW)}
+						>
+							Clear filters
+						</Button>
+					</Empty>
+				) : rows.length === 0 ? (
 					<Empty className="border">
 						<EmptyHeader>
 							<EmptyTitle>No partners found</EmptyTitle>
@@ -769,7 +875,7 @@ function PartnerResults({
 					</Empty>
 				) : (
 					<ul className="flex flex-col divide-y rounded-lg border">
-						{rows.map((row) => (
+						{shown.map((row) => (
 							<li key={row.key} className="flex flex-col gap-4 p-4">
 								<div className="flex items-start justify-between gap-4">
 									<div className="flex min-w-0 flex-col gap-1">
@@ -804,6 +910,11 @@ function PartnerResults({
 											)}
 											{" · "}
 											{listOf(row.sectors, labels.sectors)}
+											{" · "}
+											{row.people.length === 1
+												? "1 contact"
+												: `${row.people.length} contacts`}
+											{allRuns && row.runName ? ` · from ${row.runName}` : ""}
 										</p>
 									</div>
 									<Badge variant="outline">Score {row.score}</Badge>
@@ -984,8 +1095,8 @@ function PastRuns({
 						columns={[
 							{ id: "name", header: "Search" },
 							{ id: "status", header: "Status" },
-							{ id: "searches", header: "Searches", align: "right" },
-							{ id: "found", header: "Partners", align: "right" },
+							{ id: "searches", header: "Web searches", align: "right" },
+							{ id: "found", header: "Partners kept", align: "right" },
 							{ id: "tokens", header: "Model tokens", align: "right" },
 							{ id: "started", header: "Started" },
 							{ id: "open", srLabel: "Open" },
@@ -1004,12 +1115,12 @@ function PastRuns({
 									{RUN_STATUS_LABELS[run.status]}
 								</TableCell>
 								<TableCell className="px-3 text-right tabular-nums">
-									{run.searched} new · {run.cached} cached
+									{run.searched} paid · {run.cached} from cache
 								</TableCell>
 								<TableCell className="px-3 text-right tabular-nums">
 									{run.found}
 									{run.sizeUnknown + run.sizeTooBig > 0
-										? ` · ${run.sizeUnknown + run.sizeTooBig} dropped by size`
+										? ` of ${run.found + run.sizeUnknown + run.sizeTooBig} · ${run.sizeUnknown + run.sizeTooBig} dropped by size`
 										: ""}
 								</TableCell>
 								<TableCell className="px-3 text-right tabular-nums">
