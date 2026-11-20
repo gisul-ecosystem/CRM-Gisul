@@ -1,4 +1,6 @@
 import hashlib
+
+import anthropic
 import json
 import logging
 import os
@@ -7,7 +9,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from .config import PARTNERS
-from .extract import format_value, is_recent
+from .extract import format_value, is_recent, usd_millions
 
 log = logging.getLogger("leads.partners")
 SCORE = PARTNERS["score"]
@@ -30,7 +32,8 @@ def score(company: Dict, months: int) -> int:
     elif not dates:
         pts += SCORE["undated"]
     pts += max(SCORE["signal"].get(s, 0) for s in company["signals"])
-    values = [e["value_millions"] for e in evs if e.get("value_millions") is not None]
+    values = [usd_millions(e["value_millions"], e.get("currency") or "") for e in evs
+              if e.get("value_millions") is not None]
     if values:
         pts += SCORE["value"]
         if max(values) >= SCORE["big_value_millions"]:
@@ -101,12 +104,10 @@ def template(company: Dict, past_work: str) -> Dict[str, str]:
 
 
 def model_config() -> Optional[Dict[str, str]]:
-    endpoint = (os.getenv("AZURE_OPENAI_ENDPOINT") or "").strip().rstrip("/")
-    key = (os.getenv("AZURE_OPENAI_API_KEY") or "").strip()
-    deployment = (os.getenv("AZURE_OPENAI_DEPLOYMENT") or "").strip()
-    if not (endpoint and key and deployment):
+    key = (os.getenv(LLM["key_env"]) or "").strip()
+    if not key:
         return None
-    return {"url": endpoint + LLM["path"], "key": key, "deployment": deployment}
+    return {"key": key, "model": LLM["model"]}
 
 
 def _line(i: int, company: Dict) -> str:
@@ -129,33 +130,44 @@ def _valid(out: Dict, allowed: set) -> bool:
     return (_numbers(why) | _numbers(hook)) <= allowed
 
 
-def _ask(fetcher, cfg: Dict, user: str, rows: int, stats: Dict):
-    body = {"model": cfg["deployment"],
-            "messages": [{"role": "system", "content": LLM["system"]}, {"role": "user", "content": user}],
-            "max_completion_tokens": LLM["tokens_base"] + LLM["tokens_per_row"] * rows,
-            "temperature": LLM["temperature"],
-            "response_format": {"type": "json_object"}}
-    headers = {"api-key": cfg["key"], "Content-Type": "application/json"}
-    status, data = fetcher.post_json(cfg["url"], body, headers=headers, timeout=LLM["timeout_s"])
-    if status == 400 and "temperature" in json.dumps(data or {}):
-        body.pop("temperature")
-        status, data = fetcher.post_json(cfg["url"], body, headers=headers, timeout=LLM["timeout_s"])
-    if status != 200 or not isinstance(data, dict):
-        log.warning("partners: the model answered HTTP %s: %s", status, json.dumps(data or {})[:300])
-        return []
-    usage = data.get("usage") or {}
-    stats["prompt_tokens"] += int(usage.get("prompt_tokens") or 0)
-    stats["completion_tokens"] += int(usage.get("completion_tokens") or 0)
-    stats["model_calls"] += 1
+def _ask(cfg: Dict, user: str, rows: int, stats: Dict) -> List[Dict]:
+    client = anthropic.Anthropic(api_key=cfg["key"], timeout=LLM["timeout_s"], max_retries=LLM["max_retries"])
     try:
-        content = data["choices"][0]["message"]["content"]
-        return json.loads(content).get("r") or []
-    except (KeyError, IndexError, TypeError, ValueError):
-        log.warning("partners: the model reply was not the expected JSON")
+        response = client.messages.create(
+            model=cfg["model"],
+            max_tokens=LLM["tokens_base"] + LLM["tokens_per_row"] * rows,
+            system=LLM["system"],
+            messages=[{"role": "user", "content": user}],
+            thinking={"type": "disabled"},
+            output_config={"effort": LLM["effort"], "format": {"type": "json_schema", "schema": LLM["schema"]}},
+        )
+    except anthropic.AuthenticationError:
+        log.warning("partners: Claude rejected the %s; the templates stay", LLM["key_env"])
+        return []
+    except anthropic.RateLimitError:
+        log.warning("partners: Claude rate limit reached; the templates stay")
+        return []
+    except anthropic.APIStatusError as error:
+        log.warning("partners: Claude answered HTTP %s: %s", error.status_code, str(error.message)[:300])
+        return []
+    except anthropic.APIConnectionError as error:
+        log.warning("partners: Claude did not answer: %s", error)
+        return []
+    stats["prompt_tokens"] += response.usage.input_tokens
+    stats["completion_tokens"] += response.usage.output_tokens
+    stats["model_calls"] += 1
+    if response.stop_reason != "end_turn":
+        log.warning("partners: Claude stopped with %s; the templates stay", response.stop_reason)
+        return []
+    text = next((block.text for block in response.content if block.type == "text"), "")
+    try:
+        return json.loads(text).get("r") or []
+    except ValueError:
+        log.warning("partners: the Claude reply was not the expected JSON")
         return []
 
 
-def polish(fetcher, companies: List[Dict], past_work: str, cache: Dict, stats: Dict) -> None:
+def polish(companies: List[Dict], past_work: str, cache: Dict, stats: Dict) -> None:
     cfg = model_config()
     if not cfg:
         log.info("partners: no model configured; the templates stay")
@@ -177,7 +189,7 @@ def polish(fetcher, companies: List[Dict], past_work: str, cache: Dict, stats: D
         return
     user = (f"Our past work: {past_work or 'none given'}\n"
             "Rows (i|company|type|signal|value|agency|month|fields):\n" + "\n".join(lines[i] for i in todo))
-    answers = {a.get("i"): a for a in _ask(fetcher, cfg, user, len(todo), stats) if isinstance(a, dict)}
+    answers = {a.get("i"): a for a in _ask(cfg, user, len(todo), stats) if isinstance(a, dict)}
     for i in todo:
         out = answers.get(i)
         if not out:

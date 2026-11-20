@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 from ..custom_search import CUSTOM_SEARCH
 from .config import PARTNERS
 from .extract import (clean_company, client_agency, display_name, enrich_from_page, evidence_from,
-                      evidence_from_site, find_sectors, format_value, has_word, is_public_site, short_name,
+                      evidence_from_site, find_sectors, format_value, has_word, is_public_site, short_name, usd_millions,
                       without_name)
 from .resolve import find_domain, find_people, find_size, find_size_web, merge, parent_name, size_fit
 from .sources import SearchCache, cached_search, gebiz_awards, search_apis, usaspending_awards
@@ -151,7 +151,8 @@ def _by_size(companies: List[Dict], apis, fetcher, scache, spec: Dict, stats: Di
             c["sizeFit"] = "no"
         if c["sizeFit"] == "unknown" and len(c["evidence"]) >= PARTNERS["size"]["many_awards"]:
             c["sizeFit"] = "no"
-        top = max((e.get("value_millions") or 0 for e in c["evidence"]), default=0)
+        top = max((usd_millions(e.get("value_millions"), e.get("currency") or "") for e in c["evidence"]),
+                  default=0)
         if top >= PARTNERS["size"]["sme_award_max_millions"]:
             c["sizeFit"] = "no"
         if c["size"].get("high") is not None and c["size"]["high"] <= PARTNERS["size"]["sme_max"]:
@@ -286,5 +287,5 @@ def _run(settings, fetcher, spec: Dict, cache: Dict, stats: Dict) -> List[Dict]:
     for c in companies:
         c.update(template(c, spec["pastWork"]), polished=False)
     if spec["useModel"] and model_config():
-        polish(fetcher, companies, spec["pastWork"], cache, stats)
+        polish(companies, spec["pastWork"], cache, stats)
     return [public_row(c) for c in companies]

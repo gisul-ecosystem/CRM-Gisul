@@ -28,12 +28,21 @@ AWARDS_COMPANY = re.compile(
 SUFFIX_COMPANY = re.compile(rf"\b((?:{WORD}\s+){{0,4}}{WORD}(?:\s+\(\w+\))?(?:\s+{SUFFIX}){{1,2}})(?![A-Za-z])")
 SITE_TAIL = re.compile(r"\s+[|\-–—]\s+[^|\-–—]{2,40}$")
 MONEY = re.compile(
-    r"(?<![A-Za-z])(RM|S\$|SGD|USD|US\$|AED|Dhs?|\$)\s?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s?"
-    r"(billion|bil|bln|million|mil|mln|mn|b|m|k)?(?![A-Za-z])", re.I)
-UNITS = {"billion": 1000, "bil": 1000, "bln": 1000, "b": 1000, "million": 1, "mil": 1, "mln": 1, "mn": 1, "m": 1,
-         "k": 0.001}
+    r"(?<![A-Za-z])(RM|S\$|SGD|USD|US\$|AED|Dhs?|A\$|AUD|INR|Rs\.?|₹|SAR|QAR|QR|Rp\.?|IDR|THB|\$)\s?"
+    r"(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s?"
+    r"(trillion|triliun|billion|miliar|bil|bln|million|juta|mil|mln|mn|crore|cr|lakh|tn|b|m|k)?(?![A-Za-z])",
+    re.I)
+UNITS = {"trillion": 1_000_000, "triliun": 1_000_000, "tn": 1_000_000, "billion": 1000, "miliar": 1000,
+         "bil": 1000, "bln": 1000, "b": 1000, "million": 1, "juta": 1, "mil": 1, "mln": 1, "mn": 1, "m": 1,
+         "crore": 10, "cr": 10, "lakh": 0.1, "k": 0.001}
 CURRENCY = {"rm": "RM", "s$": "S$", "sgd": "S$", "usd": "US$", "us$": "US$", "aed": "AED", "dh": "AED",
-            "dhs": "AED"}
+            "dhs": "AED", "a$": "A$", "aud": "A$", "inr": "₹", "rs": "₹", "rs.": "₹", "₹": "₹", "sar": "SAR",
+            "qar": "QAR", "qr": "QAR", "rp": "Rp", "rp.": "Rp", "idr": "Rp", "thb": "THB"}
+
+
+def usd_millions(value_millions, currency: str) -> float:
+    rate = PARTNERS["size"]["usd_per_unit"].get(currency or "", 1)
+    return (value_millions or 0) * rate
 
 
 def _currency(symbol: str, country: str) -> str:
@@ -103,7 +112,17 @@ def clean_company(raw: str, country: str = "") -> str:
         return ""
     if any(has_word(name, w) for w in COMPANY["gov_words"]) or re.match(COMPANY["gov_acronym"], name):
         return ""
+    if words[0].lower() in COMPANY["verb_starts"]:
+        return ""
+    if _starts_with_place(name) and not re.search(COMPANY["legal_form"], name, re.I):
+        return ""
     return name
+
+
+def _starts_with_place(name: str) -> bool:
+    low = name.lower()
+    places = [p for c in PARTNERS["countries"].values() for p in c["places"]] + list(PARTNERS["other_places"])
+    return any(re.match(rf"{re.escape(p)}(?![a-z0-9])", low) for p in places)
 
 
 def find_company(title: str, snippet: str, country: str = "") -> str:
@@ -119,6 +138,11 @@ def find_company(title: str, snippet: str, country: str = "") -> str:
                     return name
     for text in (head, snippet or ""):
         for m in SUFFIX_COMPANY.finditer(text):
+            before = text[:m.start()].split()
+            prev = before[-1].lower() if before else ""
+            legal = re.search(COMPANY["legal_form"], m.group(1), re.I)
+            if prev in COMPANY["verb_starts"] or (prev in COMPANY["suffix_skip_after"] and not legal):
+                continue
             name = clean_company(m.group(1), country)
             if name:
                 return name

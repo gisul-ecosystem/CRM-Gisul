@@ -73,10 +73,8 @@ TEXTS = {
     "USER_AGENT": "Bot name and contact (User-Agent)",
     "REACHER_URL": "Reacher URL (empty = MX check only)",
     "RUN_AT": "Daily run time, HH:MM (empty = off; Docker uses this, a plain server uses cron)",
-    "AZURE_OPENAI_ENDPOINT": "Azure OpenAI endpoint for partner research wording (empty = templates only)",
-    "AZURE_OPENAI_DEPLOYMENT": "Azure OpenAI deployment for partner research, e.g. gpt-4o-mini",
 }
-MODEL_KEYS = ("AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_DEPLOYMENT", "AZURE_OPENAI_API_KEY")
+MODEL_KEYS = ("ANTHROPIC_API_KEY",)
 SEARCH_KEYS = ("SERPER_API_KEY", "TAVILY_API_KEY", "BRAVE_API_KEY")
 # Each tab of the page is one profile (profile.py): its own data, settings, sources and rules.
 TRAINING_FLAGS = {  # target countries only: always on for this profile, so not a checkbox
@@ -110,7 +108,7 @@ SECRETS = {"GITHUB_TOKEN": "GitHub token",
            "SERPER_API_KEY": "Serper API key (training search: 2,500 free searches, no card)",
            "TAVILY_API_KEY": "Tavily API key (training search: 1,000 free a month, no card)",
            "BRAVE_API_KEY": "Brave Search API key (people search; also training search if no Serper/Tavily key)",
-           "AZURE_OPENAI_API_KEY": "Azure OpenAI key (partner research wording; empty = templates only)",
+           "ANTHROPIC_API_KEY": "Claude API key (partner research wording with Claude Haiku; empty = templates only)",
            "UNIFERS_API_KEY": "Unifers API key (partner research: email and phone from a contact's LinkedIn URL; spends credits)"}
 DEFAULTS = {"MAX_AGE_YEARS": "5", "MAX_TEAM_SIZE": "50", "BATCH_SIZE": "200", "MIN_SCORE": "5",
             "DOMAIN_DELAY": "3", "SEARCH_MAX_PER_RUN": "30", "MAX_PEOPLE": "5", "ROUND_SIZE": "200", "WORKERS": "6", "SEARCH_DISCOVERY_PER_RUN": "40", "MAPS_PER_RUN": "40"}  # same as config.py, for an older .env without these lines
@@ -118,7 +116,7 @@ LISTS = {"SEGMENTS": list(SEGMENTS), "SKIP_SOURCES": SOURCES, "EARLY_EXEMPT_SEGM
          "COUNTRIES": list(COUNTRIES)}
 OTHER_COUNTRY = "Other / unknown"  # filter choice: rows whose country is none of COUNTRIES
 SETTING_KEYS = set(FLAGS) | set(TRAINING_FLAGS) | set(COMPETITORS_FLAGS) | set(NUMBERS) | set(TEXTS) | set(SECRETS) | set(LISTS)
-SHARED_KEYS = {"USER_AGENT", "REACHER_URL", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_DEPLOYMENT"} | set(SECRETS)  # edited on the GPU tab, used by both tabs
+SHARED_KEYS = {"USER_AGENT", "REACHER_URL"} | set(SECRETS)  # edited on the GPU tab, used by both tabs
 STARTUP_NUMBERS = {"MAX_AGE_YEARS", "MAX_TEAM_SIZE"}  # early-stage limits: GPU tab only
 TRAINING_NUMBERS = set()  # (search discovery is on both tabs now, each with its own value)
 

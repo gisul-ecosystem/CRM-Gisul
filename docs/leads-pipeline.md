@@ -257,15 +257,21 @@ python -m leads.web               # http://127.0.0.1:8501
 
 and set `LEADS_PIPELINE_URL="http://127.0.0.1:8501"` in the CRM's `.env`.
 
-## Gulf countries
+## Countries
 
-`leads/geo.py` lists six Gulf countries: United Arab Emirates, Saudi Arabia, Qatar, Kuwait,
-Bahrain and Oman (`GULF`). Each has its domain ending, phone code, cities, places (English and
-Arabic) and company-registration markers (FZ-LLC, DMCC, a Saudi C.R. number, QFC, K.S.C., B.S.C. (c),
-SAOG). Pick them in the Countries choice of a run. Search, Maps and Custom search then query their
+Every lead generation pipeline (GPU, Training, Competitor clients and Partner research) offers the
+same 10 countries: India, Malaysia, Singapore, Thailand, Indonesia, United Arab Emirates, Saudi
+Arabia, Qatar, Australia and United States. Each pipeline keeps its own default selection.
+
+`leads/geo.py` (`COUNTRIES`) holds them for the GPU, Training and Competitor profiles. Each has its
+domain ending, phone code, cities, places (English and Arabic for the Gulf) and
+company-registration markers (FZ-LLC, DMCC, a Saudi C.R. number, QFC, an Australian ABN or Pty
+Ltd, a US EIN or Delaware corporation). `GULF` is United Arab Emirates, Saudi Arabia and Qatar.
+Pick them in the Countries choice of a run. Search, Maps and Custom search then query their
 cities, and the country check reads `.ae`, `+971` and the other markers.
 
-`GULF_SKIP` in `sources/search.py` drops Gulf job boards, news sites and directories. The GPU
+`GULF_SKIP` in `sources/search.py` drops Gulf job boards, news sites and directories;
+`AU_US_SKIP` does the same for Australia and the United States. The GPU
 profile also reads two Gulf incubators in `incubators.csv`: in5 (plain HTML) and Hub71 (needs
 `RENDER_JS=1`). Both use `india=check`, so each startup's own site decides its country.
 
@@ -353,8 +359,9 @@ Every number and word list is in `leads/partners/config.py` (`PARTNERS`).
 spec -> searches + GeBIZ -> facts -> merge -> score -> website + person -> wording
 ```
 
-1. **Spec.** The form sends countries (a multi-select: Malaysia, Singapore, United States,
-   United Arab Emirates), fields (AI, cloud, data engineering, application development,
+1. **Spec.** The form sends countries (a multi-select of the 10 countries above; each has its
+   own news sites, agencies, currency and query words in `PARTNERS.countries`; only Singapore
+   (GeBIZ) and the United States (USAspending) have a free awards dataset), fields (AI, cloud, data engineering, application development,
    Microsoft), signals, a time window and one sentence of past work. `partners/spec.py` builds
    at most 40 searches from fixed templates. Each country has its own news sites, agencies,
    currency, government word ("ministry", "federal agency") and award phrase
@@ -426,8 +433,10 @@ spec -> searches + GeBIZ -> facts -> merge -> score -> website + person -> wordi
    credits spent show on the run (`unifersCredits`). Add to CRM contacts then sends the email and
    phone with the person.
 7. **Wording.** Each row gets a template "why" and opening line. With "Improve the wording" on
-   and the Azure OpenAI endpoint, deployment and key set on Settings (GPU leads tab), one call
-   rewrites the top 10 rows. The model sees one short line per row, never page text. A reply
+   and `ANTHROPIC_API_KEY` set on Settings (GPU leads tab), one Claude call rewrites the top 10
+   rows. The model is Claude Haiku (`claude-haiku-5-5`, `PARTNERS.llm.model`), the lowest-cost
+   Claude model, at effort `low` with thinking off and a JSON schema for the reply, through the
+   `anthropic` Python SDK. The model sees one short line per row, never page text. A reply
    with a number that is not in the facts is thrown away and the template stays. Each row is
    sent once: the answer, or the refusal, is cached.
 

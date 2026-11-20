@@ -107,11 +107,21 @@ GULF_SKIP = {
 }
 
 
+# Australian and US job boards, directories, news and marketplaces (both profiles)
+AU_US_SKIP = {
+    "seek.com.au", "indeed.com", "indeed.com.au", "glassdoor.com", "glassdoor.com.au", "jora.com",
+    "yellowpages.com", "yellowpages.com.au", "truelocal.com.au", "yelp.com", "bbb.org", "crunchbase.com",
+    "clutch.co", "goodfirms.co", "builtin.com", "wellfound.com", "angel.co", "techcrunch.com", "forbes.com",
+    "itnews.com.au", "afr.com", "smh.com.au", "startupdaily.net", "smartcompany.com.au", "amazon.com",
+    "ebay.com", "ebay.com.au", "gumtree.com.au", "upwork.com", "fiverr.com", "ziprecruiter.com",
+}
+
+
 def _lists(profile: str):
     """(cities, topics, skip) for a profile."""
     if profile == "training":
-        return training.CITIES, training.TOPICS, training.SEARCH_SKIP | SEA_SKIP | GULF_SKIP
-    return GPU_CITIES, GPU_TOPICS, GPU_SKIP | SEA_SKIP | GULF_SKIP
+        return training.CITIES, training.TOPICS, training.SEARCH_SKIP | SEA_SKIP | GULF_SKIP | AU_US_SKIP
+    return GPU_CITIES, GPU_TOPICS, GPU_SKIP | SEA_SKIP | GULF_SKIP | AU_US_SKIP
 
 
 def target_cities(india_cities: List[str], countries=("India",)) -> List[str]:
@@ -133,7 +143,7 @@ def query_country(q: str) -> str:
 
 
 # Brave serves results by country only for some countries; the rest search everywhere
-BRAVE_COUNTRIES = {"IN", "MY", "ID"}
+BRAVE_COUNTRIES = {"IN", "MY", "ID", "AU", "US"}
 
 
 SERPER_URL = "https://google.serper.dev/search"

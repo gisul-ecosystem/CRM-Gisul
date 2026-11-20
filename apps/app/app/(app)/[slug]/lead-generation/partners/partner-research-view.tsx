@@ -502,13 +502,13 @@ function PartnerForm({ overview }: { overview: PartnerOverview }) {
 								onCheckedChange={setUseModel}
 							/>
 							<FieldLabel htmlFor={ids.model}>
-								Improve the wording with the model
+								Improve the wording with Claude Haiku
 							</FieldLabel>
 						</Field>
 						<FieldDescription>
 							{overview.modelReady
 								? "One short call for the top 10 rows. It rewrites only from the facts found; a reply with a new number is thrown away. Rows already written are never sent again."
-								: "Off: set the Azure OpenAI endpoint, deployment and key on the Settings page, GPU leads tab. Without them the rows use templates."}
+								: "Off: set the Claude API key (ANTHROPIC_API_KEY) on the Settings page, GPU leads tab. Without it the rows use templates."}
 						</FieldDescription>
 						<Field orientation="horizontal">
 							<Switch
