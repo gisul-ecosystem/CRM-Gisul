@@ -445,6 +445,16 @@ spec -> searches + GeBIZ -> facts -> merge -> score -> website + person -> wordi
    with a number that is not in the facts is thrown away and the template stays. Each row is
    sent once: the answer, or the refusal, is cached.
 
+**Manual Unifers enrichment** (`partners/manual.py`, `POST /api/partners/enrich`). Each contact
+without both an email and a phone has an **Enrich** button; ticked contacts have **Enrich selected**
+(at most `unifers.manual_max` (20) a request); and each company has a **LinkedIn profile link** box
+with **Add and enrich**, which adds that person to the company and looks them up. The same rules as
+a run apply: only missing fields are asked for, a lookup in the last 30 days is reused at no cost,
+and a known value is never replaced. A person who now works elsewhere is kept and marked "Now works
+at …", not dropped, because a person added by hand is a deliberate choice. The result is written
+back into that run's file, so it shows in the run and in All runs. The key comes from Settings
+(`UNIFERS_API_KEY`) without a restart.
+
 The results list has two toolbar rows (`lib/leads-pipeline/partner-view.ts`). Row one: the run
 (one run, or **All runs**: every company found so far, the newest finding per company, at most
 `limits.all_runs_rows` (500), from `GET /api/partners/results?run=all`), the sort (best match,

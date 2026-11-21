@@ -627,6 +627,7 @@ PARTNERS = {
         "timeout_s": 30,
         "fallback": True,
         "max_people": 20,
+        "manual_max": 20,
         "reveal": {"email": True, "phone": True},
         "use_personal_email": False,
         "repeat_days": 30,

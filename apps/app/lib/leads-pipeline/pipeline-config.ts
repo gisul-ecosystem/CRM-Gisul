@@ -23,6 +23,7 @@ export const LEADS_PIPELINE = {
 	addToCrm: { maxLeads: 200, defaultLeadSource: "COLD_OUTREACH" },
 	partners: {
 		evidenceShown: 3,
+		crmMatchMax: 200,
 		leadSource: "COLD_OUTREACH",
 		leadCategory: "partners",
 		linkedinQueue: {

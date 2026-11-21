@@ -17,6 +17,9 @@ from .config import DEFAULT_COUNTRIES
 from .custom_search import CUSTOM_SEARCH, SpecError, parse_spec, read_history, write_spec
 from .geo import COUNTRIES
 from .partners.config import PARTNERS
+from .partners.manual import EnrichError as PartnerEnrichError
+from .partners.manual import enrich_items as partner_enrich_items
+from .partners.manual import parse_items as parse_partner_enrich_items
 from .partners.spec import SpecError as PartnerSpecError
 from .partners.spec import datasets_for as partner_datasets
 from .partners.spec import parse_spec as parse_partner_spec
@@ -449,7 +452,8 @@ def partner_limits() -> dict:
             "default_companies", "default_months", "default_size")
     return {**{k: PARTNERS["limits"][k] for k in keys},
             "unifers_max_people": PARTNERS["unifers"]["max_people"],
-            "unifers_repeat_days": PARTNERS["unifers"]["repeat_days"]}
+            "unifers_repeat_days": PARTNERS["unifers"]["repeat_days"],
+            "unifers_manual_max": PARTNERS["unifers"]["manual_max"]}
 
 
 
@@ -815,6 +819,26 @@ def create_app(root: Path = ROOT) -> Flask:
     @app.get("/api/partners/log")
     def partner_log():
         return jsonify(running=partners.any_running(), lines=partners.tail())
+
+    @app.post("/api/partners/enrich")
+    def partner_enrich():
+        try:
+            items = parse_partner_enrich_items(body())
+        except PartnerEnrichError as error:
+            raise ApiError(400, "INVALID_ENRICH", str(error))
+        key = read_env(env_path).get("UNIFERS_API_KEY", "").strip()
+        if key:
+            os.environ["UNIFERS_API_KEY"] = key
+        from .config import load_settings
+        from .fetch import Fetcher
+        fetcher = Fetcher(load_settings())
+        try:
+            result = partner_enrich_items(partners.data_dir(), fetcher, items)
+        except PartnerEnrichError as error:
+            raise ApiError(409, "UNIFERS_NOT_SET", str(error))
+        finally:
+            fetcher.close()
+        return jsonify(**result)
 
     @app.post("/api/partners/stop")
     def partner_stop():

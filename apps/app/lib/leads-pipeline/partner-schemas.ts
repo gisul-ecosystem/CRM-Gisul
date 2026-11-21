@@ -55,6 +55,7 @@ export const partnerOverview = z.object({
 		default_size: z.string(),
 		unifers_max_people: z.number().default(0),
 		unifers_repeat_days: z.number().default(0),
+		unifers_manual_max: z.number().default(0),
 	}),
 	runs: z.array(partnerRun),
 });
@@ -75,6 +76,8 @@ const partnerPerson = z.object({
 	email: z.string().default(""),
 	phone: z.string().default(""),
 	enriched: z.boolean().default(false),
+	worksThere: z.boolean().nullable().default(null),
+	added: z.boolean().default(false),
 });
 
 const partnerEvidence = z.object({
@@ -120,6 +123,16 @@ export const partnerResults = z.object({
 	id: z.string(),
 	rows: z.array(partnerRow),
 });
+
+export const partnerEnrichResult = z.object({
+	rows: z.array(partnerRow),
+	credits: z.number(),
+	lookedUp: z.number(),
+	fromCache: z.number(),
+	notes: z.array(z.string()),
+});
+
+export type PartnerEnrichItem = { run: string; key: string; linkedin: string };
 
 export const partnerLog = z.object({
 	running: z.boolean(),
