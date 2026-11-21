@@ -108,6 +108,40 @@ def _lookup(fetcher, url: str, company: Dict, stats: Dict, want: Dict[str, bool]
     return out
 
 
+def enrich_person(fetcher, person: Dict, company: Dict, store: Dict, stats: Dict, limit: int) -> str:
+    want = _missing(person)
+    if not any(want.values()):
+        stats["unifers_skipped"] += 1
+        return "known"
+    url = person["linkedin"]
+    hit = store.get(url)
+    if hit and _fresh(hit):
+        stats["unifers_cached"] += 1
+        outcome = "cached"
+    else:
+        if stats["unifers_people"] >= limit:
+            return "limit"
+        stats["unifers_people"] += 1
+        hit = _lookup(fetcher, url, company, stats, want)
+        if hit is None:
+            return "failed"
+        store[url] = hit
+        outcome = "looked"
+    profile = hit["profile"]
+    person.update(
+        name=profile.get("fullName") or person.get("name") or "",
+        title=profile.get("title") or person.get("title") or "",
+        headline=profile.get("headline", ""),
+        location=profile.get("location", ""),
+        employer=profile.get("employer", ""),
+        worksThere=hit["worksThere"],
+        email=(person.get("email") or "").strip() or hit["email"],
+        phone=(person.get("phone") or "").strip() or hit["phone"],
+        enriched=True,
+    )
+    return outcome
+
+
 def enrich_people(fetcher, companies: List[Dict], cache: Dict, stats: Dict) -> None:
     if not unifers_key():
         log.info("partners: no UNIFERS_API_KEY; contacts stay as found in search")
@@ -116,38 +150,11 @@ def enrich_people(fetcher, companies: List[Dict], cache: Dict, stats: Dict) -> N
     for company in companies:
         kept = []
         for person in company["people"]:
-            kept.append(person)
-            want = _missing(person)
-            if not any(want.values()):
-                stats["unifers_skipped"] += 1
-                continue
-            url = person["linkedin"]
-            hit = store.get(url)
-            if hit and _fresh(hit):
-                stats["unifers_cached"] += 1
-            else:
-                if stats["unifers_people"] >= UNIFERS["max_people"]:
-                    continue
-                stats["unifers_people"] += 1
-                hit = _lookup(fetcher, url, company, stats, want)
-                if hit is None:
-                    continue
-                store[url] = hit
-            profile = hit["profile"]
-            person.update(
-                name=profile.get("fullName") or person["name"],
-                title=profile.get("title") or person["title"],
-                headline=profile.get("headline", ""),
-                location=profile.get("location", ""),
-                employer=profile.get("employer", ""),
-                worksThere=hit["worksThere"],
-                email=(person.get("email") or "").strip() or hit["email"],
-                phone=(person.get("phone") or "").strip() or hit["phone"],
-                enriched=True,
-            )
-            if hit["worksThere"] is False:
-                kept.pop()
+            outcome = enrich_person(fetcher, person, company, store, stats, UNIFERS["max_people"])
+            if outcome in ("looked", "cached") and person.get("worksThere") is False:
                 stats["unifers_moved"] += 1
+                continue
+            kept.append(person)
         company["people"] = kept
     log.info("partners: Unifers: %d people looked up, %d from cache, %d skipped (email and phone known), "
              "%d credits", stats["unifers_people"], stats["unifers_cached"], stats["unifers_skipped"],

@@ -390,6 +390,7 @@ export const contactMatchLeadsInput = z.object({
 				fullName: z.string().trim().default(""),
 				email: z.string().trim().default(""),
 				domain: z.string().trim().default(""),
+				linkedinUrl: z.string().trim().default(""),
 			}),
 		)
 		.max(CONTACT_IO.leads.maxRows),

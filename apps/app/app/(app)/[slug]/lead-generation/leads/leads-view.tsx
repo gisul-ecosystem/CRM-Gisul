@@ -297,6 +297,7 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 					fullName: row.full_name,
 					email: row.email,
 					domain: row.domain,
+					linkedinUrl: row.linkedin_url,
 				})),
 			},
 			{ enabled: rows.length > 0, placeholderData: keepPreviousData },

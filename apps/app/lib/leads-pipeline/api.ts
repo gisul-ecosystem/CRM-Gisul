@@ -4,7 +4,9 @@ import {
 	pipelineJson,
 } from "./client";
 import {
+	type PartnerEnrichItem,
 	type PartnerSearchInput,
+	partnerEnrichResult,
 	partnerLog,
 	partnerOverview,
 	partnerPreview,
@@ -128,6 +130,11 @@ export const partnersApi = {
 	log: () => pipelineJson("/partners/log", partnerLog),
 	stop: () =>
 		pipelineJson("/partners/stop", okMessage, { method: "POST", json: {} }),
+	enrich: (items: PartnerEnrichItem[]) =>
+		pipelineJson("/partners/enrich", partnerEnrichResult, {
+			method: "POST",
+			json: { items },
+		}),
 };
 
 export const settingsApi = {

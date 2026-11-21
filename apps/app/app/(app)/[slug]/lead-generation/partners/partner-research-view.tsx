@@ -35,11 +35,12 @@ import {
 } from "@crm/ui/components/select";
 import { SimpleTable, SimpleTableRow } from "@crm/ui/components/simple-table";
 import { Skeleton } from "@crm/ui/components/skeleton";
+import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { Switch } from "@crm/ui/components/switch";
 import { TableCell } from "@crm/ui/components/table";
 import { Textarea } from "@crm/ui/components/textarea";
 import { LEAD_ORIGIN_LIMITS } from "@crm/validation/lead-origin";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { toast } from "sonner";
@@ -55,6 +56,7 @@ import { LEAD_SOURCE_OPTIONS } from "@/lib/lead-fields";
 import { partnersApi } from "@/lib/leads-pipeline/api";
 import { pipelineKeys, usePipelineCache } from "@/lib/leads-pipeline/cache";
 import type {
+	PartnerEnrichItem,
 	PartnerOverview,
 	PartnerPerson,
 	PartnerRow,
@@ -65,6 +67,7 @@ import {
 	ALL_RUNS,
 	countryOptions,
 	DEFAULT_PARTNER_VIEW,
+	LINKEDIN_PROFILE,
 	PARTNER_CONTACT_FILTERS,
 	PARTNER_SIZE_FILTERS,
 	PARTNER_SORTS,
@@ -160,6 +163,10 @@ function PartnerResearchBody({ overview }: { overview: PartnerOverview }) {
 					onRunChange={setOpenRun}
 					view={view}
 					onViewChange={setView}
+					unifers={{
+						ready: overview.unifersReady,
+						manualMax: overview.limits.unifers_manual_max,
+					}}
 					labels={labels}
 				/>
 			) : null}
@@ -615,6 +622,7 @@ function PartnerResults({
 	onRunChange,
 	view,
 	onViewChange,
+	unifers,
 	labels,
 }: {
 	run: PartnerRun | null;
@@ -623,6 +631,7 @@ function PartnerResults({
 	onRunChange: (run: string) => void;
 	view: PartnerView;
 	onViewChange: (view: PartnerView) => void;
+	unifers: { ready: boolean; manualMax: number };
 	labels: { sectors: Labels; signals: Labels };
 }) {
 	const results = useQuery({
@@ -630,8 +639,51 @@ function PartnerResults({
 		queryFn: () => partnersApi.results(runId),
 	});
 	const trpc = useTRPC();
+	const listed = viewRows(results.data?.rows ?? [], view)
+		.flatMap((row) => row.people.map((person) => ({ row, person })))
+		.slice(0, LEADS_PIPELINE.partners.crmMatchMax);
+	const inCrm = useQuery(
+		trpc.contacts.matchLeads.queryOptions(
+			{
+				leads: listed.map(({ row, person }) => ({
+					key: personKey(row, person),
+					fullName: person.name,
+					email: person.email,
+					domain: row.domain,
+					linkedinUrl: person.linkedin,
+				})),
+			},
+			{ enabled: listed.length > 0, placeholderData: keepPreviousData },
+		),
+	);
+	const crmKeys = new Set(
+		(inCrm.data?.matches ?? []).map((match) => match.key),
+	);
 	const crmCache = useCrmCache();
 	const scraperCache = useScraperCache();
+	const pipelineCache = usePipelineCache();
+	const enrich = useMutation({
+		mutationFn: (items: PartnerEnrichItem[]) => partnersApi.enrich(items),
+		onSuccess: async (result) => {
+			await pipelineCache.partners();
+			const summary = [
+				result.lookedUp > 0 ? `${result.lookedUp} looked up in Unifers` : null,
+				result.fromCache > 0
+					? `${result.fromCache} from earlier lookups`
+					: null,
+				`${result.credits} credits spent`,
+			]
+				.filter(Boolean)
+				.join(" · ");
+			toast.success(
+				summary,
+				result.notes.length > 0
+					? { description: result.notes.join(". ") }
+					: undefined,
+			);
+		},
+		onError: (error) => toast.error(error.message),
+	});
 	const router = useRouter();
 	const workspaceUrl = useWorkspaceUrl();
 	const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -707,8 +759,10 @@ function PartnerResults({
 	const people = rows.flatMap((row) =>
 		row.people.map((person) => ({ row, person })),
 	);
-	const picked = people.filter(({ row, person }) =>
-		selected.has(personKey(row, person)),
+	const picked = people.filter(
+		({ row, person }) =>
+			selected.has(personKey(row, person)) &&
+			!crmKeys.has(personKey(row, person)),
 	);
 	const { maxLeads } = LEADS_PIPELINE.addToCrm;
 
@@ -820,7 +874,8 @@ function PartnerResults({
 					/>
 					<p className="text-muted-foreground text-xs">
 						{shown.length} of {rows.length} companies · {summary.withContacts}{" "}
-						with a contact · {summary.reachable} with email or phone
+						with a contact · {summary.reachable} with email or phone ·{" "}
+						{crmKeys.size} people in CRM
 					</p>
 				</OutreachToolbar>
 				{picked.length > 0 ? (
@@ -837,6 +892,26 @@ function PartnerResults({
 							options={LEAD_SOURCE_OPTIONS}
 							label="Lead source"
 						/>
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={
+								!unifers.ready ||
+								enrich.isPending ||
+								picked.length > unifers.manualMax
+							}
+							onClick={() =>
+								enrich.mutate(
+									picked.map(({ row, person }) => ({
+										run: row.runId || runId,
+										key: row.key,
+										linkedin: person.linkedin,
+									})),
+								)
+							}
+						>
+							{enrich.isPending ? "Enriching…" : "Enrich selected"}
+						</Button>
 						<Button
 							size="sm"
 							disabled={addToCrm.isPending || picked.length > maxLeads}
@@ -955,30 +1030,46 @@ function PartnerResults({
 										</p>
 										{row.people.length === 0 ? (
 											<p className="text-muted-foreground text-xs">
-												No person found in search results.
+												No person found in search results. Add one by their
+												LinkedIn link below.
 											</p>
 										) : (
 											<ul className="flex flex-col gap-3 pt-1">
 												{row.people.map((person) => {
 													const key = personKey(row, person);
+													const added = crmKeys.has(key);
 													return (
 														<li key={key} className="flex items-start gap-2">
 															<Checkbox
-																checked={selected.has(key)}
+																checked={!added && selected.has(key)}
+																disabled={added}
 																onCheckedChange={(checked) =>
 																	toggle(key, checked === true)
 																}
-																aria-label={`Select ${person.name}`}
+																aria-label={
+																	added
+																		? `${person.name} is already in the CRM`
+																		: `Select ${person.name}`
+																}
 															/>
 															<div className="flex min-w-0 flex-1 flex-col gap-1">
-																<a
-																	href={person.linkedin}
-																	target="_blank"
-																	rel="noreferrer"
-																	className="text-sm underline"
-																>
-																	{person.name}
-																</a>
+																<div className="flex flex-wrap items-center gap-2">
+																	<a
+																		href={person.linkedin}
+																		target="_blank"
+																		rel="noreferrer"
+																		className="text-sm underline"
+																	>
+																		{person.name}
+																	</a>
+																	{added ? (
+																		<StatusIndicator
+																			tone="success"
+																			label="In CRM"
+																			size="sm"
+																		/>
+																	) : null}
+																</div>
 																<span className="text-muted-foreground text-xs">
 																	{person.title}
 																</span>
@@ -1014,22 +1105,59 @@ function PartnerResults({
 																		Unifers found no email or phone.
 																	</span>
 																) : null}
+																{person.worksThere === false ? (
+																	<span className="text-destructive text-xs">
+																		Now works at{" "}
+																		{person.employer || "another company"}.
+																	</span>
+																) : null}
 															</div>
-															<Button
-																variant="outline"
-																size="sm"
-																disabled={queue.isPending}
-																onClick={() =>
-																	queue.mutate({ person, hook: row.hook })
-																}
-															>
-																Queue on LinkedIn
-															</Button>
+															<div className="flex flex-col items-stretch gap-1">
+																<Button
+																	variant="outline"
+																	size="sm"
+																	disabled={queue.isPending}
+																	onClick={() =>
+																		queue.mutate({ person, hook: row.hook })
+																	}
+																>
+																	Queue on LinkedIn
+																</Button>
+																{unifers.ready &&
+																!(person.email && person.phone) ? (
+																	<Button
+																		variant="ghost"
+																		size="sm"
+																		disabled={enrich.isPending}
+																		onClick={() =>
+																			enrich.mutate([
+																				{
+																					run: row.runId || runId,
+																					key: row.key,
+																					linkedin: person.linkedin,
+																				},
+																			])
+																		}
+																	>
+																		{enrich.isPending ? "Enriching…" : "Enrich"}
+																	</Button>
+																) : null}
+															</div>
 														</li>
 													);
 												})}
 											</ul>
 										)}
+										{unifers.ready ? (
+											<AddContactByLinkedin
+												disabled={enrich.isPending}
+												onAdd={(linkedin) =>
+													enrich.mutate([
+														{ run: row.runId || runId, key: row.key, linkedin },
+													])
+												}
+											/>
+										) : null}
 									</div>
 									<div className="flex min-w-0 flex-col gap-1">
 										<p className="text-muted-foreground text-xs">
@@ -1057,6 +1185,43 @@ function PartnerResults({
 				)}
 			</CardContent>
 		</Card>
+	);
+}
+
+function AddContactByLinkedin({
+	disabled,
+	onAdd,
+}: {
+	disabled: boolean;
+	onAdd: (linkedin: string) => void;
+}) {
+	const [link, setLink] = useState("");
+	const valid = LINKEDIN_PROFILE.test(link.trim());
+	const add = () => {
+		if (!valid || disabled) return;
+		onAdd(link.trim());
+		setLink("");
+	};
+	return (
+		<div className="flex items-center gap-2 pt-2">
+			<Input
+				value={link}
+				placeholder="LinkedIn profile link"
+				aria-label="LinkedIn profile link of a person to add and enrich"
+				onChange={(event) => setLink(event.target.value)}
+				onKeyDown={(event) => {
+					if (event.key === "Enter") add();
+				}}
+			/>
+			<Button
+				variant="outline"
+				size="sm"
+				disabled={disabled || !valid}
+				onClick={add}
+			>
+				Add and enrich
+			</Button>
+		</div>
 	);
 }
 

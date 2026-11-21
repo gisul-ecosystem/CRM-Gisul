@@ -100,6 +100,17 @@ const PRODUCT_SELECT = {
 const NO_COMPANY = "none";
 const NO_PRODUCT = "none";
 const NO_LEAD_SOURCE = "none";
+const LINKEDIN_PROFILE = /linkedin\.com\/in\/([^/?#]+)/i;
+
+function linkedinSlug(url: string): string | null {
+	const match = LINKEDIN_PROFILE.exec(url);
+	if (!match?.[1]) return null;
+	try {
+		return decodeURIComponent(match[1]).toLowerCase();
+	} catch {
+		return match[1].toLowerCase();
+	}
+}
 const LINKEDIN_ON_FILE_REASON =
 	"Added from Lead generation with a LinkedIn profile on file. Read that profile, then fill the missing work email and mobile with reveal_contact_details";
 
@@ -293,6 +304,7 @@ export class ContactsService {
 				domain: lead.domain
 					? domainFromEmail(`lead@${normalizeDomain(lead.domain) ?? ""}`)
 					: null,
+				linkedin: linkedinSlug(lead.linkedinUrl),
 			};
 		});
 
@@ -303,7 +315,13 @@ export class ContactsService {
 			...new Set(leads.flatMap((lead) => (lead.domain ? [lead.domain] : []))),
 		];
 
-		const [byEmail, companies] = await Promise.all([
+		const slugs = [
+			...new Set(
+				leads.flatMap((lead) => (lead.linkedin ? [lead.linkedin] : [])),
+			),
+		];
+
+		const [byEmail, companies, byLinkedin] = await Promise.all([
 			emails.length > 0
 				? this.db.contact.findMany({
 						where: {
@@ -321,7 +339,28 @@ export class ContactsService {
 						select: { id: true, domain: true },
 					})
 				: [],
+			slugs.length > 0
+				? this.db.contact.findMany({
+						where: {
+							archivedAt: null,
+							OR: slugs.map((slug) => ({
+								linkedinUrl: {
+									contains: `/in/${slug}`,
+									mode: "insensitive" as const,
+								},
+							})),
+						},
+						select: { id: true, linkedinUrl: true },
+					})
+				: [],
 		]);
+
+		const contactByLinkedin = new Map(
+			byLinkedin.flatMap((row) => {
+				const slug = linkedinSlug(row.linkedinUrl ?? "");
+				return slug ? [[slug, row.id] as const] : [];
+			}),
+		);
 
 		const contactByEmail = new Map(
 			byEmail.map((row) => [row.email?.toLowerCase() ?? "", row.id]),
@@ -371,7 +410,11 @@ export class ContactsService {
 			]),
 		);
 
-		const matches = [
+		const found = [
+			...leads.flatMap((lead) => {
+				const contactId = lead.linkedin && contactByLinkedin.get(lead.linkedin);
+				return contactId ? [{ key: lead.key, contactId }] : [];
+			}),
 			...leads.flatMap((lead) => {
 				const contactId = lead.email && contactByEmail.get(lead.email);
 				return contactId ? [{ key: lead.key, contactId }] : [];
@@ -382,6 +425,9 @@ export class ContactsService {
 				);
 				return contactId ? [{ key: lead.key, contactId }] : [];
 			}),
+		];
+		const matches = [
+			...new Map(found.map((match) => [match.key, match])).values(),
 		];
 
 		return { matches };
