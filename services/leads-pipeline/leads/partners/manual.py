@@ -11,7 +11,6 @@ from .unifers import enrich_person, unifers_key
 log = logging.getLogger("leads.partners")
 UNIFERS = PARTNERS["unifers"]
 PROFILE = re.compile(r"^(?:https?://)?(?:[a-z]{2,3}\.)?linkedin\.com/in/([^/?#\s]+)/?(?:[?#].*)?$", re.I)
-SLUG_TAIL = re.compile(r"(?:-[0-9a-z]*\d[0-9a-z]*)+$", re.I)
 OUTCOME_MESSAGE = {
     "known": "already has an email and a phone",
     "limit": "was not looked up: the limit for one request is reached",
@@ -28,11 +27,6 @@ def profile_url(raw: str) -> str:
     if not m:
         raise EnrichError("Give a LinkedIn profile link, like https://www.linkedin.com/in/jane-tan.")
     return f"https://www.linkedin.com/in/{m.group(1)}"
-
-
-def _name_from(url: str) -> str:
-    slug = url.rstrip("/").rsplit("/", 1)[-1]
-    return " ".join(w.capitalize() for w in SLUG_TAIL.sub("", slug).split("-") if w)
 
 
 def parse_items(data: Dict) -> List[Dict[str, str]]:
@@ -52,13 +46,11 @@ def parse_items(data: Dict) -> List[Dict[str, str]]:
     return out
 
 
-def _person(row: Dict, url: str) -> Dict:
+def _person(row: Dict, url: str) -> Optional[Dict]:
     for person in row.get("people") or []:
         if (person.get("linkedin") or "").rstrip("/").lower() == url.lower():
             return person
-    person = {"name": _name_from(url), "title": "", "linkedin": url, "added": True}
-    row.setdefault("people", []).append(person)
-    return person
+    return None
 
 
 def enrich_items(base: Path, fetcher, items: List[Dict[str, str]]) -> Dict:
@@ -85,6 +77,9 @@ def enrich_items(base: Path, fetcher, items: List[Dict[str, str]]) -> Dict:
             notes.append(f"{item['linkedin']}: the company is not in that run")
             continue
         person = _person(row, item["linkedin"])
+        if person is None:
+            notes.append(f"{item['linkedin']}: not a contact of {row.get('company') or 'that company'}")
+            continue
         company = {"company": row.get("company") or "", "domain": row.get("domain") or ""}
         outcome = enrich_person(fetcher, person, company, store, stats, UNIFERS["manual_max"])
         if outcome in OUTCOME_MESSAGE:
