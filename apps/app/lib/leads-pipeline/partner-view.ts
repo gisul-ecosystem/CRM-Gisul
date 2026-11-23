@@ -1,8 +1,6 @@
 import type { PartnerRow } from "@/lib/leads-pipeline/partner-schemas";
 
 export const ALL_RUNS = "all";
-export const LINKEDIN_PROFILE =
-	/^(?:https?:\/\/)?(?:[a-z]{2,3}\.)?linkedin\.com\/in\/[^/?#\s]+\/?(?:[?#]\S*)?$/i;
 export const ANY = "any";
 
 export const PARTNER_SORTS = [

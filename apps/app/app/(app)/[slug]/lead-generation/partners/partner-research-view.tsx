@@ -67,7 +67,6 @@ import {
 	ALL_RUNS,
 	countryOptions,
 	DEFAULT_PARTNER_VIEW,
-	LINKEDIN_PROFILE,
 	PARTNER_CONTACT_FILTERS,
 	PARTNER_SIZE_FILTERS,
 	PARTNER_SORTS,
@@ -1030,8 +1029,7 @@ function PartnerResults({
 										</p>
 										{row.people.length === 0 ? (
 											<p className="text-muted-foreground text-xs">
-												No person found in search results. Add one by their
-												LinkedIn link below.
+												No person found in search results.
 											</p>
 										) : (
 											<ul className="flex flex-col gap-3 pt-1">
@@ -1124,6 +1122,7 @@ function PartnerResults({
 																	Queue on LinkedIn
 																</Button>
 																{unifers.ready &&
+																!person.enriched &&
 																!(person.email && person.phone) ? (
 																	<Button
 																		variant="ghost"
@@ -1139,7 +1138,13 @@ function PartnerResults({
 																			])
 																		}
 																	>
-																		{enrich.isPending ? "Enriching…" : "Enrich"}
+																		{enrich.isPending &&
+																		enrich.variables?.some(
+																			(item) =>
+																				item.linkedin === person.linkedin,
+																		)
+																			? "Enriching…"
+																			: "Enrich"}
 																	</Button>
 																) : null}
 															</div>
@@ -1148,16 +1153,6 @@ function PartnerResults({
 												})}
 											</ul>
 										)}
-										{unifers.ready ? (
-											<AddContactByLinkedin
-												disabled={enrich.isPending}
-												onAdd={(linkedin) =>
-													enrich.mutate([
-														{ run: row.runId || runId, key: row.key, linkedin },
-													])
-												}
-											/>
-										) : null}
 									</div>
 									<div className="flex min-w-0 flex-col gap-1">
 										<p className="text-muted-foreground text-xs">
@@ -1185,43 +1180,6 @@ function PartnerResults({
 				)}
 			</CardContent>
 		</Card>
-	);
-}
-
-function AddContactByLinkedin({
-	disabled,
-	onAdd,
-}: {
-	disabled: boolean;
-	onAdd: (linkedin: string) => void;
-}) {
-	const [link, setLink] = useState("");
-	const valid = LINKEDIN_PROFILE.test(link.trim());
-	const add = () => {
-		if (!valid || disabled) return;
-		onAdd(link.trim());
-		setLink("");
-	};
-	return (
-		<div className="flex items-center gap-2 pt-2">
-			<Input
-				value={link}
-				placeholder="LinkedIn profile link"
-				aria-label="LinkedIn profile link of a person to add and enrich"
-				onChange={(event) => setLink(event.target.value)}
-				onKeyDown={(event) => {
-					if (event.key === "Enter") add();
-				}}
-			/>
-			<Button
-				variant="outline"
-				size="sm"
-				disabled={disabled || !valid}
-				onClick={add}
-			>
-				Add and enrich
-			</Button>
-		</div>
 	);
 }
 
