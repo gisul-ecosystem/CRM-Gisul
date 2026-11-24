@@ -97,6 +97,21 @@ export const leadsApi = {
 				})),
 			},
 		}),
+	remove: (
+		profile: LeadProfile,
+		leads: readonly Pick<Lead, "domain" | "full_name" | "email">[],
+	) =>
+		pipelineJson("/leads/delete", rejectResult, {
+			method: "POST",
+			json: {
+				profile,
+				leads: leads.map(({ domain, full_name, email }) => ({
+					domain,
+					full_name,
+					email,
+				})),
+			},
+		}),
 	download: (profile: LeadProfile, filters: LeadFilters) =>
 		downloadFromPipeline("/download", filterQuery(profile, filters)),
 };

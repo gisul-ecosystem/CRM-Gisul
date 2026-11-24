@@ -5,6 +5,7 @@ export const LEADS_PIPELINE = {
 	proxy: {
 		crmPrefix: "/api/leads-pipeline",
 		upstreamPrefix: "/api",
+		adminOnly: [{ method: "POST", path: "/api/leads/delete" }],
 	},
 	viewer: {
 		page: "vnc_lite.html",

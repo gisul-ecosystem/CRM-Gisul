@@ -393,6 +393,17 @@ class Store:
             self.df = self.df[keep].astype(object).reset_index(drop=True)
         return dropped
 
+    def drop_people(self, keys) -> int:
+        wanted = set(keys)
+        if not wanted or self.df.empty:
+            return 0
+        keep = [person_reject_key(d, n, e) not in wanted for d, n, e in
+                zip(self.df["domain"], self.df["full_name"], self.df["email"])]
+        dropped = len(keep) - sum(keep)
+        if dropped:
+            self.df = self.df[keep].astype(object).reset_index(drop=True)
+        return dropped
+
     def is_rejected(self, domain: str) -> bool:
         return domain in self.state["rejected"]
 

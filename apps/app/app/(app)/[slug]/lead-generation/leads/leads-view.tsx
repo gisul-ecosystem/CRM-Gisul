@@ -1,5 +1,6 @@
 "use client";
 
+import TrashCan from "@carbon/icons-react/es/TrashCan";
 import { Button } from "@crm/ui/components/button";
 import { Checkbox } from "@crm/ui/components/checkbox";
 import { DatePicker } from "@crm/ui/components/date-picker";
@@ -10,6 +11,7 @@ import {
 	EmptyTitle,
 } from "@crm/ui/components/empty";
 import { Field, FieldLabel } from "@crm/ui/components/field";
+import { Icon } from "@crm/ui/components/icon";
 import { SimpleTable, SimpleTableRow } from "@crm/ui/components/simple-table";
 import { Skeleton } from "@crm/ui/components/skeleton";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
@@ -190,6 +192,23 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 	const pipelineCache = usePipelineCache();
 	const [rejecting, setRejecting] = useState<RejectScope | null>(null);
 	const [unifersOpen, setUnifersOpen] = useState(false);
+	const [deleting, setDeleting] = useState(false);
+	const workspace = useQuery(trpc.workspace.get.queryOptions());
+	const isAdmin = workspace.data?.canChangeRoles ?? false;
+	const remove = useMutation({
+		mutationFn: (picked: Lead[]) => leadsApi.remove(status.profile, picked),
+		onSuccess: async (result, picked) => {
+			toast.success(result.message);
+			setDeleting(false);
+			setSelected((current) => {
+				const next = new Map(current);
+				for (const row of picked) next.delete(leadKey(row));
+				return next;
+			});
+			await pipelineCache.run(status.profile);
+		},
+		onError: (error) => toast.error(error.message),
+	});
 	const reject = useMutation({
 		mutationFn: (scope: RejectScope) =>
 			leadsApi.reject(
@@ -473,9 +492,24 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 						Reject companies
 					</Button>
 					<Button
+						variant="outline"
+						size="sm"
+						disabled={!isAdmin || remove.isPending || status.running}
+						title={
+							isAdmin
+								? undefined
+								: "Only an owner or an admin can delete leads."
+						}
+						onClick={() => setDeleting(true)}
+					>
+						Delete {selected.size}
+					</Button>
+					<Button
 						variant="ghost"
 						size="sm"
-						disabled={addToCrm.isPending || reject.isPending}
+						disabled={
+							addToCrm.isPending || reject.isPending || remove.isPending
+						}
 						onClick={() => setSelected(new Map())}
 					>
 						Clear selection
@@ -530,6 +564,9 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 						{ id: "intent", header: "Intent" },
 						{ id: "found", header: "Found" },
 						{ id: "score", header: "Score", align: "right" },
+						...(isAdmin
+							? [{ id: "actions", srLabel: "Delete", width: "w-12" }]
+							: []),
 					]}
 				>
 					{rows.map((row) => (
@@ -606,6 +643,23 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 								{row.score || "—"}
 								{row.ready === "yes" ? " · ready" : ""}
 							</TableCell>
+							{isAdmin ? (
+								<TableCell
+									className="px-3"
+									onClick={(event) => event.stopPropagation()}
+								>
+									<Button
+										variant="ghost"
+										size="icon-sm"
+										aria-label={`Delete ${row.full_name || row.company || row.domain}`}
+										title="Delete this lead"
+										disabled={remove.isPending || status.running}
+										onClick={() => remove.mutate([row])}
+									>
+										<Icon icon={TrashCan} />
+									</Button>
+								</TableCell>
+							) : null}
 						</SimpleTableRow>
 					))}
 				</SimpleTable>
@@ -656,6 +710,16 @@ function LeadsBody({ status }: { status: ProfileStatus }) {
 					if (rejecting) reject.mutate(rejecting);
 				}}
 				onClose={() => setRejecting(null)}
+			/>
+
+			<ConfirmDialog
+				open={deleting}
+				title={`Delete ${selected.size} lead${selected.size === 1 ? "" : "s"}?`}
+				description="These rows leave the sheet. This cannot be undone here, but a later run can find them again. To keep them out for good, use Reject instead."
+				action="Delete"
+				pending={remove.isPending}
+				onConfirm={() => remove.mutate([...selected.values()])}
+				onClose={() => setDeleting(false)}
 			/>
 		</div>
 	);

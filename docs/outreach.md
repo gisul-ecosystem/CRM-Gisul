@@ -69,6 +69,17 @@ browser ──► CRM app /api/outreach/<path>          (apps/app/app/api/outrea
 | Replies | `/incoming-emails/*` |
 | Sending setup: inboxes, domains, providers | `/inboxes/*`, `/domains/*`, `/providers/*` |
 
+**Add contact** on Audiences → Contacts adds one person to a list. The engine has
+no single-contact create in the CRM's API map, so the dialog builds a one-row CSV
+(`lib/outreach/single-contact.ts`) and sends it through `/contacts/import/confirm`
+with a fixed column mapping. The import report says whether the person was new,
+already a contact (details updated), suppressed or invalid. The list picker starts
+on the list the tab is filtered to.
+Lists do not store their columns, so the form reads up to 100 of the list's
+contacts and shows one input per custom field they use (`listColumns`), most used
+first. Only filled cells are sent, so adding an existing contact never blanks a
+field it already has.
+
 ## Running it
 
 Both compose files start the engine as `outreach-mongo`, `outreach-setup`,

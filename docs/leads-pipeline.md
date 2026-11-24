@@ -113,6 +113,13 @@ unreachable). The view files stay in their old folders. Every old address
   `state.json` `rejected_people`; `Store.save` drops them again, so a later run
   cannot bring them back) or `company` (drops every row and adds the domain to
   `rejected`, which discovery skips). It answers `409` while a run is going.
+- **Owners and admins delete leads.** `POST /leads/delete` with `leads`
+  (domain, full name, email) drops only those rows (`Store.drop_people`) and
+  remembers nothing, so a later run can find them again. The CRM proxy answers
+  `403` to a member (`LEADS_PIPELINE.proxy.adminOnly`), and the Leads page
+  disables the Delete button for them. Admins also get a trash icon on each
+  row that deletes that one lead at once, with no confirm. It answers `409`
+  while a run is going.
   "Select no valid email (this page)" ticks rows with no email or one not
   verified valid.
 - **Leads become CRM contacts by selection.** Tick rows on the Leads page (the
