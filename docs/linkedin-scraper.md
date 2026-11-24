@@ -230,13 +230,25 @@ generation section" in `docs/leads-pipeline.md`. Old `/linkedin/*` addresses red
 
 ## Running it
 
-Both compose files start the scraper as `linkedin-mongo` and `linkedin-scraper`,
-under the `linkedin` profile: `COMPOSE_PROFILES=outreach,linkedin` in `.env`, or
-`docker compose --profile linkedin up -d`.
+Both compose files start the scraper as `linkedin-scraper`, under the `linkedin`
+profile: `COMPOSE_PROFILES=outreach,linkedin` in `.env`, or
+`docker compose --profile linkedin up -d`. It stores its data in the shared
+`outreach-mongo` container (Mongo 8.0), in its own database `linkedin_scrapper`;
+the Outreach Engine uses the database `outreach` in the same container. That
+container starts under either profile.
 
 - **The scraper reads `./linkedin-scraper.env`, not the CRM's `.env`.** Put
   `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) there, and the sending limits.
-- **`MONGODB_URI` is always the `linkedin-mongo` container.** Compose sets it.
+- **`MONGODB_URI` is always the shared `outreach-mongo` container,** with
+  `MONGODB_DB=linkedin_scrapper`. Compose sets both.
+- **Moving from the old `linkedin-mongo` container.** Earlier versions ran a
+  separate `mongo:7` container. Before you deploy the new compose file, run
+  `bash scripts/merge-linkedin-mongo.sh` from the compose folder on the server. It
+  stops the scraper, refuses to run when the shared Mongo already has different
+  LinkedIn data, dumps `linkedin_scrapper` to `./backups/`, restores it into
+  `outreach-mongo`, and compares the document count of every collection. Then
+  run `docker compose up -d --remove-orphans`. The old `linkedin-mongo` volume
+  is kept; delete it by hand only after you have checked the scraper.
 - **`linkedin-scraper` listens on `127.0.0.1:6363` and `127.0.0.1:6080`.** In
   `docker-compose.prod.yml` the host ports are `6364` and `6081`, because a separate
   scraper already holds 6363 and 6080 on the production server. The

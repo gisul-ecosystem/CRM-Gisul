@@ -28,6 +28,14 @@ export const UNIFERS = {
 		stopConditions: { onReply: true, onClick: false },
 		minFollowUpDays: 1,
 	},
+	signOff: "Regards,\n{{sender.firstName}}",
+	senderPlaceholder: "{{sender.",
+	draft: {
+		sampleSize: 100,
+		maxSamples: 5,
+		firstName: "{{firstName | there}}",
+		company: "{{company.name | your team}}",
+	},
 	placeholders: [
 		"{{firstName | there}}",
 		"{{fullName}}",

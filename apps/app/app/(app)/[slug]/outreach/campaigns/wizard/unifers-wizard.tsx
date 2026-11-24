@@ -41,6 +41,7 @@ import { COUNT } from "@/lib/outreach/format";
 import { useTRPC } from "@/lib/trpc/client";
 import { campaignsApi } from "@/lib/unifers/api";
 import { useUnifersCache } from "@/lib/unifers/cache";
+import { withSignOff } from "@/lib/unifers/campaign-draft";
 import { UNIFERS_ACCOUNT_STATUS, WEEKDAYS } from "@/lib/unifers/labels";
 import {
 	addLeadsInBatches,
@@ -52,6 +53,7 @@ import type { NewCampaign, SequenceStep } from "@/lib/unifers/schemas";
 import { unifersRouteId } from "@/lib/unifers/sender";
 import { UNIFERS } from "@/lib/unifers/unifers-config";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
+import { CampaignWriter, type DraftedStep } from "./campaign-writer";
 
 const NO_LIST = "none";
 
@@ -84,6 +86,7 @@ function WizardBody() {
 		end: useId(),
 		zone: useId(),
 		when: useId(),
+		signOff: useId(),
 	};
 	const router = useRouter();
 	const href = useWorkspaceUrl();
@@ -109,6 +112,8 @@ function WizardBody() {
 	const [scheduleAt, setScheduleAt] = useState("");
 	const [connectOpen, setConnectOpen] = useState(false);
 	const [progress, setProgress] = useState("");
+	const [signOff, setSignOff] = useState(true);
+	const [written, setWritten] = useState(false);
 
 	const lists = useQuery({
 		queryKey: [...outreachKeys.lists, "unifers-wizard"],
@@ -118,6 +123,20 @@ function WizardBody() {
 
 	const mailboxes = accounts.data?.accounts ?? [];
 	const chosenList = lists.data?.data.find((list) => list.id === listId);
+
+	const applyDraft = (drafted: DraftedStep[]) => {
+		setSteps((current) =>
+			drafted.map((step, index) => ({
+				subject: step.subject,
+				body: step.body,
+				waitDays:
+					index === 0
+						? 0
+						: (current[index]?.waitDays ?? UNIFERS.followUpWaitDays),
+			})),
+		);
+		setWritten(true);
+	};
 
 	const updateStep = (index: number, next: Partial<SequenceStep>) =>
 		setSteps((current) =>
@@ -135,7 +154,7 @@ function WizardBody() {
 				senders,
 				sequence: steps.map((step, index) => ({
 					subject: step.subject,
-					body: step.body,
+					body: signOff ? withSignOff(step.body) : step.body,
 					waitDays: index === 0 ? 0 : step.waitDays,
 				})),
 				sendWindow: { start: windowStart, end: windowEnd, days, timeZone },
@@ -262,11 +281,30 @@ function WizardBody() {
 					</CardAction>
 				</CardHeader>
 				<CardContent className="flex flex-col gap-6">
+					<CampaignWriter
+						list={
+							chosenList ? { id: chosenList.id, name: chosenList.name } : null
+						}
+						stepCount={steps.length}
+						written={written}
+						onDrafted={applyDraft}
+					/>
+					<Field orientation="horizontal">
+						<Checkbox
+							id={ids.signOff}
+							checked={signOff}
+							onCheckedChange={(checked) => setSignOff(checked === true)}
+						/>
+						<FieldLabel htmlFor={ids.signOff}>
+							Sign every email with the sending mailbox's name
+						</FieldLabel>
+					</Field>
 					{steps.map((step, index) => (
 						<StepEditor
 							key={`step-${index.toString()}`}
 							index={index}
 							step={step}
+							signOff={signOff}
 							onChange={(next) => updateStep(index, next)}
 							onRemove={
 								index === 0
@@ -514,11 +552,13 @@ function WizardBody() {
 function StepEditor({
 	index,
 	step,
+	signOff,
 	onChange,
 	onRemove,
 }: {
 	index: number;
 	step: SequenceStep;
+	signOff: boolean;
 	onChange: (next: Partial<SequenceStep>) => void;
 	onRemove?: () => void;
 }) {
@@ -566,6 +606,12 @@ function StepEditor({
 					value={step.body}
 					onChange={(event) => onChange({ body: event.target.value })}
 				/>
+				{signOff && !step.body.includes(UNIFERS.senderPlaceholder) ? (
+					<FieldDescription>
+						Ends with “Regards, {"{{sender.firstName}}"}”. Unifers fills in the
+						first name of the mailbox that sends it.
+					</FieldDescription>
+				) : null}
 				<div className="flex flex-wrap gap-2">
 					{UNIFERS.placeholders.map((placeholder) => (
 						<Button

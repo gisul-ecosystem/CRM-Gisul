@@ -130,6 +130,20 @@ browser ──► CRM app /api/unifers/<path>      (apps/app/app/api/unifers/[..
     Unifers mailboxes, the sending window and stop rules, then draft, start
     now or schedule. Unifers has no edit endpoint, so the campaign is created
     in one call at the end.
+  - **Generate with AI** (`wizard/campaign-writer.tsx`) writes the subject and
+    body of every step in one Claude Haiku call: `contacts.draftCampaign` →
+    agent `/internal/crm/draft-campaign` (`apps/agent/agent/lib/campaign-draft.ts`).
+    It sends only the product summary, the lead type brief, the tagline, up to
+    five common titles and companies from the chosen list, and the placeholders
+    the list can fill (`audienceFields` in `lib/unifers/campaign-draft.ts`).
+    Thinking is off and `max_tokens` is 450 per step (`campaign-draft-config.ts`).
+    Placeholders the list cannot fill are removed from the answer.
+    Links are off by default: "Add a website link to the first email" turns
+    them on. When off, Claude is told to write none and any URL is removed.
+  - **Sign-off.** The model writes no signature. On create, every body that has
+    no `{{sender.…}}` placeholder gets `UNIFERS.signOff`
+    (`Regards,` + `{{sender.firstName}}`), so each email is signed by the
+    mailbox that sends it. The wizard checkbox turns this off.
   - A Unifers campaign opens at `/outreach/campaigns/u-<id>`
     (`parseUnifersRouteId`): status and controls, analytics, steps and leads by
     event.

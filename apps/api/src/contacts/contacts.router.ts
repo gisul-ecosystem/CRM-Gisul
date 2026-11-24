@@ -21,6 +21,8 @@ import {
 	contactBulkOwnerInput,
 	contactByIdOutput,
 	contactCreateInput,
+	contactDraftCampaignInput,
+	contactDraftCampaignOutput,
 	contactDraftEmailInput,
 	contactDraftEmailOutput,
 	contactEnrichOutput,
@@ -258,6 +260,17 @@ export class ContactsRouter {
 			senderName: input.senderName ?? ctx.user.name?.trim() ?? null,
 			purpose: input.purpose || null,
 		});
+	}
+
+	@Mutation({
+		input: contactDraftCampaignInput,
+		output: contactDraftCampaignOutput,
+		meta: restMeta("POST", "/contacts/draft-campaign", ["Contacts"]),
+	})
+	async draftCampaign(
+		@Input() input: z.infer<typeof contactDraftCampaignInput>,
+	) {
+		return this.drafts.draftCampaign(input);
 	}
 
 	@Mutation({

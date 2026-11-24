@@ -8,6 +8,10 @@ import {
 	RecordSource,
 } from "@crm/db";
 import { FIELD_ENTITIES, FIELD_TYPES } from "@crm/db/fields";
+import {
+	campaignDraft,
+	campaignDraftRequest,
+} from "@crm/validation/campaign-draft";
 import { EMAIL_DRAFT_LIMITS, emailDraft } from "@crm/validation/email-draft";
 import { leadCategory, leadOriginDetails } from "@crm/validation/lead-origin";
 import { unifersSend, unifersSendInput } from "@crm/validation/unifers-send";
@@ -428,6 +432,10 @@ export const contactDraftEmailInput = z.object({
 });
 
 export const contactDraftEmailOutput = emailDraft;
+
+export const contactDraftCampaignInput = campaignDraftRequest;
+
+export const contactDraftCampaignOutput = campaignDraft;
 
 export const contactLogUnifersSendInput = unifersSendInput;
 
