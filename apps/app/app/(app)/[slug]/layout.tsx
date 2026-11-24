@@ -18,7 +18,7 @@ export default function AppLayout({
 	return (
 		<MobileNavProvider>
 			<AppRailProvider>
-				<div className="isolate flex h-svh flex-col">
+				<div className="isolate flex h-svh flex-col overflow-hidden">
 					<Suspense fallback={<AppHeaderFallback />}>
 						<WorkspaceHeader params={params} />
 					</Suspense>

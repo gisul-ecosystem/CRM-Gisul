@@ -170,7 +170,7 @@ services:
 
   outreach-mongo:
     image: mongo:8.0
-    profiles: [outreach]
+    profiles: [outreach, linkedin]
     restart: unless-stopped
     logging: *logging
     volumes:
@@ -235,20 +235,6 @@ services:
       outreach-setup:
         condition: service_completed_successfully
 
-  linkedin-mongo:
-    image: mongo:7
-    profiles: [linkedin]
-    restart: unless-stopped
-    logging: *logging
-    volumes:
-      - linkedin-mongo:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
-
   linkedin-scraper:
     image: ${LINKEDIN_SCRAPER_IMAGE:-gisuldocker/linkedin-scrapper:latest}
     build: ./services/linkedin-scraper
@@ -261,7 +247,7 @@ services:
         required: false
     environment:
       PORT: "6363"
-      MONGODB_URI: mongodb://linkedin-mongo:27017
+      MONGODB_URI: mongodb://outreach-mongo:27017
       MONGODB_DB: linkedin_scrapper
       HEADLESS: "false"
       IN_DOCKER: "true"
@@ -287,7 +273,7 @@ services:
       retries: 3
       start_period: 60s
     depends_on:
-      linkedin-mongo:
+      outreach-mongo:
         condition: service_healthy
 
   leads-reacher:
