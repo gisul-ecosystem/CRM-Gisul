@@ -1,6 +1,12 @@
+import { isWorkspaceAdmin, workspaceRoleOf } from "@crm/auth";
+import { db } from "@crm/db";
 import { connection } from "next/server";
 import { bufferedProxyResponse } from "@/lib/api-proxy-response";
-import { pipelineUrl, upstreamPath } from "@/lib/leads-pipeline/bridge";
+import {
+	adminOnly,
+	pipelineUrl,
+	upstreamPath,
+} from "@/lib/leads-pipeline/bridge";
 import { getSession } from "@/lib/session";
 
 const DROPPED_REQUEST_HEADERS = [
@@ -42,6 +48,17 @@ async function handler(request: Request): Promise<Response> {
 	const url = new URL(request.url);
 	const path = upstreamPath(url.pathname);
 	if (!path) return failure(404, "NOT_FOUND", "No such pipeline endpoint.");
+
+	if (adminOnly(path, request.method)) {
+		const role = await workspaceRoleOf(session.user.id, db);
+		if (!isWorkspaceAdmin(role)) {
+			return failure(
+				403,
+				"FORBIDDEN",
+				"Only an owner or an admin can delete leads.",
+			);
+		}
+	}
 
 	const headers = new Headers(request.headers);
 	for (const header of DROPPED_REQUEST_HEADERS) headers.delete(header);

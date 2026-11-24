@@ -26,6 +26,12 @@ export function pipelineViewerSrc(): string | null {
 	return `${value}/${page}?${query.toString()}`;
 }
 
+export function adminOnly(upstream: string, method: string): boolean {
+	return LEADS_PIPELINE.proxy.adminOnly.some(
+		(entry) => entry.method === method && entry.path === upstream,
+	);
+}
+
 export function upstreamPath(crmPathname: string): string | null {
 	const { crmPrefix, upstreamPrefix } = LEADS_PIPELINE.proxy;
 	if (!crmPathname.startsWith(`${crmPrefix}/`)) return null;

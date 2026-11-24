@@ -33,7 +33,8 @@ from .partners.spec import write_spec as write_partner_spec
 from .people_search import google_url
 from .profile import GPU, LABELS, OWN_KEYS, TRAINING, COMPETITORS, env_name
 from .segments import GPU_SEGMENTS, TRAINING_SEGMENTS, COMPETITOR_SEGMENTS
-from .store import Store, fill_country, fix_place_names, name_competitor_clients, to_xlsx
+from .store import (Store, fill_country, fix_place_names, name_competitor_clients, person_reject_key,
+                    to_xlsx)
 
 try:
     import fcntl
@@ -866,6 +867,29 @@ def create_app(root: Path = ROOT) -> Flask:
         return jsonify(profile=runner.profile, total=int(len(df)), page=page, pageSize=size,
                        rows=lead_rows(rows) if len(rows) else [])
 
+    def picked_leads(data):
+        rows = data.get("leads")
+        if not isinstance(rows, list) or not rows or len(rows) > MAX_REJECT:
+            raise ApiError(400, "INVALID_LEADS", f"Pick between 1 and {MAX_REJECT} leads.")
+        if not all(isinstance(r, dict) and str(r.get("domain") or "").strip() for r in rows):
+            raise ApiError(400, "INVALID_LEADS", "Each lead needs its domain.")
+        return rows
+
+    @app.post("/api/leads/delete")
+    def delete_leads():
+        data = body()
+        runner = runner_for(data.get("profile"))
+        rows = picked_leads(data)
+        if runner.any_running():
+            raise ApiError(409, "RUN_IN_PROGRESS", "A run is in progress. Delete leads when it finishes.")
+        store = Store(runner.data_dir())
+        removed = store.drop_people(
+            person_reject_key(str(r["domain"]).strip(), str(r.get("full_name") or ""), str(r.get("email") or ""))
+            for r in rows)
+        store.save()
+        return jsonify(ok=True, removed=removed,
+                       message=f"Deleted {removed} lead row(s). A later run can find them again.")
+
     @app.post("/api/leads/reject")
     def reject_leads():
         data = body()
@@ -873,11 +897,7 @@ def create_app(root: Path = ROOT) -> Flask:
         scope = data.get("scope")
         if scope not in REJECT_SCOPES:
             raise ApiError(400, "INVALID_SCOPE", "Reject people or companies.")
-        rows = data.get("leads")
-        if not isinstance(rows, list) or not rows or len(rows) > MAX_REJECT:
-            raise ApiError(400, "INVALID_LEADS", f"Pick between 1 and {MAX_REJECT} leads.")
-        if not all(isinstance(r, dict) and str(r.get("domain") or "").strip() for r in rows):
-            raise ApiError(400, "INVALID_LEADS", "Each lead needs its domain.")
+        rows = picked_leads(data)
         reason = re.sub(r"\s+", " ", str(data.get("reason") or "Rejected in review")).strip()[:80]
         if runner.any_running():
             raise ApiError(409, "RUN_IN_PROGRESS", "A run is in progress. Reject leads when it finishes.")
