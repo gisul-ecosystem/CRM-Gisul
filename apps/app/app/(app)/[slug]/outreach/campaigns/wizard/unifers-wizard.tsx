@@ -28,7 +28,7 @@ import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { Textarea } from "@crm/ui/components/textarea";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { ConnectMailboxDialog } from "@/components/unifers/connect-mailbox-dialog";
 import {
@@ -41,7 +41,7 @@ import { COUNT } from "@/lib/outreach/format";
 import { useTRPC } from "@/lib/trpc/client";
 import { campaignsApi } from "@/lib/unifers/api";
 import { useUnifersCache } from "@/lib/unifers/cache";
-import { withSignOff } from "@/lib/unifers/campaign-draft";
+import { signEmail, signOffName } from "@/lib/unifers/campaign-draft";
 import { UNIFERS_ACCOUNT_STATUS, WEEKDAYS } from "@/lib/unifers/labels";
 import {
 	addLeadsInBatches,
@@ -87,6 +87,7 @@ function WizardBody() {
 		zone: useId(),
 		when: useId(),
 		signOff: useId(),
+		footer: useId(),
 	};
 	const router = useRouter();
 	const href = useWorkspaceUrl();
@@ -113,7 +114,22 @@ function WizardBody() {
 	const [connectOpen, setConnectOpen] = useState(false);
 	const [progress, setProgress] = useState("");
 	const [signOff, setSignOff] = useState(true);
+	const [footer, setFooter] = useState("");
 	const [written, setWritten] = useState(false);
+
+	useEffect(() => {
+		try {
+			const saved = window.localStorage.getItem(UNIFERS.footer.storageKey);
+			if (saved) setFooter(saved);
+		} catch {}
+	}, []);
+
+	const changeFooter = (value: string) => {
+		setFooter(value);
+		try {
+			window.localStorage.setItem(UNIFERS.footer.storageKey, value);
+		} catch {}
+	};
 
 	const lists = useQuery({
 		queryKey: [...outreachKeys.lists, "unifers-wizard"],
@@ -123,6 +139,8 @@ function WizardBody() {
 
 	const mailboxes = accounts.data?.accounts ?? [];
 	const chosenList = lists.data?.data.find((list) => list.id === listId);
+	const signer = signOffName(mailboxes, senders);
+	const signature = signOff && signer.kind === "name" ? signer.name : null;
 
 	const applyDraft = (drafted: DraftedStep[]) => {
 		setSteps((current) =>
@@ -154,7 +172,7 @@ function WizardBody() {
 				senders,
 				sequence: steps.map((step, index) => ({
 					subject: step.subject,
-					body: signOff ? withSignOff(step.body) : step.body,
+					body: signEmail(step.body, { name: signature, footer }),
 					waitDays: index === 0 ? 0 : step.waitDays,
 				})),
 				sendWindow: { start: windowStart, end: windowEnd, days, timeZone },
@@ -299,12 +317,42 @@ function WizardBody() {
 							Sign every email with the sending mailbox's name
 						</FieldLabel>
 					</Field>
+					{signOff && signer.kind === "mixed" ? (
+						<FieldDescription>
+							The ticked mailboxes have different names (
+							{signer.names.join(", ")}). No sign-off is added. Tick mailboxes
+							with one name, or write the sign-off in each email.
+						</FieldDescription>
+					) : null}
+					{signOff && signer.kind === "none" ? (
+						<FieldDescription>
+							No sending mailbox is known yet, so no sign-off is added. Tick a
+							mailbox in Senders.
+						</FieldDescription>
+					) : null}
+					<Field>
+						<FieldLabel htmlFor={ids.footer}>
+							Lines after the name (optional)
+						</FieldLabel>
+						<Textarea
+							id={ids.footer}
+							rows={3}
+							maxLength={UNIFERS.footer.maxChars}
+							value={footer}
+							placeholder={"Racko\nYour address, phone or any line you want"}
+							onChange={(event) => changeFooter(event.target.value)}
+						/>
+						<FieldDescription>
+							Added to the end of every email, under the name. Leave it empty to
+							add nothing. This browser remembers it for your next campaign.
+						</FieldDescription>
+					</Field>
 					{steps.map((step, index) => (
 						<StepEditor
 							key={`step-${index.toString()}`}
 							index={index}
 							step={step}
-							signOff={signOff}
+							signature={signature}
 							onChange={(next) => updateStep(index, next)}
 							onRemove={
 								index === 0
@@ -552,13 +600,13 @@ function WizardBody() {
 function StepEditor({
 	index,
 	step,
-	signOff,
+	signature,
 	onChange,
 	onRemove,
 }: {
 	index: number;
 	step: SequenceStep;
-	signOff: boolean;
+	signature: string | null;
 	onChange: (next: Partial<SequenceStep>) => void;
 	onRemove?: () => void;
 }) {
@@ -606,10 +654,10 @@ function StepEditor({
 					value={step.body}
 					onChange={(event) => onChange({ body: event.target.value })}
 				/>
-				{signOff && !step.body.includes(UNIFERS.senderPlaceholder) ? (
+				{signature && !step.body.includes(UNIFERS.senderPlaceholder) ? (
 					<FieldDescription>
-						Ends with “Regards, {"{{sender.firstName}}"}”. Unifers fills in the
-						first name of the mailbox that sends it.
+						Ends with “{UNIFERS.signOff} {signature}”, the name of the mailbox
+						that sends it.
 					</FieldDescription>
 				) : null}
 				<div className="flex flex-wrap gap-2">
