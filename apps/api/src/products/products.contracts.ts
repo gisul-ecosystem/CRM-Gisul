@@ -47,6 +47,7 @@ export const productCreateInput = z.object({
 		.min(1, "Add a short description.")
 		.max(150),
 	detailedDescription: z.string().trim().max(500).optional().or(z.literal("")),
+	website: z.string().trim().max(200).optional().or(z.literal("")),
 	category: z.string().trim().min(1, "Choose a category.").max(60),
 	type: z.string().trim().min(1, "Choose a type.").max(60),
 	color: productColor,
@@ -85,6 +86,7 @@ export const productRowOutput = z.object({
 	name: z.string(),
 	shortDescription: z.string(),
 	detailedDescription: z.string().nullable(),
+	website: z.string().nullable(),
 	category: z.string(),
 	type: z.string(),
 	color: z.string(),

@@ -16,7 +16,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ProfileSheet } from "@/components/linkedin-scraper/profile-sheet";
-import { ScraperPage } from "@/components/linkedin-scraper/scraper-page";
+import { ScraperGate } from "@/components/linkedin-scraper/scraper-page";
 import { LocalDateTime } from "@/components/local-date-time";
 import {
 	ALL,
@@ -46,7 +46,7 @@ const STATUS_OPTIONS: readonly { value: StatusFilter; label: string }[] = [
 	})),
 ];
 
-export function ProfilesView() {
+export function ProfilesPanel() {
 	const download = useMutation({
 		mutationFn: () => profilesApi.download(),
 		onSuccess: (filename) => toast.success(`Downloaded ${filename}.`),
@@ -54,22 +54,21 @@ export function ProfilesView() {
 	});
 
 	return (
-		<ScraperPage
-			title="Profiles"
-			description="Every person the scraper has read, with the product the AI matched."
-			actions={
-				<Button
-					variant="outline"
-					size="sm"
-					disabled={download.isPending}
-					onClick={() => download.mutate()}
-				>
-					Download Excel
-				</Button>
-			}
-		>
-			<ProfilesBody />
-		</ScraperPage>
+		<ScraperGate>
+			<div className="flex flex-col gap-4">
+				<div className="flex justify-end">
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={download.isPending}
+						onClick={() => download.mutate()}
+					>
+						Download Excel
+					</Button>
+				</div>
+				<ProfilesBody />
+			</div>
+		</ScraperGate>
 	);
 }
 

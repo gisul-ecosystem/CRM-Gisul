@@ -132,4 +132,99 @@ function Combobox({
 	);
 }
 
-export { Combobox, type ComboboxOption };
+function MultiCombobox({
+	options,
+	values,
+	onValuesChange,
+	placeholder = "Select options",
+	searchPlaceholder = "Search…",
+	empty = "Nothing matches.",
+	summaryLimit = 3,
+	size = "default",
+	variant,
+	className,
+	...props
+}: Omit<React.ComponentProps<"button">, "onChange" | "value"> &
+	VariantProps<typeof selectTriggerVariants> & {
+		options: ComboboxOption[];
+		values: readonly string[];
+		onValuesChange: (values: string[]) => void;
+		placeholder?: string;
+		searchPlaceholder?: string;
+		empty?: React.ReactNode;
+		summaryLimit?: number;
+		size?: "sm" | "default";
+	}) {
+	const [open, setOpen] = useState(false);
+	const chosen = options.filter((option) => values.includes(option.value));
+	const summary =
+		chosen.length === 0
+			? placeholder
+			: chosen.length <= summaryLimit
+				? chosen.map((option) => option.label).join(", ")
+				: `${chosen.length} selected`;
+
+	const toggle = (value: string) =>
+		onValuesChange(
+			options
+				.map((option) => option.value)
+				.filter((item) =>
+					item === value ? !values.includes(item) : values.includes(item),
+				),
+		);
+
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger asChild>
+				<button
+					type="button"
+					role="combobox"
+					aria-expanded={open}
+					data-slot="combobox-trigger"
+					data-size={size}
+					data-placeholder={chosen.length ? undefined : ""}
+					className={cn(selectTriggerVariants({ variant }), className)}
+					{...props}
+				>
+					<span data-slot="select-value">{summary}</span>
+					<ChevronDownIcon className="pointer-events-none size-4 text-muted-foreground" />
+				</button>
+			</PopoverTrigger>
+
+			<PopoverContent
+				align="start"
+				size="fit"
+				className="w-(--radix-popover-trigger-width) min-w-64"
+			>
+				<Command>
+					<CommandInput placeholder={searchPlaceholder} />
+					<CommandList>
+						<CommandEmpty>{empty}</CommandEmpty>
+						<CommandGroup>
+							{options.map((option) => (
+								<CommandItem
+									key={option.value}
+									value={option.label}
+									keywords={option.keywords}
+									data-checked={values.includes(option.value)}
+									onSelect={() => toggle(option.value)}
+								>
+									<span className="min-w-0 flex-1 truncate">
+										{option.label}
+									</span>
+									{option.hint ? (
+										<span className="shrink-0 truncate text-muted-foreground text-xs">
+											{option.hint}
+										</span>
+									) : null}
+								</CommandItem>
+							))}
+						</CommandGroup>
+					</CommandList>
+				</Command>
+			</PopoverContent>
+		</Popover>
+	);
+}
+
+export { Combobox, type ComboboxOption, MultiCombobox };

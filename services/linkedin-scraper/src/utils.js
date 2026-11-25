@@ -4,6 +4,10 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function sleepBetween({ minMs, maxMs }) {
+  return sleep(minMs + Math.random() * Math.max(0, maxMs - minMs));
+}
+
 /** Navigate with retries for transient Docker DNS / network errors. */
 async function gotoWithRetry(page, url, options = {}, { retries = 4, delayMs = 2000 } = {}) {
   let lastErr;
@@ -46,12 +50,19 @@ function saveJson(filePath, data) {
   fs.renameSync(tmp, filePath);
 }
 
+const NOTIFICATION_COUNT = /^\s*\(\s*\d+\s*\+?\s*\)\s*/;
+
+function cleanPersonName(name) {
+  return String(name || '')
+    .replace(NOTIFICATION_COUNT, '')
+    .replace(/\s*\|\s*LinkedIn.*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function firstName(fullName) {
-  const parts = String(fullName || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  return parts[0] || '';
+  const parts = cleanPersonName(fullName).split(/\s+/).filter(Boolean);
+  return parts.find((part) => /\p{L}/u.test(part)) || '';
 }
 
 function slugFromProfileUrl(url) {
@@ -102,6 +113,8 @@ function maskUri(uri) {
 module.exports = {
   maskUri,
   sleep,
+  sleepBetween,
+  cleanPersonName,
   gotoWithRetry,
   ensureDirs,
   loadJson,

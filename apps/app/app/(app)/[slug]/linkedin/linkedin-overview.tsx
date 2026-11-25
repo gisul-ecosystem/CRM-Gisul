@@ -16,10 +16,12 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import NextLink from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
+import { BrowserViewer } from "@/components/linkedin-scraper/browser-viewer";
 import { JobLog } from "@/components/linkedin-scraper/job-log";
-import { ScraperPage } from "@/components/linkedin-scraper/scraper-page";
+import { ScraperGate } from "@/components/linkedin-scraper/scraper-page";
 import { ConfirmDialog } from "@/components/outreach/confirm-dialog";
 import { Meter } from "@/components/outreach/meter";
+import { hubPath, LEAD_HUB } from "@/lib/lead-hub/lead-hub-config";
 import { linkedInApi, scraperApi } from "@/lib/linkedin-scraper/api";
 import { scraperKeys, useScraperCache } from "@/lib/linkedin-scraper/cache";
 import { JOB_STATUS } from "@/lib/linkedin-scraper/labels";
@@ -33,18 +35,15 @@ import { useScraperStatus } from "@/lib/linkedin-scraper/use-status";
 import { COUNT } from "@/lib/outreach/format";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 
-export function LinkedInOverview({
+export function LinkedInOverviewPanel({
 	viewerBaseUrl,
 }: {
 	viewerBaseUrl: string | null;
 }) {
 	return (
-		<ScraperPage
-			title="LinkedIn"
-			description="Scrape LinkedIn profiles, draft a message for each person with AI, and send from one shared LinkedIn account."
-		>
+		<ScraperGate>
 			<OverviewBody viewerBaseUrl={viewerBaseUrl} />
-		</ScraperPage>
+		</ScraperGate>
 	);
 }
 
@@ -98,7 +97,10 @@ function OverviewBody({ viewerBaseUrl }: { viewerBaseUrl: string | null }) {
 					title="Scrape"
 					description="Reads profiles and writes a draft for each person."
 					job={data.scrapeJob}
-					link={{ path: "/linkedin/scrape", label: "Search and scrape" }}
+					link={{
+						path: hubPath("find", LEAD_HUB.views.find.linkedin),
+						label: "Custom search leads",
+					}}
 				/>
 				<JobCard
 					title="Send"
@@ -108,7 +110,10 @@ function OverviewBody({ viewerBaseUrl }: { viewerBaseUrl: string | null }) {
 							: "Sends approved drafts from the queue."
 					}
 					job={data.sendJob}
-					link={{ path: "/linkedin/queue", label: "Open queue" }}
+					link={{
+						path: hubPath("messages", LEAD_HUB.views.messages.queue),
+						label: "Open queue",
+					}}
 				/>
 			</div>
 		</div>
@@ -152,7 +157,7 @@ function ConnectionCard({
 	});
 
 	const viewer =
-		status.inDocker && viewerBaseUrl
+		status.inDocker && viewerBaseUrl && status.browserViewerUrl
 			? `${viewerBaseUrl}${status.browserViewerUrl}`
 			: null;
 
@@ -161,7 +166,8 @@ function ConnectionCard({
 			<CardHeader>
 				<CardTitle>LinkedIn account</CardTitle>
 				<CardDescription>
-					Everyone in the CRM shares this one LinkedIn sign-in.
+					Your own LinkedIn sign-in and browser. Other CRM users connect and run
+					their own at the same time.
 				</CardDescription>
 				<CardAction>
 					<StatusIndicator
@@ -175,8 +181,10 @@ function ConnectionCard({
 				<p className="text-muted-foreground text-xs">
 					{status.inDocker
 						? viewer
-							? "Sign in to LinkedIn in the browser viewer. Use email and password, not Google."
-							: "The scraper runs in Docker. Set LINKEDIN_SCRAPER_VIEWER_URL to open its browser viewer from here."
+							? "Click Connect LinkedIn, then sign in in the browser below. Use email and password, not Google."
+							: viewerBaseUrl
+								? "Your private browser viewer appears here once you click Connect LinkedIn or start a scrape."
+								: "The scraper runs in Docker. Set LINKEDIN_SCRAPER_VIEWER_URL to open its browser viewer from here."
 						: "A Chromium window opens on the scraper's computer. Sign in there with email and password, not Google."}
 				</p>
 				<div className="flex flex-wrap gap-2">
@@ -192,7 +200,7 @@ function ConnectionCard({
 					{viewer ? (
 						<Button asChild variant="outline" size="sm">
 							<a href={viewer} target="_blank" rel="noreferrer">
-								Open browser viewer
+								Open in a new tab
 							</a>
 						</Button>
 					) : null}
@@ -216,6 +224,7 @@ function ConnectionCard({
 						</Button>
 					) : null}
 				</div>
+				{viewer && connecting ? <BrowserViewer src={viewer} /> : null}
 				{status.linkedInJob.logs.length > 0 ? (
 					<JobLog
 						entries={status.linkedInJob.logs.map((msg) => ({ at: null, msg }))}

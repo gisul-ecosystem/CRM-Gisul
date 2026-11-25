@@ -1,5 +1,6 @@
 "use client";
 
+import Add from "@carbon/icons-react/es/Add";
 import DocumentImport from "@carbon/icons-react/es/DocumentImport";
 import Link from "@carbon/icons-react/es/Link";
 import OverflowMenuHorizontal from "@carbon/icons-react/es/OverflowMenuHorizontal";
@@ -46,6 +47,7 @@ import {
 	type ContactStatus,
 } from "@/lib/outreach/schemas/enums";
 import { useDebounced } from "@/lib/outreach/use-debounced";
+import { AddContactDialog } from "./add-contact-dialog";
 import { ContactSheet } from "./contact-sheet";
 import { EditContactDialog } from "./edit-contact-dialog";
 import { ImportDialog } from "./import-dialog";
@@ -69,6 +71,7 @@ export function ContactsTab() {
 	const [listFilter, setListFilter] = useState<string>(ALL);
 	const [status, setStatus] = useState<StatusFilter>(ALL);
 	const [importOpen, setImportOpen] = useState(false);
+	const [addOpen, setAddOpen] = useState(false);
 	const [editing, setEditing] = useState<AudienceContact | null>(null);
 	const [viewing, setViewing] = useState<AudienceContact | null>(null);
 	const [linkFor, setLinkFor] = useState<AudienceContact | null>(null);
@@ -151,10 +154,16 @@ export function ContactsTab() {
 						label="Filter by status"
 					/>
 				</OutreachToolbar>
-				<Button onClick={() => setImportOpen(true)}>
-					<Icon icon={DocumentImport} data-icon="inline-start" />
-					Import CSV
-				</Button>
+				<div className="flex flex-wrap gap-2">
+					<Button variant="outline" onClick={() => setAddOpen(true)}>
+						<Icon icon={Add} data-icon="inline-start" />
+						Add contact
+					</Button>
+					<Button onClick={() => setImportOpen(true)}>
+						<Icon icon={DocumentImport} data-icon="inline-start" />
+						Import CSV
+					</Button>
+				</div>
 			</div>
 
 			{contacts.isPending ? (
@@ -285,6 +294,15 @@ export function ContactsTab() {
 			) : null}
 
 			<ImportDialog open={importOpen} onOpenChange={setImportOpen} />
+			<AddContactDialog
+				open={addOpen}
+				lists={(lists.data?.data ?? []).map((list) => ({
+					id: list.id,
+					name: list.name,
+				}))}
+				listId={listFilter === ALL ? null : listFilter}
+				onClose={() => setAddOpen(false)}
+			/>
 			<ContactSheet contact={viewing} onClose={() => setViewing(null)} />
 			<EditContactDialog contact={editing} onClose={() => setEditing(null)} />
 			<CopyLinkDialog contact={linkFor} onClose={() => setLinkFor(null)} />

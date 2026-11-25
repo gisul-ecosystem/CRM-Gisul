@@ -2,7 +2,9 @@
 
 import Email from "@carbon/icons-react/es/Email";
 import Partnership from "@carbon/icons-react/es/Partnership";
+import Send from "@carbon/icons-react/es/Send";
 import Star from "@carbon/icons-react/es/Star";
+import StarFilled from "@carbon/icons-react/es/StarFilled";
 import type { FieldValueJson } from "@crm/db/fields";
 import {
 	Accordion,
@@ -21,7 +23,9 @@ import { PersonAvatar } from "@crm/ui/components/person-avatar";
 import { SimpleTable, SimpleTableRow } from "@crm/ui/components/simple-table";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { TableCell } from "@crm/ui/components/table";
+import { LEAD_CATEGORY_LABEL } from "@crm/validation/lead-origin";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 import { AgentPanel } from "@/components/crm/agent-panel";
 import { InlineCompanyField } from "@/components/crm/company-picker";
@@ -33,6 +37,7 @@ import { FieldsCog, RecordFields } from "@/components/crm/fields/record-fields";
 import {
 	InlineField,
 	InlineSelectField,
+	InlineStaticField,
 	savingValue,
 } from "@/components/crm/inline-field";
 import { OwnerCell } from "@/components/crm/owner-cell";
@@ -52,6 +57,8 @@ import {
 	type DetailSheetTab,
 } from "@/components/detail-sheet";
 import { LocalDateTime, LocalRelativeDate } from "@/components/local-date-time";
+import { SendEmailDialog } from "@/components/unifers/send-email-dialog";
+import { SentEmails } from "@/components/unifers/sent-emails";
 import { factsByField } from "@/lib/contact-facts";
 import { ENRICHMENT_POLL_MS, isEnriching } from "@/lib/enrichment-status";
 import {
@@ -95,6 +102,7 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 	const { tab, setTab } = useRecordSheetView("overview");
+	const [composing, setComposing] = useState(false);
 
 	const query = useQuery({
 		...trpc.contacts.byId.queryOptions({ id: contactId }),
@@ -119,29 +127,29 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 
 	const tabs: DetailSheetTab[] = contact
 		? [
-				{
-					value: "overview",
-					label: "Overview",
-					content: <ContactOverview contact={contact} />,
-				},
-				{
-					value: "deals",
-					label: "Deals",
-					count: contact.deals.length,
-					content: <ContactDeals contact={contact} />,
-				},
-				{
-					value: "activity",
-					label: "Activity",
-					content: <Timeline anchor={{ contactId: contact.id }} />,
-				},
-				{
-					value: "agent",
-					label: "Agent",
-					content: <AgentPanel record={{ kind: "contact", id: contact.id }} />,
-					keepMounted: true,
-				},
-			]
+			{
+				value: "overview",
+				label: "Overview",
+				content: <ContactOverview contact={contact} />,
+			},
+			{
+				value: "deals",
+				label: "Deals",
+				count: contact.deals.length,
+				content: <ContactDeals contact={contact} />,
+			},
+			{
+				value: "activity",
+				label: "Activity",
+				content: <Timeline anchor={{ contactId: contact.id }} />,
+			},
+			{
+				value: "agent",
+				label: "Agent",
+				content: <AgentPanel record={{ kind: "contact", id: contact.id }} />,
+				keepMounted: true,
+			},
+		]
 		: [];
 
 	return (
@@ -186,6 +194,28 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 					<>
 						<ContactEnrichmentAction contactId={contact.id} />
 						{contact.email ? (
+							<>
+								<Button size="sm" onClick={() => setComposing(true)}>
+									<Icon icon={Send} data-icon="inline-start" />
+									<span className="hidden sm:inline">Send email</span>
+								</Button>
+								{composing ? (
+									<SendEmailDialog
+										open={composing}
+										onClose={() => setComposing(false)}
+										recipient={{
+											contactId: contact.id,
+											email: contact.email,
+											name: contactName(contact),
+											companyName: contact.company?.name ?? null,
+											productId: contact.product?.id ?? null,
+											nextFollowUpAt: contact.nextFollowUpAt ?? null,
+										}}
+									/>
+								) : null}
+							</>
+						) : null}
+						{contact.email ? (
 							<Button asChild variant="outline" size="sm">
 								<a href={`mailto:${contact.email}`}>
 									<Icon icon={Email} data-icon="inline-start" />
@@ -193,7 +223,7 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 								</a>
 							</Button>
 						) : null}
-						{contact.company && !contact.isPrimaryContact ? (
+						{contact.company ? (
 							<Button
 								variant="outline"
 								size="sm"
@@ -201,12 +231,19 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 								onClick={() =>
 									setPrimary.mutate({
 										companyId: contact.company?.id ?? "",
-										contactId: contact.id,
+										contactId: contact.isPrimaryContact ? null : contact.id,
 									})
 								}
 							>
-								<Icon icon={Star} data-icon="inline-start" />
-								<span className="hidden sm:inline">Make primary</span>
+								<Icon
+									icon={contact.isPrimaryContact ? StarFilled : Star}
+									data-icon="inline-start"
+								/>
+								<span className="hidden sm:inline">
+									{contact.isPrimaryContact
+										? "Remove as Primary Contact"
+										: "Make Primary Contact"}
+								</span>
 							</Button>
 						) : null}
 						<RecordActions
@@ -293,6 +330,7 @@ function CompanyStat({
 function ContactOverview({ contact }: { contact: Contact }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
+	const openRecord = useOpenRecord();
 
 	const users = useQuery(trpc.users.list.queryOptions());
 	const products = useQuery(trpc.products.options.queryOptions());
@@ -360,6 +398,7 @@ function ContactOverview({ contact }: { contact: Contact }) {
 						onSave={(companyId) =>
 							save({ companyId: companyId === NONE ? null : companyId })
 						}
+						onOpen={(id) => openRecord({ kind: "company", id })}
 					/>
 					<InlineField
 						label="Email"
@@ -426,6 +465,12 @@ function ContactOverview({ contact }: { contact: Contact }) {
 							save({ leadSource: leadSource === NONE ? null : leadSource })
 						}
 					/>
+					{contact.leadCategory ? (
+						<InlineStaticField
+							label="Lead type"
+							value={LEAD_CATEGORY_LABEL[contact.leadCategory]}
+						/>
+					) : null}
 					<InlineField
 						label="Next follow-up"
 						value={toDateInputValue(contact.nextFollowUpAt)}
@@ -443,6 +488,8 @@ function ContactOverview({ contact }: { contact: Contact }) {
 					/>
 				</DetailSheetProperties>
 			</DetailSheetSection>
+
+			<SentEmails contactId={contact.id} hasEmail={Boolean(contact.email)} />
 
 			{contact.brief ? <Background brief={contact.brief} /> : null}
 

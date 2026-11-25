@@ -1,6 +1,7 @@
 const fs = require('fs');
 const { ACTION_DELAY_MS, HEADLESS } = require('./config');
 const { launchBrowser } = require('./browser');
+const { displayFor } = require('./slots');
 const { ensureLinkedInLoggedIn } = require('./linkedin-auth');
 const { sendMessageToProfile } = require('./messaging');
 const { getSendBudget, recordSuccessfulSend, maybeBatchPause } = require('./send-limits');
@@ -96,6 +97,7 @@ async function runSendQueueJob(userId, { slugs = [] } = {}) {
   const { browser, context, page } = await launchBrowser({
     storageStatePath: paths.linkedinSession,
     headless: HEADLESS,
+    display: displayFor(userId),
   });
   page.setDefaultTimeout(90000);
 
@@ -158,4 +160,8 @@ async function runSendQueueJob(userId, { slugs = [] } = {}) {
   }
 }
 
-module.exports = { runSendQueueJob, getSendJobStatus };
+function runningUsers() {
+  return [...sendJobs].filter(([, job]) => job?.status === 'running').map(([userId]) => userId);
+}
+
+module.exports = { runningUsers, runSendQueueJob, getSendJobStatus };

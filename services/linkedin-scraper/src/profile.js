@@ -1,4 +1,4 @@
-const { sleep, slugFromProfileUrl, nameFromSlug, gotoWithRetry } = require('./utils');
+const { sleep, slugFromProfileUrl, nameFromSlug, gotoWithRetry, cleanPersonName } = require('./utils');
 
 async function dismissOverlays(page) {
   const dismissSelectors = [
@@ -36,7 +36,7 @@ async function clickAllSeeMore(page) {
 function parseNameFromTitle(title) {
   const raw = String(title || '').trim();
   if (!raw) return { name: '', headline: '' };
-  const cleaned = raw.replace(/\s*\|\s*LinkedIn.*$/i, '').trim();
+  const cleaned = cleanPersonName(raw);
   const parts = cleaned.split(/\s+[-–—]\s+/);
   const name = (parts[0] || '').trim();
   const headline = parts.slice(1).join(' - ').trim();
@@ -518,7 +518,12 @@ async function scrapeProfile(page, profileUrl) {
   const fromTitle = parseNameFromTitle(data.pageTitle);
   const slug = slugFromProfileUrl(profileUrl);
 
-  let name = locatorName || data.name || fromOg.name || fromTitle.name || nameFromSlug(slug);
+  let name =
+    cleanPersonName(locatorName) ||
+    cleanPersonName(data.name) ||
+    fromOg.name ||
+    fromTitle.name ||
+    nameFromSlug(slug);
   let headline = locatorHeadline || data.headline || fromOg.headline || fromTitle.headline || '';
 
   const fromTop = extractHeadlineFromTopCard(data.topCardText, name);

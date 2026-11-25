@@ -106,6 +106,39 @@ function ProfileBody({
 					</p>
 				) : null}
 
+				{profile.sourcePost ? (
+					<Section title="Found from a post">
+						<FormattedText text={profile.sourcePost.text} />
+						<p className="mt-2 text-muted-foreground text-xs">
+							{[
+								profile.sourcePost.postedAgo,
+								profile.sourcePost.keywords
+									? `Search: ${profile.sourcePost.keywords}`
+									: "",
+								`Need ${profile.sourcePost.intentScore}/100`,
+							]
+								.filter(Boolean)
+								.join(" · ")}
+						</p>
+						{profile.sourcePost.intentReason ? (
+							<p className="text-muted-foreground text-xs">
+								{profile.sourcePost.intentReason}
+							</p>
+						) : null}
+						{profile.sourcePost.url ? (
+							<p className="text-xs">
+								<TextLink
+									href={profile.sourcePost.url}
+									target="_blank"
+									rel="noreferrer"
+								>
+									Open the post
+								</TextLink>
+							</p>
+						) : null}
+					</Section>
+				) : null}
+
 				{profile.aiReason ? (
 					<Section title="Why this product">
 						<FormattedText text={profile.aiReason} />

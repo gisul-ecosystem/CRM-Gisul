@@ -1,13 +1,10 @@
 "use client";
 
 import Activity from "@carbon/icons-react/es/Activity";
-import Analytics from "@carbon/icons-react/es/Analytics";
 import Building from "@carbon/icons-react/es/Building";
 import Close from "@carbon/icons-react/es/Close";
 import Group from "@carbon/icons-react/es/Group";
 import Home from "@carbon/icons-react/es/Home";
-import ListChecked from "@carbon/icons-react/es/ListChecked";
-import LogoLinkedin from "@carbon/icons-react/es/LogoLinkedin";
 import MailAll from "@carbon/icons-react/es/MailAll";
 import Partnership from "@carbon/icons-react/es/Partnership";
 import Reply from "@carbon/icons-react/es/Reply";
@@ -20,7 +17,6 @@ import SettingsAdjust from "@carbon/icons-react/es/SettingsAdjust";
 import SidePanelClose from "@carbon/icons-react/es/SidePanelClose";
 import SidePanelOpen from "@carbon/icons-react/es/SidePanelOpen";
 import UserMultiple from "@carbon/icons-react/es/UserMultiple";
-import UserProfile from "@carbon/icons-react/es/UserProfile";
 import { Button } from "@crm/ui/components/button";
 import type { CarbonIcon } from "@crm/ui/components/icon";
 import { Icon } from "@crm/ui/components/icon";
@@ -39,6 +35,8 @@ import { AgentBuilderSidebar } from "@/components/agent-builder/agent-builder-si
 import { useAppRail } from "@/components/app-rail";
 import { usePrefetchSection } from "@/components/crm/section-prefetch";
 import { useMobileNav } from "@/components/mobile-nav";
+import { ACTIVITY_HUB } from "@/lib/activity-hub/activity-hub-config";
+import { LEAD_HUB } from "@/lib/lead-hub/lead-hub-config";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 
 type RailItem = {
@@ -73,7 +71,7 @@ const GROUPS: NavGroup[] = [
 				match: "prefix",
 			},
 			{
-				title: "Customers",
+				title: "Contacts",
 				href: "/companies",
 				icon: Building,
 				match: "prefix",
@@ -85,10 +83,11 @@ const GROUPS: NavGroup[] = [
 		label: "Work",
 		items: [
 			{
-				title: "Activities",
-				href: "/activities",
+				title: ACTIVITY_HUB.title,
+				href: ACTIVITY_HUB.tabs[0].href,
 				icon: Activity,
 				match: "prefix",
+				related: [ACTIVITY_HUB.tabs[1].href],
 			},
 			{
 				title: "Chat",
@@ -110,15 +109,15 @@ const GROUPS: NavGroup[] = [
 				match: "exact",
 			},
 			{
-				title: "Campaigns",
-				href: "/outreach/campaigns",
-				icon: Send,
-				match: "prefix",
-			},
-			{
 				title: "Audiences",
 				href: "/outreach/audiences",
 				icon: Group,
+				match: "prefix",
+			},
+			{
+				title: "Campaigns",
+				href: "/outreach/campaigns",
+				icon: Send,
 				match: "prefix",
 			},
 			{
@@ -142,70 +141,36 @@ const GROUPS: NavGroup[] = [
 		],
 	},
 	{
-		label: "LinkedIn",
+		label: "Leads & LinkedIn",
 		items: [
 			{
 				title: "Overview",
-				href: "/linkedin",
-				icon: LogoLinkedin,
-				match: "exact",
-			},
-			{
-				title: "Search and scrape",
-				href: "/linkedin/scrape",
-				icon: Search,
-				match: "prefix",
-			},
-			{
-				title: "Profiles",
-				href: "/linkedin/profiles",
-				icon: UserProfile,
-				match: "prefix",
-			},
-			{
-				title: "Queue",
-				href: "/linkedin/queue",
-				icon: ListChecked,
-				match: "prefix",
-			},
-			{
-				title: "Sent",
-				href: "/linkedin/sent",
-				icon: SendAlt,
-				match: "prefix",
-			},
-		],
-	},
-	{
-		label: "Lead generation",
-		items: [
-			{
-				title: "Overview",
-				href: "/lead-generation",
+				href: LEAD_HUB.pages.overview,
 				icon: Rocket,
 				match: "exact",
 			},
 			{
+				title: "Custom search leads",
+				href: LEAD_HUB.pages.find,
+				icon: Search,
+				match: "prefix",
+			},
+			{
 				title: "Leads",
-				href: "/lead-generation/leads",
+				href: LEAD_HUB.pages.leads,
 				icon: UserMultiple,
 				match: "prefix",
 			},
 			{
-				title: "Settings",
-				href: "/lead-generation/settings",
-				icon: SettingsAdjust,
+				title: "Messages",
+				href: LEAD_HUB.pages.messages,
+				icon: SendAlt,
 				match: "prefix",
 			},
-		],
-	},
-	{
-		label: "Insights",
-		items: [
 			{
-				title: "Reports",
-				href: "/reports",
-				icon: Analytics,
+				title: "Settings",
+				href: LEAD_HUB.pages.settings,
+				icon: SettingsAdjust,
 				match: "prefix",
 			},
 		],

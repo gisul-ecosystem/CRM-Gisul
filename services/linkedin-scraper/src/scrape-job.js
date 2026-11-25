@@ -1,21 +1,27 @@
 const fs = require('fs');
 const path = require('path');
-const { ACTION_DELAY_MS, AI_MESSAGES, HEADLESS } = require('./config');
+const { ACTION_DELAY_MS, AI_MESSAGES, HEADLESS, POST_SEARCH } = require('./config');
 const { launchBrowser } = require('./browser');
+const { displayFor } = require('./slots');
 const { ensureLinkedInLoggedIn } = require('./linkedin-auth');
 const { collectConnectionLinks } = require('./connections');
 const { scrapeProfile } = require('./profile');
 const { writeConnectionsExcel } = require('./export');
 const { resolveConnectionType, buildSearchUrl } = require('./search');
-const { generateOutreachMessage } = require('./ai-message');
+const { generateOutreachMessage, assessPostIntent } = require('./ai-message');
+const { collectPosts } = require('./posts');
+const { collectCompanies, scrapeCompanies } = require('./companies');
+const { renderTemplate } = require('./message-template');
 const { sendMessageToProfile } = require('./messaging');
 const { getSendBudget, recordSuccessfulSend, maybeBatchPause } = require('./send-limits');
 const { userPaths } = require('./paths');
 const {
   ensureDirs,
   sleep,
+  sleepBetween,
   slugFromProfileUrl,
   nameFromSlug,
+  cleanPersonName,
 } = require('./utils');
 const db = require('./db');
 
@@ -23,6 +29,17 @@ const activeJobs = new Map();
 
 function getJobStatus(userId) {
   return activeJobs.get(userId) || { status: 'idle' };
+}
+
+function requestScrapeStop(userId) {
+  const job = activeJobs.get(userId);
+  if (job?.status !== 'running') return false;
+  if (!job.stopRequested) {
+    job.stopRequested = true;
+    job.logs.push({ at: new Date().toISOString(), msg: 'Stop requested — finishing the current profile, then saving' });
+    if (job.logs.length > 100) job.logs.shift();
+  }
+  return true;
 }
 
 async function runScrapeJob(userId, filters, onProgress) {
@@ -58,6 +75,7 @@ async function runScrapeJob(userId, filters, onProgress) {
     sendFailed: 0,
     skipped: 0,
     queued: 0,
+    stopRequested: false,
   };
   activeJobs.set(userId, job);
   await db.jobs.createScrapeJob(job);
@@ -95,16 +113,19 @@ async function runScrapeJob(userId, filters, onProgress) {
     });
   }
   const usingImport = importedConns.length > 0;
+  const usingPosts = !usingImport && filters.connectionType === 'post_search';
   filters = {
     ...filters,
     profileUrl: usingImport ? '' : directProfileUrl,
     profileUrls: usingImport ? importedConns : [],
     connectionType: usingImport
       ? 'file_import'
-      : directProfileUrl
+      : usingPosts
+        ? 'post_search'
+        : directProfileUrl
         ? 'single_profile'
         : resolveConnectionType(filters),
-    sendMessages: usingImport ? false : Boolean(filters.sendMessages),
+    sendMessages: usingImport || usingPosts ? false : Boolean(filters.sendMessages),
   };
   job.filters = {
     ...filters,
@@ -112,6 +133,7 @@ async function runScrapeJob(userId, filters, onProgress) {
   };
 
   const useAi = filters.aiMessages ?? AI_MESSAGES;
+  const messageTemplate = String(filters.messageTemplate || '');
   const autoSend = Boolean(filters.sendMessages);
 
   const startIndex = Math.max(0, Number(filters.startIndex || 0));
@@ -119,17 +141,28 @@ async function runScrapeJob(userId, filters, onProgress) {
 
   const existingMap = await db.profiles.profilesMapBySlug(userId);
 
+  await log('Opening the browser and checking the LinkedIn session…');
   const { browser, context, page } = await launchBrowser({
     storageStatePath: paths.linkedinSession,
     headless: HEADLESS,
+    display: displayFor(userId),
   });
   page.setDefaultTimeout(90000);
 
   try {
-    await ensureLinkedInLoggedIn(page, context, paths.linkedinSession);
+    await ensureLinkedInLoggedIn(page, context, paths.linkedinSession, {
+      log,
+      shouldStop: () => job.stopRequested,
+    });
+
+    if (filters.connectionType === 'company_search') {
+      return await runCompanySearch({ userId, jobId, job, filters, page, log, outDir: paths.outDir });
+    }
 
     if (usingImport) {
       await log(`Mode: file import | ${importedConns.length} URL(s) in spreadsheet`);
+    } else if (usingPosts) {
+      await log(`Mode: post search | "${filters.keywords}" | ${filters.datePosted} | up to ${filters.maxResults} post(s)`);
     } else if (directProfileUrl) {
       await log(`Mode: single profile | ${directProfileUrl}`);
     } else {
@@ -151,8 +184,13 @@ async function runScrapeJob(userId, filters, onProgress) {
         await log(`Message framing — ${id}: ${framing.slice(0, 160)}`);
       }
     }
-    if (usingImport) {
-      await log('File import — drafts go to queue only. Nothing is sent until Send to all.');
+    await log(
+      messageTemplate
+        ? `Message: your template for everyone${useAi ? ' the AI keeps' : ''} (${messageTemplate.length} characters)`
+        : 'Message: AI draft for each person'
+    );
+    if (usingImport || usingPosts) {
+      await log('Drafts go to queue only. Nothing is sent until Send to all.');
     } else if (autoSend) {
       await log('Auto-send ON — matched profiles will be messaged one-by-one after AI draft');
     } else {
@@ -161,7 +199,67 @@ async function runScrapeJob(userId, filters, onProgress) {
     await log(`MongoDB tracking enabled for owner=${userId}`);
 
     let connections;
-    if (usingImport) {
+    if (usingPosts) {
+      const posts = await collectPosts(page, {
+        keywords: filters.keywords,
+        datePosted: filters.datePosted,
+        maxPosts: filters.maxResults,
+        shouldStop: () => job.stopRequested,
+        log,
+        debugDir: paths.outDir,
+      });
+      connections = [];
+      let checked = 0;
+      let knownAuthors = 0;
+      for (const post of posts) {
+        if (job.stopRequested) break;
+        if (existingMap[post.slug]?.scrapedAt && !filters.rescrape) {
+          knownAuthors += 1;
+          continue;
+        }
+        checked += 1;
+        let intent;
+        try {
+          intent = await assessPostIntent(post);
+        } catch (err) {
+          await log(`Post check failed for ${post.authorName || post.slug}: ${err.message}`);
+          continue;
+        }
+        const outOfScope =
+          allowedProducts.length > 0 &&
+          intent.productIds.length > 0 &&
+          !intent.productIds.some((id) => allowedProducts.includes(id));
+        if (!intent.intent || outOfScope) {
+          await log(
+            `Post SKIP ${post.authorName || post.slug} score=${intent.score} — ${intent.reason.slice(0, 120)}`
+          );
+          continue;
+        }
+        await log(
+          `Post MATCH ${post.authorName || post.slug} score=${intent.score} → ${intent.productIds.join('+') || 'any'} — "${intent.signal.slice(0, 100)}"`
+        );
+        connections.push({
+          profileUrl: post.profileUrl,
+          listName: post.authorName,
+          subtitle: '',
+          headline: post.authorHeadline,
+          post: {
+            url: post.url,
+            text: post.text,
+            postedAgo: post.postedAgo,
+            keywords: filters.keywords,
+            intentScore: intent.score,
+            intentSignal: intent.signal,
+            intentReason: intent.reason,
+            productIds: intent.productIds,
+            foundAt: new Date().toISOString(),
+          },
+        });
+      }
+      await log(
+        `Post check: ${connections.length} of ${checked} new post author(s) show a need${knownAuthors ? ` | ${knownAuthors} author(s) skipped: already scraped (tick "Read profiles again that were already scraped" to include them)` : ''}`
+      );
+    } else if (usingImport) {
       connections = importedConns;
       await log(`File import targets: ${connections.length} unique profile URL(s)`);
     } else if (directProfileUrl) {
@@ -231,6 +329,7 @@ async function runScrapeJob(userId, filters, onProgress) {
     }
 
     for (let i = 0; i < sliced.length; i += 1) {
+      if (job.stopRequested) break;
       const conn = sliced[i];
       const slug = slugFromProfileUrl(conn.profileUrl);
       const existingProfile = existingMap[slug] || {};
@@ -266,15 +365,14 @@ async function runScrapeJob(userId, filters, onProgress) {
       const record = {
         ...existingProfile,
         ...profile,
+        ...(conn.post ? { sourcePost: conn.post } : {}),
         listIndex: offset + i,
         connectionType: filters.connectionType,
         searchKeywords: filters.keywords || '',
       };
 
       // Always keep a display name — list card / page / slug fallback
-      if (!record.name) {
-        record.name = conn.listName || nameFromSlug(slug);
-      }
+      record.name = cleanPersonName(record.name) || cleanPersonName(conn.listName) || nameFromSlug(slug);
       if (!record.headline) {
         record.headline = conn.headline || conn.subtitle || '';
       }
@@ -294,6 +392,9 @@ async function runScrapeJob(userId, filters, onProgress) {
             productContext,
             productFraming,
           });
+          if (messageTemplate && outreach.relevant) {
+            outreach.message = renderTemplate(messageTemplate, record);
+          }
           record.relevant = outreach.relevant;
           record.relevanceScore = outreach.relevanceScore;
           record.matchSignals = outreach.matchSignals || [];
@@ -348,7 +449,7 @@ async function runScrapeJob(userId, filters, onProgress) {
                 record.queueStatus = 'sent';
                 job.sent = (job.sent || 0) + 1;
                 await log(`[${i + 1}] SENT → ${record.name || slug}`);
-                await maybeBatchPause(job.sent, log);
+                await maybeBatchPause(job.sent, log, () => job.stopRequested);
               } else {
                 await db.profiles.markMessageSent(userId, slug, {
                   error: result.error || 'send failed',
@@ -376,6 +477,12 @@ async function runScrapeJob(userId, filters, onProgress) {
           record.aiError = err.message;
           await log(`[${i + 1}] AI error: ${err.message}`);
         }
+      } else if (messageTemplate && !record.scrapeError) {
+        record.aiMessage = renderTemplate(messageTemplate, record);
+        record.lastMessage = record.aiMessage.slice(0, 1200);
+        record.queueStatus = 'queued';
+        job.queued = (job.queued || 0) + 1;
+        await log(`[${i + 1}] TEMPLATE QUEUE → ${record.name || slug}`);
       }
 
       // Persist after AI (+ optional auto-send)
@@ -394,7 +501,9 @@ async function runScrapeJob(userId, filters, onProgress) {
         errors: job.errors.slice(-50),
       });
       if (onProgress) onProgress(job);
-      await sleep(ACTION_DELAY_MS);
+      if (!job.stopRequested) {
+        await (usingPosts ? sleepBetween(POST_SEARCH.profilePause) : sleep(ACTION_DELAY_MS));
+      }
     }
 
     const allProfiles = await db.profiles.listProfiles(userId, { limit: 5000 });
@@ -415,11 +524,11 @@ async function runScrapeJob(userId, filters, onProgress) {
       /* ignore */
     }
 
-    job.status = 'completed';
+    job.status = job.stopRequested ? 'stopped' : 'completed';
     job.finishedAt = new Date().toISOString();
     job.resultCount = allProfiles.length;
     await db.jobs.updateScrapeJob(jobId, {
-      status: 'completed',
+      status: job.status,
       finishedAt: job.finishedAt,
       resultCount: job.resultCount,
       processed: job.processed,
@@ -427,14 +536,19 @@ async function runScrapeJob(userId, filters, onProgress) {
     const sendSummary = autoSend
       ? ` | sent ${job.sent || 0}, failed ${job.sendFailed || 0}, skipped ${job.skipped || 0}`
       : '';
-    await log(`Done — ${job.processed} profiles scraped${sendSummary}`);
+    await log(
+      job.stopRequested
+        ? `Stopped — ${job.processed} profiles scraped and saved${sendSummary}`
+        : `Done — ${job.processed} profiles scraped${sendSummary}`
+    );
     return job;
   } catch (err) {
-    job.status = 'failed';
+    job.status = job.stopRequested ? 'stopped' : 'failed';
     job.error = err.message;
     job.finishedAt = new Date().toISOString();
+    await log(`${job.status === 'stopped' ? 'Stopped' : 'Failed'}: ${err.message}`);
     await db.jobs.updateScrapeJob(jobId, {
-      status: 'failed',
+      status: job.status,
       error: err.message,
       finishedAt: job.finishedAt,
     });
@@ -444,4 +558,61 @@ async function runScrapeJob(userId, filters, onProgress) {
   }
 }
 
-module.exports = { runScrapeJob, getJobStatus };
+async function runCompanySearch({ userId, jobId, job, filters, page, log, outDir }) {
+  const search = filters.companySearch;
+  const shouldStop = () => job.stopRequested;
+  const labels = (items) => items.map((item) => item.label);
+  await log(
+    `Mode: company search | keywords "${search.keywords || 'none'}" | industries: ${labels(search.industries).join(', ') || 'any'} | countries: ${labels(search.countries).join(', ') || 'any'} | up to ${search.maxCompanies}`
+  );
+  const known = filters.rescrape ? new Set() : await db.companies.knownCompanySlugs(userId);
+  const cards = await collectCompanies(page, {
+    keywords: search.keywords,
+    industries: search.industries,
+    countries: search.countries,
+    maxCompanies: search.maxCompanies,
+    known,
+    shouldStop,
+    log,
+    debugDir: outDir,
+  });
+  job.total = cards.length;
+  await db.jobs.updateScrapeJob(jobId, { total: job.total, filters: job.filters });
+  if (cards.length) await log(`Opening ${cards.length} company page(s), with a pause between each`);
+
+  const stored = {
+    keywords: search.keywords,
+    industries: labels(search.industries),
+    countries: labels(search.countries),
+  };
+  const { kept, outside } = await scrapeCompanies(page, cards, search, {
+    shouldStop,
+    log,
+    debugDir: outDir,
+    onCompany: async (record) => {
+      await db.companies.upsertCompany(userId, record, stored);
+      job.processed += 1;
+      job.current = record.name;
+    },
+  });
+
+  job.status = job.stopRequested ? 'stopped' : 'completed';
+  job.finishedAt = new Date().toISOString();
+  job.resultCount = kept;
+  await db.jobs.updateScrapeJob(jobId, {
+    status: job.status,
+    finishedAt: job.finishedAt,
+    resultCount: kept,
+    processed: job.processed,
+  });
+  await log(
+    `${job.stopRequested ? 'Stopped' : 'Done'} — ${kept} compan${kept === 1 ? 'y' : 'ies'} saved${outside ? `, ${outside} skipped (headquarters outside the chosen countries)` : ''}`
+  );
+  return job;
+}
+
+function runningUsers() {
+  return [...activeJobs].filter(([, job]) => job?.status === 'running').map(([userId]) => userId);
+}
+
+module.exports = { runningUsers, runScrapeJob, getJobStatus, requestScrapeStop };

@@ -14,11 +14,27 @@ from typing import Dict, List, Optional
 import pandas as pd
 from flask import Flask, jsonify, request, send_file
 from .config import DEFAULT_COUNTRIES
+from .custom_search import CUSTOM_SEARCH, SpecError, parse_spec, read_history, write_spec
 from .geo import COUNTRIES
+from .partners.config import PARTNERS
+from .partners.manual import EnrichError as PartnerEnrichError
+from .partners.manual import enrich_items as partner_enrich_items
+from .partners.manual import parse_items as parse_partner_enrich_items
+from .partners.spec import SpecError as PartnerSpecError
+from .partners.spec import datasets_for as partner_datasets
+from .partners.spec import parse_spec as parse_partner_spec
+from .partners.spec import read_history as partner_history
+from .partners.spec import ALL_RUNS as PARTNER_ALL_RUNS
+from .partners.spec import all_rows as partner_all_rows
+from .partners.spec import read_json as read_partner_json
+from .partners.spec import run_rows as partner_run_rows
+from .partners.spec import run_path as partner_run_path
+from .partners.spec import write_spec as write_partner_spec
 from .people_search import google_url
 from .profile import GPU, LABELS, OWN_KEYS, TRAINING, COMPETITORS, env_name
 from .segments import GPU_SEGMENTS, TRAINING_SEGMENTS, COMPETITOR_SEGMENTS
-from .store import fill_country, to_xlsx
+from .store import (Store, fill_country, fix_place_names, name_competitor_clients, person_reject_key,
+                    to_xlsx)
 
 try:
     import fcntl
@@ -29,9 +45,12 @@ except ImportError:  # Windows
 ROOT = Path(__file__).resolve().parent.parent
 SOURCES = ["seeds", "incubators", "search", "maps", "funding", "github", "huggingface", "hn"]  # GPU; yc stays off
 TRAINING_SOURCES = ["seeds", "directories", "search", "maps", "funding", "github"]  # its own lists only
-COMPETITORS_SOURCES = ["competitors", "seeds", "search"]
+COMPETITORS_SOURCES = ["competitors"]
 SEGMENTS = GPU_SEGMENTS
 INTENTS = ["high", "medium", "low"]
+SORTS = ["score", "company", "newest", "oldest"]
+REJECT_SCOPES = ("person", "company")
+MAX_REJECT = 500
 PREVIEW_COLUMNS = ["company", "country", "full_name", "title", "email", "verified_status", "intent", "segment",
                    "score", "ready"]
 LOG_LINES = 80
@@ -62,6 +81,8 @@ TEXTS = {
     "REACHER_URL": "Reacher URL (empty = MX check only)",
     "RUN_AT": "Daily run time, HH:MM (empty = off; Docker uses this, a plain server uses cron)",
 }
+MODEL_KEYS = ("ANTHROPIC_API_KEY",)
+SEARCH_KEYS = ("SERPER_API_KEY", "TAVILY_API_KEY", "BRAVE_API_KEY")
 # Each tab of the page is one profile (profile.py): its own data, settings, sources and rules.
 TRAINING_FLAGS = {  # target countries only: always on for this profile, so not a checkbox
     "SMALL_ONLY": "Only small & medium organisations (drops 50k+ learners, 10+ branches, 300+ staff, listed companies)",
@@ -93,7 +114,9 @@ PROFILES = {
 SECRETS = {"GITHUB_TOKEN": "GitHub token",
            "SERPER_API_KEY": "Serper API key (training search: 2,500 free searches, no card)",
            "TAVILY_API_KEY": "Tavily API key (training search: 1,000 free a month, no card)",
-           "BRAVE_API_KEY": "Brave Search API key (people search; also training search if no Serper/Tavily key)"}
+           "BRAVE_API_KEY": "Brave Search API key (people search; also training search if no Serper/Tavily key)",
+           "ANTHROPIC_API_KEY": "Claude API key (partner research wording with Claude Haiku; empty = templates only)",
+           "UNIFERS_API_KEY": "Unifers API key (partner research: email and phone from a contact's LinkedIn URL; spends credits)"}
 DEFAULTS = {"MAX_AGE_YEARS": "5", "MAX_TEAM_SIZE": "50", "BATCH_SIZE": "200", "MIN_SCORE": "5",
             "DOMAIN_DELAY": "3", "SEARCH_MAX_PER_RUN": "30", "MAX_PEOPLE": "5", "ROUND_SIZE": "200", "WORKERS": "6", "SEARCH_DISCOVERY_PER_RUN": "40", "MAPS_PER_RUN": "40"}  # same as config.py, for an older .env without these lines
 LISTS = {"SEGMENTS": list(SEGMENTS), "SKIP_SOURCES": SOURCES, "EARLY_EXEMPT_SEGMENTS": list(SEGMENTS),
@@ -254,7 +277,19 @@ def filter_sheet(df: pd.DataFrame, args, last_run: Optional[dict] = None) -> pd.
         day = (args.get(key) or "").strip()
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
             df = df[df[col].str[:10] >= day]
-    df = df.sort_values(["_score", "_intent"], ascending=False)
+    day = (args.get("until") or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        df = df[df["date_found"].str[:10] <= day]
+    sort = args.get("sort") if args.get("sort") in SORTS else SORTS[0]
+    if sort == "company":
+        df = df.assign(_company=df["company"].where(df["company"] != "", df["domain"]).str.strip().str.lower())
+        df = df.sort_values(["_company", "_score"], ascending=[True, False]).drop(columns=["_company"])
+    elif sort == "newest":
+        df = df.sort_values(["date_found", "_score"], ascending=[False, False])
+    elif sort == "oldest":
+        df = df.sort_values(["date_found", "_score"], ascending=[True, False])
+    else:
+        df = df.sort_values(["_score", "_intent"], ascending=False)
     if args.get("per_company"):
         df = df.drop_duplicates("domain")
     return df.drop(columns=["_score", "_intent"])
@@ -337,23 +372,29 @@ class Runner:
             except OSError:
                 return True
 
-    def start(self, batch: int, sources: List[str], why: str = "from the web page") -> None:
+    def start(self, batch: int, sources: List[str], why: str = "from the web page",
+              countries: Optional[List[str]] = None) -> None:
         with self.lock:
             if self.any_running():
                 raise RuntimeError("A run is already in progress")
-            env = {k: v for k, v in os.environ.items() if k not in SETTING_KEYS | OWN_KEYS - {"DATA_DIR"}}
-            env.update(PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8", PROFILE=self.profile)
             cmd = [sys.executable, "-u", "-m", "leads", "run", "--profile", self.profile,
                    "--batch", str(batch), "--sources", ",".join(sources)]
-            self.data_dir().mkdir(parents=True, exist_ok=True)
-            log = open(self.log_path(), "a", encoding="utf-8")
-            log.write(f"\n=== run started {why} {datetime.now():%Y-%m-%d %H:%M} "
-                      f"(batch {batch}, sources {','.join(sources)})\n")
-            log.flush()
-            extra = {"start_new_session": True} if os.name == "posix" else {}
-            self.proc = subprocess.Popen(cmd, cwd=self.root, env=env, stdout=log,
-                                         stderr=subprocess.STDOUT, **extra)
-            log.close()
+            self._spawn(cmd, f"run started {why} {datetime.now():%Y-%m-%d %H:%M} "
+                             f"(batch {batch}, sources {','.join(sources)}"
+                             f"{', countries ' + ','.join(countries) if countries else ''})",
+                        {"COUNTRIES": ",".join(countries)} if countries else {})
+
+    def _spawn(self, cmd: List[str], header: str, extra_env: Dict[str, str]) -> None:
+        env = {k: v for k, v in os.environ.items() if k not in SETTING_KEYS | OWN_KEYS - {"DATA_DIR"}}
+        env.update(PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8", PROFILE=self.profile, **extra_env)
+        self.data_dir().mkdir(parents=True, exist_ok=True)
+        log = open(self.log_path(), "a", encoding="utf-8")
+        log.write(f"\n=== {header}\n")
+        log.flush()
+        extra = {"start_new_session": True} if os.name == "posix" else {}
+        self.proc = subprocess.Popen(cmd, cwd=self.root, env=env, stdout=log,
+                                     stderr=subprocess.STDOUT, **extra)
+        log.close()
 
     def stop(self) -> bool:
         with self.lock:
@@ -378,15 +419,53 @@ class Runner:
         return [ln for ln in lines if "urllib3" not in ln][-n:]
 
 
+class PartnerRunner(Runner):
+    def __init__(self, root: Path, env_path: Path):
+        super().__init__(root, env_path, GPU)
+
+    def data_dir(self) -> Path:
+        return super().data_dir() / PARTNERS["files"]["dir"]
+
+    def log_path(self) -> Path:
+        return self.data_dir() / PARTNERS["files"]["log"]
+
+    def start_partners(self, name: str) -> None:
+        with self.lock:
+            if self.any_running():
+                raise RuntimeError("A partner research run is already in progress")
+            self._spawn([sys.executable, "-u", "-m", "leads", "partners"],
+                        f"partner research {name} started {datetime.now():%Y-%m-%d %H:%M}", {})
+
+
+def partner_options() -> dict:
+    return {
+        "countries": list(PARTNERS["countries"]),
+        "sectors": [{"id": k, "label": v["label"]} for k, v in PARTNERS["sectors"].items()],
+        "signals": [{"id": k, "label": v["label"], "countries": list(v.get("countries", ()))}
+                    for k, v in PARTNERS["signals"].items()],
+        "months": list(PARTNERS["limits"]["months"]),
+        "sizes": [{"id": k, "label": v["label"]} for k, v in PARTNERS["sizes"].items()],
+    }
+
+
+def partner_limits() -> dict:
+    keys = ("max_name_chars", "max_words", "max_past_work_chars", "max_queries", "max_companies",
+            "default_companies", "default_months", "default_size")
+    return {**{k: PARTNERS["limits"][k] for k in keys},
+            "unifers_max_people": PARTNERS["unifers"]["max_people"],
+            "unifers_repeat_days": PARTNERS["unifers"]["repeat_days"],
+            "unifers_manual_max": PARTNERS["unifers"]["manual_max"]}
+
+
 
 LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 PAGE_SIZE = 25
 MAX_PAGE_SIZE = 200
 LEAD_FIELDS = ["company", "domain", "company_linkedin", "country", "segment", "intent", "intent_score",
                "intent_signals", "early", "founded", "stage", "team_size", "source", "signal", "signal_url",
-               "date_found", "full_name", "title", "linkedin_url", "email", "email_type", "verified_status",
+               "competitor", "competitor_service", "date_found", "full_name", "title", "linkedin_url", "email", "email_type", "verified_status",
                "phone", "score", "ready", "status", "last_updated"]
-SEARCH_FIELDS = ["company", "domain", "full_name", "title", "email"]
+SEARCH_FIELDS = ["company", "domain", "full_name", "title", "email", "competitor", "competitor_service"]
 EXEMPT_DEFAULT = "vfx_animation,gaming,arch_viz,competitor_clients"
 
 
@@ -428,7 +507,7 @@ class SheetCache:
                 return cached[1]
         df = load_sheet(xlsx)
         if not df.empty:
-            df = fill_country(df)
+            df = name_competitor_clients(fix_place_names(fill_country(df)))
         with self.lock:
             self.entries[xlsx] = (stamp, df)
         return df
@@ -451,6 +530,17 @@ def number_keys(cfg: dict) -> List[str]:
 
 def text_keys(profile: str) -> List[str]:
     return [key for key in TEXTS if profile == GPU or key not in SHARED_KEYS]
+
+
+def run_countries(value) -> Optional[List[str]]:
+    if value is None:
+        return None
+    if not isinstance(value, list) or not all(isinstance(c, str) for c in value):
+        raise ApiError(400, "INVALID_COUNTRIES", "Countries must be a list of names.")
+    unknown = [c for c in value if c not in COUNTRIES]
+    if unknown:
+        raise ApiError(400, "INVALID_COUNTRIES", f"Unknown country: {unknown[0]}.")
+    return [c for c in COUNTRIES if c in value] or None
 
 
 def split_list(raw: str) -> List[str]:
@@ -552,6 +642,8 @@ def run_info(runner: Runner, sheets: SheetCache) -> dict:
         "dailySources": daily_sources(env, cfg["sources"]),
         "segments": list(cfg["segments"]),
         "countries": list(COUNTRIES) + [OTHER_COUNTRY],
+        "countryOptions": list(COUNTRIES),
+        "targetCountries": split_list(env.get("COUNTRIES") or DEFAULT_COUNTRIES[runner.profile]),
         "intents": INTENTS,
     }
 
@@ -560,9 +652,11 @@ def create_app(root: Path = ROOT) -> Flask:
     app = Flask(__name__)
     env_path = env_file(root)
     runners = {p: Runner(root, env_path, p) for p in PROFILES}
+    partners = PartnerRunner(root, env_path)
     sheets = SheetCache()
     app.config["runner"] = runners[GPU]
     app.config["runners"] = runners
+    app.config["partners"] = partners
 
     def runner_for(value) -> Runner:
         profile = str(value or GPU)
@@ -627,11 +721,131 @@ def create_app(root: Path = ROOT) -> Flask:
             raise ApiError(400, "INVALID_BATCH", "The batch must be a whole number.")
         if not 1 <= batch <= limit:
             raise ApiError(400, "INVALID_BATCH", f"The batch must be between 1 and {limit}.")
+        countries = run_countries(data.get("countries"))
         try:
-            runner.start(batch, sources, why="from the CRM")
+            runner.start(batch, sources, why="from the CRM", countries=countries)
         except RuntimeError as error:
             raise ApiError(409, "RUN_IN_PROGRESS", str(error))
         return jsonify(ok=True, message=f"{LABELS[runner.profile]} run started.")
+
+    @app.get("/api/custom-search")
+    def custom_searches():
+        runner = runner_for(request.args.get("profile"))
+        limits = {k: CUSTOM_SEARCH[k] for k in ("max_name_chars", "max_what", "max_where", "max_words",
+                                                 "max_term_chars", "max_queries", "max_companies",
+                                                 "default_companies")}
+        return jsonify(profile=runner.profile, running=runner.any_running(),
+                       searches=read_history(runner.data_dir()), limits=limits)
+
+    @app.post("/api/custom-search/preview")
+    def custom_search_preview():
+        data = body()
+        try:
+            spec = parse_spec({**data, "name": data.get("name") or "Preview"})
+        except SpecError as error:
+            raise ApiError(400, "INVALID_SEARCH", str(error))
+        return jsonify(queries=spec["queries"], slug=spec["slug"], maxQueries=CUSTOM_SEARCH["max_queries"])
+
+    @app.post("/api/custom-search")
+    def custom_search_start():
+        data = body()
+        runner = runner_for(data.get("profile"))
+        try:
+            spec = parse_spec(data)
+        except SpecError as error:
+            raise ApiError(400, "INVALID_SEARCH", str(error))
+        countries = run_countries(data.get("countries"))
+        if runner.any_running():
+            raise ApiError(409, "RUN_IN_PROGRESS", "A run is already in progress.")
+        write_spec(runner.data_dir(), spec)
+        try:
+            runner.start(spec["companies"], ["custom"], why=f"for the custom search {spec['name']}",
+                         countries=countries)
+        except RuntimeError as error:
+            raise ApiError(409, "RUN_IN_PROGRESS", str(error))
+        return jsonify(ok=True, message=f"Custom search {spec['name']} started: {len(spec['queries'])} searches, "
+                                        f"up to {spec['companies']} companies.")
+
+    def partner_spec(data: dict) -> dict:
+        try:
+            return parse_partner_spec(data)
+        except PartnerSpecError as error:
+            raise ApiError(400, "INVALID_SEARCH", str(error))
+
+    @app.get("/api/partners")
+    def partner_overview():
+        env = read_env(env_path)
+        running = partners.any_running()
+        runs = [{**r, "status": "stopped"} if r.get("status") == "running" and not running else r
+                for r in partner_history(partners.data_dir())]
+        return jsonify(running=running, searchReady=any(env.get(k) for k in SEARCH_KEYS),
+                       modelReady=all(env.get(k) for k in MODEL_KEYS), unifersReady=bool(env.get("UNIFERS_API_KEY")),
+                       options=partner_options(),
+                       limits=partner_limits(), runs=runs)
+
+    @app.post("/api/partners/preview")
+    def partner_preview():
+        data = body()
+        spec = partner_spec({**data, "name": data.get("name") or "Preview"})
+        datasets = [PARTNERS["datasets"][d["dataset"]] for d in partner_datasets(spec)]
+        return jsonify(queries=[q["q"] for q in spec["queries"]], datasets=datasets,
+                       maxQueries=PARTNERS["limits"]["max_queries"])
+
+    @app.post("/api/partners")
+    def partner_start():
+        spec = partner_spec(body())
+        if partners.any_running():
+            raise ApiError(409, "RUN_IN_PROGRESS", "A partner research run is already in progress.")
+        write_partner_spec(partners.data_dir(), spec)
+        try:
+            partners.start_partners(spec["name"])
+        except RuntimeError as error:
+            raise ApiError(409, "RUN_IN_PROGRESS", str(error))
+        return jsonify(ok=True, message=f"Partner research {spec['name']} started: {len(spec['queries'])} searches, "
+                                        f"up to {spec['companies']} companies.")
+
+    @app.get("/api/partners/results")
+    def partner_results():
+        run = request.args.get("run") or ""
+        if run == PARTNER_ALL_RUNS:
+            return jsonify(id=PARTNER_ALL_RUNS, rows=partner_all_rows(partners.data_dir()), stats={})
+        path = partner_run_path(partners.data_dir(), run)
+        if path is None:
+            raise ApiError(400, "INVALID_RUN", "No such partner research run.")
+        result = read_partner_json(path, None)
+        if not isinstance(result, dict):
+            raise ApiError(404, "RUN_NOT_FOUND", "This run has no results yet.")
+        return jsonify(id=result["id"], rows=partner_run_rows(result), stats=result.get("stats") or {})
+
+    @app.get("/api/partners/log")
+    def partner_log():
+        return jsonify(running=partners.any_running(), lines=partners.tail())
+
+    @app.post("/api/partners/enrich")
+    def partner_enrich():
+        try:
+            items = parse_partner_enrich_items(body())
+        except PartnerEnrichError as error:
+            raise ApiError(400, "INVALID_ENRICH", str(error))
+        key = read_env(env_path).get("UNIFERS_API_KEY", "").strip()
+        if key:
+            os.environ["UNIFERS_API_KEY"] = key
+        from .config import load_settings
+        from .fetch import Fetcher
+        fetcher = Fetcher(load_settings())
+        try:
+            result = partner_enrich_items(partners.data_dir(), fetcher, items)
+        except PartnerEnrichError as error:
+            raise ApiError(409, "UNIFERS_NOT_SET", str(error))
+        finally:
+            fetcher.close()
+        return jsonify(**result)
+
+    @app.post("/api/partners/stop")
+    def partner_stop():
+        if not partners.stop():
+            raise ApiError(409, "NOT_RUNNING", "No partner research run started from the CRM is in progress.")
+        return jsonify(ok=True, message="Partner research stopped.")
 
     @app.post("/api/stop")
     def stop():
@@ -652,6 +866,56 @@ def create_app(root: Path = ROOT) -> Flask:
         rows = df.iloc[(page - 1) * size: page * size] if len(df) else df
         return jsonify(profile=runner.profile, total=int(len(df)), page=page, pageSize=size,
                        rows=lead_rows(rows) if len(rows) else [])
+
+    def picked_leads(data):
+        rows = data.get("leads")
+        if not isinstance(rows, list) or not rows or len(rows) > MAX_REJECT:
+            raise ApiError(400, "INVALID_LEADS", f"Pick between 1 and {MAX_REJECT} leads.")
+        if not all(isinstance(r, dict) and str(r.get("domain") or "").strip() for r in rows):
+            raise ApiError(400, "INVALID_LEADS", "Each lead needs its domain.")
+        return rows
+
+    @app.post("/api/leads/delete")
+    def delete_leads():
+        data = body()
+        runner = runner_for(data.get("profile"))
+        rows = picked_leads(data)
+        if runner.any_running():
+            raise ApiError(409, "RUN_IN_PROGRESS", "A run is in progress. Delete leads when it finishes.")
+        store = Store(runner.data_dir())
+        removed = store.drop_people(
+            person_reject_key(str(r["domain"]).strip(), str(r.get("full_name") or ""), str(r.get("email") or ""))
+            for r in rows)
+        store.save()
+        return jsonify(ok=True, removed=removed,
+                       message=f"Deleted {removed} lead row(s). A later run can find them again.")
+
+    @app.post("/api/leads/reject")
+    def reject_leads():
+        data = body()
+        runner = runner_for(data.get("profile"))
+        scope = data.get("scope")
+        if scope not in REJECT_SCOPES:
+            raise ApiError(400, "INVALID_SCOPE", "Reject people or companies.")
+        rows = picked_leads(data)
+        reason = re.sub(r"\s+", " ", str(data.get("reason") or "Rejected in review")).strip()[:80]
+        if runner.any_running():
+            raise ApiError(409, "RUN_IN_PROGRESS", "A run is in progress. Reject leads when it finishes.")
+        store = Store(runner.data_dir())
+        before = len(store.df)
+        for r in rows:
+            domain = str(r["domain"]).strip()
+            if scope == "company":
+                store.reject(domain, f"manual: {reason}")
+                store.drop_domain(domain)
+            else:
+                store.reject_person(domain, str(r.get("full_name") or ""), str(r.get("email") or ""),
+                                    f"manual: {reason}")
+        store.save()
+        removed = before - len(store.df)
+        noun = "companies" if scope == "company" else "people"
+        return jsonify(ok=True, removed=removed,
+                       message=f"Rejected {len(rows)} {noun}: {removed} row(s) removed from the sheet.")
 
     @app.get("/api/download")
     def download():

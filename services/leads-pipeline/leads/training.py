@@ -6,8 +6,10 @@ untouched. Tune the words and weights here.
 import re
 
 
-def _rx(words: str) -> re.Pattern:
-    return re.compile(rf"\b(?:{words})\b", re.I)
+def _rx(words: str, arabic: str = "") -> re.Pattern:
+    """English words need word boundaries. Arabic words take no boundaries: Arabic joins 'the',
+    'and' and 'with' to the word itself (والتدريب = 'and the training')."""
+    return re.compile(rf"\b(?:{words})\b" + (rf"|(?:{arabic})" if arabic else ""), re.I)
 
 
 # ---------------------------------------------------------------- kinds of organisation (segments)
@@ -15,17 +17,23 @@ UPSKILLING = _rx(r"ed-?tech|upskilling|reskilling|online courses?|online program
                  r"bootcamps?|e-?learning|online learning|learning platform|skilling|online certifications?|"
                  r"certification (?:courses?|programs?|programmes?)|pg (?:diploma|certificate|programs?)|"
                  r"executive (?:education|programs?)|career (?:tracks?|programs?)|cohort[- ]based|"
-                 r"live online (?:classes|courses|training)|job[- ](?:guarantee|assistance)|placement assistance")
+                 r"live online (?:classes|courses|training)|job[- ](?:guarantee|assistance)|placement assistance",
+                 r"تعلم إلكتروني|التعلم الإلكتروني|التعليم الإلكتروني|دورات (?:عبر الإنترنت|أونلاين|اونلاين)|"
+                 r"منصة تعليمية|منصة تدريبية|تطوير المهارات|رفع المهارات|إعادة التأهيل|معسكرات? تدريبية?")
 INSTITUTE = _rx(r"training institutes?|training (?:centre|center)s?|it training|software training|"
                 r"classroom training|instructor[- ]led training|authori[sz]ed (?:training )?(?:partner|centre|center)|"
                 r"training partners?|certification training|technical training|training academy|"
-                r"(?:cloud|devops|linux|networking|cyber ?security|data science) (?:training|academy|institute)")
+                r"(?:cloud|devops|linux|networking|cyber ?security|data science) (?:training|academy|institute)",
+                r"معهد (?:ال)?تدريب|معاهد (?:ال)?تدريب|مركز (?:ال)?تدريب|مراكز (?:ال)?تدريب|أكاديمية (?:ال)?تدريب|"
+                r"شريك تدريب معتمد|مركز تدريب معتمد|التدريب التقني|تدريب تقني|المعهد التقني")
 UNIVERSITY = _rx(r"universit(?:y|ies)|deemed to be university|engineering colleges?|institute of technology|"
                  r"online degrees?|distance (?:education|learning)|centre for (?:online|distance) (?:learning|education)|"
-                 r"college of engineering|school of (?:engineering|computing|computer science)")
+                 r"college of engineering|school of (?:engineering|computing|computer science)",
+                 r"جامعة|جامعات|كلية الهندسة|كلية (?:الحاسب|الحاسوب|علوم الحاسب)|التعليم عن بعد")
 CORPORATE = _rx(r"corporate training|learning (?:and|&) development|l&d|employee (?:training|upskilling)|"
                 r"talent development|fresher training|campus to corporate|hire[- ]train[- ]deploy|"
-                r"enterprise (?:learning|training)|workforce (?:training|upskilling)")
+                r"enterprise (?:learning|training)|workforce (?:training|upskilling)",
+                r"تدريب (?:ال)?موظفين|تدريب (?:ال)?شركات|التعلم والتطوير|تطوير المواهب|التدريب المؤسسي")
 
 # Courses that need a machine per learner: the organisation must teach at least one of these.
 LAB_TOPICS = _rx(r"cloud computing|aws|amazon web services|azure|gcp|google cloud|devops|kubernetes|docker|"
@@ -33,7 +41,10 @@ LAB_TOPICS = _rx(r"cloud computing|aws|amazon web services|azure|gcp|google clou
                  r"data science|data analytics|data engineering|machine learning|artificial intelligence|"
                  r"deep learning|generative ai|full[- ]stack|web development|software (?:development|testing)|"
                  r"python|java|networking|ccna|ccnp|salesforce|sap|power bi|tableau|big data|hadoop|spark|"
-                 r"blockchain|iot|embedded systems|vlsi|mlops|terraform|ansible|jenkins|automation testing|selenium")
+                 r"blockchain|iot|embedded systems|vlsi|mlops|terraform|ansible|jenkins|automation testing|selenium",
+                 r"الحوسبة السحابية|الأمن السيبراني|أمن المعلومات|علم البيانات|علوم البيانات|تحليل البيانات|"
+                 r"الذكاء الاصطناعي|تعلم الآلة|التعلم الآلي|التعلم العميق|البرمجة|تطوير البرمجيات|تطوير الويب|"
+                 r"الشبكات|إنترنت الأشياء|البلوك ?تشين")
 
 
 def teaches_lab_topics(text: str) -> bool:
@@ -44,7 +55,8 @@ def teaches_lab_topics(text: str) -> bool:
 SIGNALS = [
     ("offers hands-on / virtual labs", _rx(r"hands[- ]on labs?|virtual labs?|cloud labs?|practice labs?|live labs?|"
                                           r"lab environments?|lab access|sandbox(?:es)?|lab sessions?|lab exercises?|"
-                                          r"guided labs?|labs? for (?:every|each) (?:learner|student)"), 3),
+                                          r"guided labs?|labs? for (?:every|each) (?:learner|student)",
+                                          r"معامل افتراضية|مختبرات افتراضية|تدريب عملي|تطبيق عملي"), 3),
     ("teaches lab-heavy courses", LAB_TOPICS, 2),
     ("projects / capstones", _rx(r"capstone projects?|industry projects?|live projects?|real[- ]world projects?|"
                                  r"hands[- ]on projects?|project[- ]based learning"), 2),
@@ -52,9 +64,11 @@ SIGNALS = [
                                    r"weekend batch(?:es)?|enrol(?:l)? now|admissions? (?:open|closing)|apply now"), 1),
     ("certification programmes", _rx(r"certification (?:training|courses?|programs?|programmes?)|aws certified|"
                                      r"azure (?:certification|certified)|red hat certified|ccna|ceh|comptia|"
-                                     r"kubernetes (?:certification|cka|ckad)|pg (?:diploma|certificate)"), 1),
+                                     r"kubernetes (?:certification|cka|ckad)|pg (?:diploma|certificate)",
+                                     r"شهادات? معتمدة|شهادات? احترافية|شهادات? دولية"), 1),
     ("delivers online", _rx(r"online (?:classes|training|programs?|programmes?|degrees?)|live online|"
-                            r"instructor[- ]led online|remote learning|lms"), 1),
+                            r"instructor[- ]led online|remote learning|lms",
+                            r"عن بعد|عن بُعد|أونلاين|اونلاين|عبر الإنترنت"), 1),
     # evidence against: they already run or buy a lab platform
     ("already has a lab platform", _rx(r"powered by (?:cloudlabs|skillable|kodekloud|whizlabs|qwiklabs|instruqt)|"
                                        r"our (?:own )?lab platform|in[- ]house lab platform"), -2),
@@ -64,7 +78,7 @@ JOB = _rx(r"lab|labs|trainer|instructor|faculty|teaching assistant|mentor|techni
 
 # ---------------------------------------------------------------- decision makers
 TITLE_ATOMS = (
-    r"co-?founders?|founders?|ceo|chief executive officer|cto|chief technology officer|coo|"
+    r"co-?founders?|founders?|ceo|chief executive officer|cto|chief technology officer|coo|general manager|"
     r"chief operating officer|chief learning officer|clo|chief academic officer|managing director|"
     r"director|executive director|program(?:me)? director|academic director|director of (?:training|academics|"
     r"learning|programs?|programmes?|operations|technology|it)|"
@@ -84,8 +98,8 @@ PRIORITY = [
                 r"chief technology|dean|hod|director of", re.I), 1),
 ]
 # public search for people (people_search.py)
-SEARCH_TITLES = ('(founder OR director OR CEO OR "head of training" OR "academic head" OR '
-                 '"program director" OR "head of learning")')
+SEARCH_TITLES = ('(founder OR director OR CEO OR "general manager" OR "managing director" OR '
+                 '"head of training" OR "academic head" OR "program director" OR "head of learning")')
 
 # ---------------------------------------------------------------- scoring
 SOURCE_POINTS = {"directory": 3, "funding": 3, "incubator": 2, "github": 2}

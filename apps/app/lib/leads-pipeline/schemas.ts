@@ -2,6 +2,10 @@ import { z } from "zod";
 
 export const LEAD_PROFILES = ["gpu", "training", "competitors"] as const;
 export const LEAD_INTENTS = ["high", "medium", "low"] as const;
+export const LEAD_SORTS = ["score", "company", "newest", "oldest"] as const;
+export const REJECT_SCOPES = ["person", "company"] as const;
+export type RejectScope = (typeof REJECT_SCOPES)[number];
+export type LeadSort = (typeof LEAD_SORTS)[number];
 
 export const leadProfile = z.enum(LEAD_PROFILES);
 export type LeadProfile = z.infer<typeof leadProfile>;
@@ -44,6 +48,14 @@ const profileStatus = z.object({
 	dailySources: z.array(z.string()),
 	segments: z.array(z.string()),
 	countries: z.array(z.string()),
+	countryOptions: z
+		.array(z.string())
+		.nullish()
+		.transform((value) => value ?? []),
+	targetCountries: z
+		.array(z.string())
+		.nullish()
+		.transform((value) => value ?? []),
 	intents: z.array(z.string()),
 });
 
@@ -55,6 +67,12 @@ export const runLog = z.object({
 	profile: leadProfile,
 	running: z.boolean(),
 	lines: z.array(z.string()),
+});
+
+export const rejectResult = z.object({
+	ok: z.literal(true),
+	removed: z.number(),
+	message: z.string(),
 });
 
 export const okMessage = z.object({
@@ -78,6 +96,8 @@ export const lead = z.object({
 	source: z.string(),
 	signal: z.string(),
 	signal_url: z.string(),
+	competitor: z.string().default(""),
+	competitor_service: z.string().default(""),
 	date_found: z.string(),
 	full_name: z.string(),
 	title: z.string(),
@@ -136,6 +156,68 @@ export const pipelineSettings = z.object({
 	earlyExempt: choice.nullable(),
 });
 
+export const SEARCH_MODES = ["browser", "api"] as const;
+export type SearchMode = (typeof SEARCH_MODES)[number];
+
+const customSearch = z.object({
+	name: z.string(),
+	slug: z.string(),
+	what: z.array(z.string()),
+	where: z.array(z.string()),
+	mustHave: z.array(z.string()),
+	exclude: z.array(z.string()),
+	companies: z.number(),
+	queries: z.array(z.string()),
+	searchWith: z.enum(SEARCH_MODES).catch("browser"),
+	skipDomains: z
+		.array(z.string())
+		.nullish()
+		.transform((value) => value ?? []),
+	startedAt: z.string(),
+	found: z.number().nullable(),
+	searched: z
+		.number()
+		.nullish()
+		.transform((value) => value ?? null),
+});
+
+export const customSearchList = z.object({
+	profile: leadProfile,
+	running: z.boolean(),
+	searches: z.array(customSearch),
+	limits: z.object({
+		max_name_chars: z.number(),
+		max_what: z.number(),
+		max_where: z.number(),
+		max_words: z.number(),
+		max_term_chars: z.number(),
+		max_queries: z.number(),
+		max_companies: z.number(),
+		default_companies: z.number(),
+	}),
+});
+
+export const customSearchPreview = z.object({
+	queries: z.array(z.string()),
+	slug: z.string(),
+	maxQueries: z.number(),
+});
+
+export type CustomSearch = z.infer<typeof customSearch>;
+export type CustomSearchList = z.infer<typeof customSearchList>;
+
+export type CustomSearchInput = {
+	profile: LeadProfile;
+	name: string;
+	what: string[];
+	where: string[];
+	mustHave: string[];
+	exclude: string[];
+	companies: number;
+	searchWith: SearchMode;
+	countries: string[];
+};
+
 export type ProfileStatus = z.infer<typeof profileStatus>;
 export type PipelineStatus = z.infer<typeof pipelineStatus>;
 export type Lead = z.infer<typeof lead>;
@@ -148,6 +230,10 @@ export type LeadFilters = {
 	intent: LeadIntent | null;
 	segment: string | null;
 	country: string | null;
+	source: string | null;
+	foundFrom: string | null;
+	foundTo: string | null;
+	sort: LeadSort;
 	latest: boolean;
 	perCompany: boolean;
 };

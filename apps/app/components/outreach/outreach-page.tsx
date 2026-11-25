@@ -49,11 +49,13 @@ export function OutreachPage({
 	title,
 	description,
 	actions,
+	lead,
 	children,
 }: {
 	title: ReactNode;
 	description?: ReactNode;
 	actions?: ReactNode;
+	lead?: ReactNode;
 	children: ReactNode;
 }) {
 	const health = useQuery({
@@ -90,6 +92,7 @@ export function OutreachPage({
 				) : null}
 			</PageShellHeader>
 			<PageShellContent>
+				{lead}
 				{health.isPending ? (
 					<PageShellLoading />
 				) : problem ? (

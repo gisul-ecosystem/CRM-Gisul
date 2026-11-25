@@ -55,6 +55,10 @@ import {
 	reminderRulesOutput,
 	roleItemOutput,
 	setMemberRoleInput,
+	removeMemberInput,
+	allowMemberAgainInput,
+	removedMembersOutput,
+	memberRemovalOutput,
 	teamItemOutput,
 	toggleIntegrationInput,
 	updateActivityAssignmentRuleInput,
@@ -149,6 +153,40 @@ export class WorkspaceRouter {
 		@Input() input: z.infer<typeof setMemberRoleInput>,
 	) {
 		return this.workspace.setMemberRole(ctx.user.id, input);
+	}
+
+	@Mutation({
+		input: removeMemberInput,
+		output: memberRemovalOutput,
+		meta: restMeta("DELETE", "/workspace/members/{memberId}", ["Workspace"]),
+	})
+	async removeMember(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof removeMemberInput>,
+	) {
+		return this.workspace.removeMember(ctx.user.id, input);
+	}
+
+	@Query({
+		output: removedMembersOutput,
+		meta: restMeta("GET", "/workspace/removed-members", ["Workspace"]),
+	})
+	async removedMembers(@Ctx() ctx: AuthedTrpcContext) {
+		return this.workspace.removedMembers(ctx.user.id);
+	}
+
+	@Mutation({
+		input: allowMemberAgainInput,
+		output: memberRemovalOutput,
+		meta: restMeta("POST", "/workspace/removed-members/{userId}/allow", [
+			"Workspace",
+		]),
+	})
+	async allowMemberAgain(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof allowMemberAgainInput>,
+	) {
+		return this.workspace.allowMemberAgain(ctx.user.id, input);
 	}
 
 	@Mutation({

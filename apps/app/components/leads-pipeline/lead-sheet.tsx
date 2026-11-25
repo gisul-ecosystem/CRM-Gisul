@@ -10,6 +10,10 @@ import {
 	SheetTitle,
 } from "@crm/ui/components/sheet";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
+import {
+	LEAD_CATEGORY_LABEL,
+	type LeadCategory,
+} from "@crm/validation/lead-origin";
 import type { ReactNode } from "react";
 import {
 	intentTone,
@@ -22,9 +26,11 @@ import type { Lead } from "@/lib/leads-pipeline/schemas";
 
 export function LeadSheet({
 	lead,
+	category,
 	onClose,
 }: {
 	lead: Lead | null;
+	category: LeadCategory;
 	onClose: () => void;
 }) {
 	return (
@@ -35,7 +41,7 @@ export function LeadSheet({
 			}}
 		>
 			<SheetContent size="lg" className="overflow-y-auto">
-				{lead ? <LeadBody lead={lead} /> : null}
+				{lead ? <LeadBody lead={lead} category={category} /> : null}
 			</SheetContent>
 		</Sheet>
 	);
@@ -45,9 +51,11 @@ function website(domain: string): string {
 	return `https://${domain}`;
 }
 
-function LeadBody({ lead }: { lead: Lead }) {
+function LeadBody({ lead, category }: { lead: Lead; category: LeadCategory }) {
 	const facts: [string, string][] = [
 		["Country", lead.country],
+		["Competitor", lead.competitor],
+		["Service they take", lead.competitor_service],
 		["Segment", segmentList(lead.segment)],
 		["Founded", lead.founded],
 		["Stage", lead.stage],
@@ -58,7 +66,13 @@ function LeadBody({ lead }: { lead: Lead }) {
 		["Score", lead.score],
 		["Ready", lead.ready],
 		["Pipeline status", lead.status],
-		["Source", lead.source.split(", ").map(sourceLabel).join(", ")],
+		[
+			"Source",
+			[
+				LEAD_CATEGORY_LABEL[category],
+				...lead.source.split(", ").filter(Boolean).map(sourceLabel),
+			].join(" · "),
+		],
 		["Found", lead.date_found],
 		["Updated", lead.last_updated],
 	];

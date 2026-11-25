@@ -1,6 +1,7 @@
 import {
 	appUrl,
 	canChangeRole,
+	canRemoveMembers,
 	canRenameWorkspace,
 	ensureWorkspaceMembership,
 	isWorkspaceAdmin,
@@ -60,6 +61,9 @@ import type {
 	ReminderRules,
 	RoleItem,
 	SetMemberRoleInput,
+	RemoveMemberInput,
+	AllowMemberAgainInput,
+	RemovedMember,
 	TeamItem,
 	ToggleIntegrationInput,
 	UpdateActivityAssignmentRuleInput,
@@ -331,6 +335,7 @@ export class WorkspaceService {
 			viewerRole: role,
 			canRename: canRenameWorkspace(role),
 			canChangeRoles: canChangeRole(role),
+			canRemoveMembers: canRemoveMembers(role),
 		};
 	}
 
@@ -1611,6 +1616,116 @@ export class WorkspaceService {
 		});
 
 		return this.toMember(updated, userId, this.activeSince());
+	}
+
+	async removeMember(
+		userId: string,
+		input: RemoveMemberInput,
+	): Promise<{ ok: true }> {
+		await this.requireOwner(userId, "remove people from the CRM");
+
+		const removed = await this.db.$transaction(async (tx) => {
+			const target = await tx.member.findFirst({
+				where: { id: input.memberId, organizationId: WORKSPACE_ID },
+				select: { id: true, role: true, userId: true },
+			});
+
+			if (!target) {
+				throw new NotFoundException("That person is not in this workspace.");
+			}
+
+			if (target.userId === userId) {
+				throw new ForbiddenException(
+					"You cannot remove yourself. Ask another owner.",
+				);
+			}
+
+			if (target.role === "owner") {
+				const owners = await tx.$queryRaw<{ id: string }[]>`
+					SELECT id FROM "member"
+					WHERE "organizationId" = ${WORKSPACE_ID} AND role = 'owner'
+					FOR UPDATE
+				`;
+
+				if (owners.length <= 1) {
+					throw new ForbiddenException(
+						"The workspace needs an owner. Make someone else an owner first.",
+					);
+				}
+			}
+
+			await tx.user.update({
+				where: { id: target.userId },
+				data: { removedAt: new Date() },
+			});
+			await tx.session.deleteMany({ where: { userId: target.userId } });
+			await tx.member.delete({ where: { id: target.id } });
+
+			return target;
+		});
+
+		this.logger.log({
+			message: "Member removed",
+			userId,
+			removedUserId: removed.userId,
+		});
+
+		return { ok: true };
+	}
+
+	async removedMembers(userId: string): Promise<RemovedMember[]> {
+		await this.requireOwner(userId, "see removed people");
+
+		const rows = await this.db.user.findMany({
+			where: { removedAt: { not: null } },
+			select: { id: true, name: true, email: true, removedAt: true },
+			orderBy: { removedAt: "desc" },
+		});
+
+		return rows.flatMap((row) =>
+			row.removedAt
+				? [
+						{
+							userId: row.id,
+							name: row.name,
+							email: row.email,
+							removedAt: row.removedAt.toISOString(),
+						},
+					]
+				: [],
+		);
+	}
+
+	async allowMemberAgain(
+		userId: string,
+		input: AllowMemberAgainInput,
+	): Promise<{ ok: true }> {
+		await this.requireOwner(userId, "let removed people back in");
+
+		const updated = await this.db.user.updateMany({
+			where: { id: input.userId, removedAt: { not: null } },
+			data: { removedAt: null },
+		});
+
+		if (updated.count === 0) {
+			throw new NotFoundException("That person is not removed.");
+		}
+
+		this.logger.log({
+			message: "Removed member allowed again",
+			userId,
+			allowedUserId: input.userId,
+		});
+
+		return { ok: true };
+	}
+
+	private async requireOwner(userId: string, action: string): Promise<void> {
+		const role = await workspaceRoleOf(userId, this.db);
+
+		if (!canRemoveMembers(role)) {
+			throw new ForbiddenException(`Only an owner can ${action}.`);
+		}
 	}
 
 	private toMember(

@@ -330,6 +330,21 @@ export function InlineDateField({
 	);
 }
 
+export function InlineStaticField({
+	label,
+	value,
+}: {
+	label: string;
+	value: string;
+}) {
+	return (
+		<div className={ROW}>
+			<span className={LABEL}>{label}</span>
+			<span className="min-w-0 truncate px-2 text-sm">{value}</span>
+		</div>
+	);
+}
+
 export function InlineSelectField({
 	label,
 	value,

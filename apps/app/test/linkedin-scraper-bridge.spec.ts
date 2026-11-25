@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
+	scraperOwnerId,
 	scraperUrl,
 	scraperViewerUrl,
 	upstreamPath,
@@ -9,6 +10,7 @@ import { scrapedProfile, scraperStatus } from "../lib/linkedin-scraper/schemas";
 const saved = {
 	url: process.env.LINKEDIN_SCRAPER_URL,
 	viewer: process.env.LINKEDIN_SCRAPER_VIEWER_URL,
+	legacy: process.env.LINKEDIN_SCRAPER_LEGACY_OWNER_EMAIL,
 };
 
 function restore(name: string, value: string | undefined) {
@@ -19,6 +21,26 @@ function restore(name: string, value: string | undefined) {
 afterEach(() => {
 	restore("LINKEDIN_SCRAPER_URL", saved.url);
 	restore("LINKEDIN_SCRAPER_VIEWER_URL", saved.viewer);
+	restore("LINKEDIN_SCRAPER_LEGACY_OWNER_EMAIL", saved.legacy);
+});
+
+describe("scraperOwnerId", () => {
+	it("gives each CRM user their own scraper owner", () => {
+		delete process.env.LINKEDIN_SCRAPER_LEGACY_OWNER_EMAIL;
+		expect(scraperOwnerId({ id: "user_a", email: "a@gisul.co.in" })).toBe(
+			"user_a",
+		);
+	});
+
+	it("keeps the old shared data for the legacy owner only", () => {
+		process.env.LINKEDIN_SCRAPER_LEGACY_OWNER_EMAIL = " Nikhil@Gisul.co.in ";
+		expect(scraperOwnerId({ id: "user_n", email: "nikhil@gisul.co.in" })).toBe(
+			"local",
+		);
+		expect(scraperOwnerId({ id: "user_b", email: "b@gisul.co.in" })).toBe(
+			"user_b",
+		);
+	});
 });
 
 describe("scraper configuration", () => {

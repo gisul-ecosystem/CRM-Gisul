@@ -45,7 +45,10 @@ def _plain(text: str) -> str:
 
 
 def query_for(company: str) -> str:
-    name = company.strip()
+    name = re.split(r"\s*[:|\-–—]\s*", company.strip())[0].strip()
+    words = name.split()
+    if len(words) > 6:
+        name = " ".join(words[:6])
     return f'site:linkedin.com/in {quote_name(name)} {TITLES}'
 
 
@@ -87,23 +90,69 @@ def parse_result(title: str, description: str, url: str, keys: List[str]) -> Opt
     return {"name": name, "title": job, "linkedin": f"https://www.linkedin.com/in/{m.group(1)}"}
 
 
-def find_people(api_key: str, fetcher, company: str, domain: str, limit: int = 3) -> Tuple[List[dict], str]:
-    """(people, status). status: ok | off | rate_limited | error"""
-    if not api_key:
-        return [], "off"
+def brave_country(country: str) -> str:
+    """Brave's country for a company's country: its own where Brave serves one, else everywhere
+    (a Dubai company's founders are not in India-only results)."""
+    from .geo import COUNTRIES
+    from .sources.search import BRAVE_COUNTRIES
+    code = COUNTRIES.get(country or "", {}).get("code", "")
+    if not country:
+        return "IN"
+    return code if code in BRAVE_COUNTRIES else "ALL"
+
+
+SERPER_URL = "https://google.serper.dev/search"
+TAVILY_URL = "https://api.tavily.com/search"
+# answers meaning "this key cannot search now" (limit, credit, key): try the next search API
+SWITCH = {400, 401, 402, 403, 429, 432, 433}
+
+
+def _search(name: str, key: str, fetcher, q: str, country: str):
+    from .geo import COUNTRIES
+    code = COUNTRIES.get(country or "", {}).get("code", "IN" if not country else "")
+    clean_key = (key or "").strip().strip('"\'')
+    if name == "serper":
+        status, data = fetcher.post_json(
+            SERPER_URL, {"q": q, "num": 20, **({"gl": code.lower()} if code else {})},
+            headers={"X-API-KEY": clean_key, "Content-Type": "application/json"})
+        rows = (data or {}).get("organic", []) if isinstance(data, dict) else []
+        return status, [(r.get("title", ""), r.get("snippet", ""), r.get("link", "")) for r in rows], data
+    if name == "tavily":
+        status, data = fetcher.post_json(
+            TAVILY_URL, {"query": q, "max_results": 20, "search_depth": "basic",
+                         **({"country": (country or "India").lower()} if code else {})},
+            headers={"Authorization": f"Bearer {clean_key}", "Content-Type": "application/json"})
+        rows = (data or {}).get("results", []) if isinstance(data, dict) else []
+        return status, [(r.get("title", ""), r.get("content", ""), r.get("url", "")) for r in rows], data
     status, data, _ = fetcher.get_json(
-        BRAVE_URL, params={"q": query_for(company), "count": 20, "country": "IN", "search_lang": "en"},
-        headers={"X-Subscription-Token": api_key, "Accept": "application/json"})
-    time.sleep(PAUSE)
-    if status == 429:
+        BRAVE_URL, params={"q": q, "count": 20, "country": brave_country(country), "search_lang": "en"},
+        headers={"X-Subscription-Token": clean_key, "Accept": "application/json"})
+    rows = ((data or {}).get("web") or {}).get("results") or [] if isinstance(data, dict) else []
+    return status, [(r.get("title", ""), r.get("description", ""), r.get("url", "")) for r in rows], data
+
+
+def find_people(apis: List[Tuple[str, str]], fetcher, company: str, domain: str, limit: int = 3,
+                country: str = "") -> Tuple[List[dict], str]:
+    if not apis:
+        return [], "off"
+    status, rows = 0, []
+    for name, key in apis:
+        status, rows, data = _search(name, key, fetcher, query_for(company), country)
+        time.sleep(PAUSE)
+        if status not in SWITCH:
+            break
+        msg = (data or {}).get("message") if isinstance(data, dict) else ""
+        log.warning("people search: %s cannot search now (HTTP %s%s)",
+                    name, status, f" - {msg}" if msg else "")
+    if status in SWITCH:
         return [], "rate_limited"
-    if status != 200 or not isinstance(data, dict):
+    if status != 200:
         log.warning("people search failed for %s: HTTP %s", company, status)
         return [], "error"
     keys = company_keys(company, domain)
     found: Dict[str, dict] = {}
-    for r in (data.get("web") or {}).get("results") or []:
-        p = parse_result(r.get("title", ""), r.get("description", ""), r.get("url", ""), keys)
+    for title, description, url in rows:
+        p = parse_result(title, description, url, keys)
         if p and p["name"].lower() not in found:
             found[p["name"].lower()] = p
     people = sorted(found.values(), key=lambda p: title_priority(p["title"]))

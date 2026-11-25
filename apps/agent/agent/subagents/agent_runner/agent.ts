@@ -1,23 +1,20 @@
 import { db } from "@crm/db";
 import { defineAgent, defineDynamic } from "eve";
 import { z } from "zod";
-import {
-	azureLanguageModel,
-	azureStepSelection,
-	defaultAzureDeployment,
-} from "../../lib/azure-model";
+import { agentStepSelection, defaultAgentModel } from "../../lib/agent-model";
+import { azureLanguageModel } from "../../lib/azure-model";
 import { attribute, purposeOf } from "../../lib/session-purpose";
 
 export default defineAgent({
 	description:
 		"Execute one immutable deployed CRM agent version and persist its result and every side effect.",
 	model: defineDynamic({
-		fallback: azureLanguageModel(defaultAzureDeployment()),
+		fallback: defaultAgentModel(),
 		events: {
 			"step.started": async (_event, ctx) => {
-				if (purposeOf(ctx) !== "team-agent") return azureStepSelection();
+				if (purposeOf(ctx) !== "team-agent") return agentStepSelection();
 				const runId = attribute(ctx, "runId");
-				if (!runId) return azureStepSelection();
+				if (!runId) return agentStepSelection();
 
 				const run = await db.agentRun.findUnique({
 					where: { id: runId },
@@ -32,7 +29,7 @@ export default defineAgent({
 							model: azureLanguageModel(run.version.modelId),
 							modelContextWindowTokens: run.version.modelContextWindowTokens,
 						}
-					: azureStepSelection();
+					: agentStepSelection();
 			},
 		},
 	}),

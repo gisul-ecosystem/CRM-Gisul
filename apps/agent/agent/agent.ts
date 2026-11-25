@@ -3,13 +3,20 @@ import "@crm/env/load";
 import { onTelemetryProblem, syncVersion } from "@crm/telemetry";
 import { defineAgent, defineDynamic } from "eve";
 import {
-	azureLanguageModel,
-	azureStepSelection,
-	defaultAzureDeployment,
-} from "./lib/azure-model";
+	agentModelProvider,
+	agentStepSelection,
+	claudeModelId,
+	defaultAgentModel,
+} from "./lib/agent-model";
 import { logCapabilities } from "./lib/capabilities";
 
 void logCapabilities();
+
+console.log(
+	agentModelProvider() === "claude"
+		? `[agent] model  Claude ${claudeModelId()} (ANTHROPIC_API_KEY)`
+		: "[agent] model  Azure OpenAI (ANTHROPIC_API_KEY is unset)",
+);
 
 onTelemetryProblem((message) => console.debug(`[telemetry] ${message}`));
 
@@ -17,8 +24,8 @@ void syncVersion();
 
 export default defineAgent({
 	model: defineDynamic({
-		fallback: azureLanguageModel(defaultAzureDeployment()),
-		events: { "step.started": () => azureStepSelection() },
+		fallback: defaultAgentModel(),
+		events: { "step.started": () => agentStepSelection() },
 	}),
 	limits: {
 		maxInputTokensPerSession: 500_000,

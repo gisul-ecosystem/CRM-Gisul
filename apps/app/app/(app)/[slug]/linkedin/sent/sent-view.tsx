@@ -15,7 +15,7 @@ import { TableCell } from "@crm/ui/components/table";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ScraperPage } from "@/components/linkedin-scraper/scraper-page";
+import { ScraperGate } from "@/components/linkedin-scraper/scraper-page";
 import { LocalDateTime } from "@/components/local-date-time";
 import { OutreachToolbar } from "@/components/outreach/toolbar";
 import { reportsApi } from "@/lib/linkedin-scraper/api";
@@ -26,14 +26,11 @@ import { COUNT, keyed, TIME_ONLY } from "@/lib/outreach/format";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-export function SentView() {
+export function SentPanel() {
 	return (
-		<ScraperPage
-			title="Sent"
-			description="LinkedIn messages sent on one day, with a downloadable report."
-		>
+		<ScraperGate>
 			<SentBody />
-		</ScraperPage>
+		</ScraperGate>
 	);
 }
 

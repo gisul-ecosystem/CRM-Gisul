@@ -9,6 +9,11 @@ export const CONTEXT_DEV_PEOPLE = "CONTEXT_DEV_PEOPLE";
 
 export const CONTEXT_DEV_SOURCE = "Context.dev key (Settings → General)";
 
+export const UNIFERS = "UNIFERS_API_KEY";
+
+export const LINKEDIN_SOURCE =
+	"Context.dev key (Settings → General) or UNIFERS_API_KEY";
+
 export type Capability = {
 	readonly id: string;
 	readonly label: string;
@@ -67,6 +72,12 @@ export function capabilitiesFrom(
 			enabled: contextDev !== null,
 		},
 		{
+			...fromEnv(UNIFERS),
+			label: "Unifers",
+			gives:
+				"a person's name, headline, current title and employer read from a LinkedIn URL you already hold (used when Context.dev has nothing), and — through reveal_contact_details — their work email and mobile number. Every Unifers call spends credits",
+		},
+		{
 			...fromEnv("BLOB_READ_WRITE_TOKEN"),
 			label: "Picture storage",
 			gives:
@@ -78,6 +89,15 @@ export function capabilitiesFrom(
 export async function enabled(id: string): Promise<boolean> {
 	return (await capabilities()).some(
 		(capability) => capability.id === id && capability.enabled,
+	);
+}
+
+export async function linkedinReadable(): Promise<boolean> {
+	const on = await capabilities();
+	return on.some(
+		(capability) =>
+			(capability.id === CONTEXT_DEV_PEOPLE || capability.id === UNIFERS) &&
+			capability.enabled,
 	);
 }
 

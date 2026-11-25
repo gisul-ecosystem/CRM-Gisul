@@ -5,17 +5,19 @@ WORKDIR /app
 COPY requirements.txt .
 # tzdata: the daily RUN_AT time follows TZ (set in docker-compose.yml)
 RUN apt-get update && apt-get install -y --no-install-recommends tzdata \
+        xvfb x11vnc novnc websockify fluxbox x11-utils \
     && pip install -r requirements.txt \
     && python -m playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
 COPY leads ./leads
 COPY .env.example .env.training.example .env.competitors.example docker-entrypoint.sh ./
 # Settings live in the data volume, so the CRM can edit them and they survive rebuilds
-ENV DATA_DIR=/app/data ENV_FILE=/app/data/.env WEB_HOST=0.0.0.0 WEB_IN_DOCKER=1
+ENV DATA_DIR=/app/data ENV_FILE=/app/data/.env WEB_HOST=0.0.0.0 WEB_IN_DOCKER=1 DISPLAY=:99
 RUN useradd --create-home --uid 10001 --user-group leads \
-    && mkdir -p /app/data \
+    && mkdir -p /app/data /tmp/.X11-unix \
+    && chmod 1777 /tmp/.X11-unix \
     && chown -R leads:leads /app
 USER leads
-EXPOSE 8501
+EXPOSE 8501 6080
 ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
 CMD ["web"]

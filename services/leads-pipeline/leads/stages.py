@@ -21,14 +21,14 @@ from .early import site_evidence, verdict as early_verdict
 from .geo import country_verdict, phone_region
 from .intent import evaluate as evaluate_intent
 from .jobs import CAREERS_RE, boards_in_links, open_job_titles
-from .people_search import find_people
+from .people_search import brave_country, find_people
 from .render import looks_empty
 from .segments import classify
 from .score import is_ready, score_row
 from . import profile as _profile
 from .segments import qualifies
 from . import training as _training
-from .sources import competitors, directories, funding, github, hackernews, huggingface, incubators, maps, search, seeds, yc
+from .sources import competitors, custom, directories, funding, github, hackernews, huggingface, incubators, maps, search, seeds, yc
 from .store import (DISCOVERED, EMAIL_FOUND, NO_CONTACT, PEOPLE_FOUND, SCRAPED, VERIFIED,
                     Store)
 from .util import ESTABLISHED, TimeLimit, extract_domain, is_blocked, person_key, time_limit
@@ -37,14 +37,15 @@ from .verify import Verifier
 log = logging.getLogger(__name__)
 
 GPU_SOURCES = {"seeds": seeds, "incubators": incubators, "search": search, "maps": maps, "yc": yc,
-               "funding": funding, "github": github, "huggingface": huggingface, "hn": hackernews}
+               "funding": funding, "github": github, "huggingface": huggingface, "hn": hackernews,
+               "custom": custom}
 # Training profile: only its own lists - seeds_training/, training_directories.csv - plus
 # edtech / skilling news and GitHub academies (same engine, training rules in training.py).
 # It never reads the GPU profile's lists (seeds/, incubators.csv).
 TRAINING_SOURCES = {"seeds": seeds, "directories": directories, "search": search, "maps": maps,
-                    "funding": funding, "github": github}
+                    "funding": funding, "github": github, "custom": custom}
 # Competitors profile: cloud & compute provider testimonials/case studies (leads/competitors.csv)
-COMPETITORS_SOURCES = {"competitors": competitors, "seeds": seeds, "search": search}
+COMPETITORS_SOURCES = {"competitors": competitors, "custom": custom}
 
 if _profile.current() == _profile.TRAINING:
     SOURCES = TRAINING_SOURCES
@@ -125,7 +126,7 @@ def recheck_sheet(s: Settings, store: Store) -> dict:
 # ------------------------------------------------------------------ 1. discover
 # Run only when asked for with --sources: YC companies get large free cloud/GPU credits from
 # YC's partners, so they are poor vGPU prospects.
-OFF_BY_DEFAULT = {"yc"}
+OFF_BY_DEFAULT = {"yc", "custom"}
 
 
 def discover_stage(s: Settings, store: Store, fetcher: Fetcher, only: Optional[Iterable[str]] = None) -> dict:
@@ -548,14 +549,26 @@ def people_stage(s: Settings, store: Store, fetcher: Fetcher) -> dict:
     """Companies whose website named nobody: look the decision makers up in public search results
     (people_search.py). Each company is searched once; best-scoring companies go first."""
     counts = {"searched": 0, "found": 0, "people": 0}
-    if not s.brave_api_key:
-        log.info("people search: off (set BRAVE_API_KEY to look up decision makers)")
+    apis = search.providers(s)
+    if not apis:
+        log.info("people search: off (set SERPER_API_KEY, TAVILY_API_KEY or BRAVE_API_KEY to look up "
+                 "decision makers)")
         return counts
-    done = store.state.setdefault("people_search", {})  # domain -> date searched
+    log.info("people search: using %s", apis[0][0])
+    done = store.state.setdefault("people_search", {})  # domain -> "date|brave country" searched
     df = store.df
     named = set(df.loc[df["full_name"] != "", "domain"])
+
+    def searched(domain: str, country: str) -> bool:
+        """Entries without a country were India-only searches: right only for India."""
+        entry = done.get(domain)
+        if not entry:
+            return False
+        return "|" in entry or brave_country(country) == "IN"
+
+    searched_domains = {d for d, c in zip(df["domain"], df["country"]) if searched(d, c)}
     waiting = df[~df["status"].isin([DISCOVERED]) & ~df["domain"].isin(named)
-                 & ~df["domain"].isin(list(done))]
+                 & ~df["domain"].isin(list(searched_domains))]
     order = (waiting.assign(_s=waiting["score"].replace("", "0").astype(int))
              .sort_values("_s", ascending=False)["domain"].drop_duplicates().tolist())
     for n, domain in enumerate(order[: s.search_max_per_run], 1):
@@ -563,13 +576,14 @@ def people_stage(s: Settings, store: Store, fetcher: Fetcher) -> dict:
         if not rows:
             continue
         company = store.df.at[rows[0], "company"]
-        people, status = find_people(s.brave_api_key, fetcher, company, domain, max_people(s))
+        people, status = find_people(apis, fetcher, company, domain, max_people(s),
+                                     country=store.df.at[rows[0], "country"])
         if status == "rate_limited":
             log.warning("people search: search API limit reached; the rest wait for the next run")
             break
         if status != "ok":
             continue
-        done[domain] = time.strftime("%Y-%m-%d")
+        done[domain] = f"{time.strftime('%Y-%m-%d')}|{brave_country(store.df.at[rows[0], 'country'])}"
         counts["searched"] += 1
         if people:
             counts["found"] += 1
@@ -593,9 +607,31 @@ def people_stage(s: Settings, store: Store, fetcher: Fetcher) -> dict:
 
 
 # ------------------------------------------------------------------ 3. emails
+# Raise when the rules for picking an address change: companies left without one under the old
+# rules get one more pass, if their site shows an address the new rules accept.
+EMAIL_RULES_VERSION = 2
+
+
+def _recheck_rows(store: Store) -> list:
+    seen = store.state.setdefault("email_rules", {})
+    work = store.state.get("work", {})
+    out = []
+    for i in store.indices_with_status([NO_CONTACT]):
+        domain = store.df.at[i, "domain"]
+        if seen.get(domain, 1) >= EMAIL_RULES_VERSION:
+            continue
+        site = [e for e, _ in work.get(domain, {}).get("emails", [])]
+        if any(em.on_sibling_domain(e, domain) or em.mail_domain(e) in em.FREE_MAIL for e in site):
+            out.append(i)
+        else:
+            seen[domain] = EMAIL_RULES_VERSION
+    return out
+
+
 def emails_stage(s: Settings, store: Store) -> dict:
     counts = {"email_found": 0, "no_contact": 0}
-    for i in store.indices_with_status([PEOPLE_FOUND, SCRAPED])[: s.batch_size * max(max_people(s), 3)]:
+    todo = store.indices_with_status([PEOPLE_FOUND, SCRAPED])[: s.batch_size * max(max_people(s), 3)]
+    for i in list(todo) + _recheck_rows(store):
         row = store.df.loc[i]
         domain = row["domain"]
         work = store.state.get("work", {}).get(domain, {})
@@ -621,6 +657,11 @@ def emails_stage(s: Settings, store: Store) -> dict:
                 cands, src, typ = [personal[0]], "website", "personal"
             elif generic:
                 cands, src, typ = [generic[0]], "website", "generic"
+        if not cands:
+            free = em.free_mail_fallback(site)
+            if free:
+                cands, src, typ = [free[0]], "website-freemail", "generic"
+        store.state.setdefault("email_rules", {})[domain] = EMAIL_RULES_VERSION
 
         if cands:
             store.set(i, email_candidates=", ".join(cands), email_source=src, email_type=typ,
@@ -638,12 +679,13 @@ VERIFY_WORKERS = 4  # companies whose emails are checked at the same time
 
 
 def _verify_row(verifier: Verifier, domain: str, cands: list, src: str, typ: str, site: list):
-    """(email, status, src, typ) for one row. Network only: safe in a worker thread."""
-    email, status = verifier.verify(domain, cands)
+    """(email, status, src, typ) for one row. Network only: safe in a worker thread. Each address
+    is checked against its own mail domain (info@acme.com for acme.ae, a Gmail address)."""
+    email, status = verifier.verify(em.mail_domain(cands[0]) if cands else domain, cands)
     if not email and typ == "personal":  # fall back to a generic company mailbox
         generic = em.rank_generic(site, domain)
         if generic:
-            email, status = verifier.verify(domain, [generic[0]])
+            email, status = verifier.verify(em.mail_domain(generic[0]), [generic[0]])
             if email:
                 src, typ = "website", "generic"
     return email, status, src, typ

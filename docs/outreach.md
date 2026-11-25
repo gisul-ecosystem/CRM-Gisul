@@ -69,6 +69,17 @@ browser ──► CRM app /api/outreach/<path>          (apps/app/app/api/outrea
 | Replies | `/incoming-emails/*` |
 | Sending setup: inboxes, domains, providers | `/inboxes/*`, `/domains/*`, `/providers/*` |
 
+**Add contact** on Audiences → Contacts adds one person to a list. The engine has
+no single-contact create in the CRM's API map, so the dialog builds a one-row CSV
+(`lib/outreach/single-contact.ts`) and sends it through `/contacts/import/confirm`
+with a fixed column mapping. The import report says whether the person was new,
+already a contact (details updated), suppressed or invalid. The list picker starts
+on the list the tab is filtered to.
+Lists do not store their columns, so the form reads up to 100 of the list's
+contacts and shows one input per custom field they use (`listColumns`), most used
+first. Only filled cells are sent, so adding an existing contact never blanks a
+field it already has.
+
 ## Running it
 
 Both compose files start the engine as `outreach-mongo`, `outreach-setup`,
@@ -96,3 +107,102 @@ start unless the profile is on: `COMPOSE_PROFILES=outreach` in `.env`, or
 Outreach and the CRM can both read Microsoft mailboxes. Use dedicated sending
 mailboxes that reps do not connect to the CRM, or the same email is stored in
 both systems.
+
+## Unifers, the second sender
+
+Each campaign is sent by the Outreach Engine **or** by Unifers
+(`https://api.unifers.ai`, API reference v1.0.0). The engine path is unchanged.
+
+```
+browser ──► CRM app /api/unifers/<path>      (apps/app/app/api/unifers/[...path]/route.ts)
+              1. Better Auth session, or 401
+              2. a sending change needs a CRM owner or admin, or 403
+              3. adds X-API-Key (and X-Workspace-Id) on the server
+              ▼
+            Unifers /client-apis/<path>
+```
+
+- **Only `campaigns` and `email-accounts` pass** (`upstreamPath` in
+  `lib/unifers/bridge.ts`). The paid people endpoints (search, enrich, reveal)
+  are blocked, so nobody spends credits by accident. The research agent calls
+  enrich and reveal itself, server side; see "Unifers" in `docs/agent.md`.
+- **Owners and admins only** (`adminOnly`): connecting or disconnecting a
+  mailbox, `campaigns/{id}/status` (start, schedule, pause, cancel), and
+  creating a campaign with `startAt`. Members create drafts and add leads.
+- **Optional.** Without `UNIFERS_API_KEY` the Unifers screens say it is not
+  connected; engine campaigns keep working. `UNIFERS_WORKSPACE_ID` and
+  `UNIFERS_API_URL` are optional.
+- **Screens, inside the existing Campaigns section:**
+  - The list has a "Sent with" switch (`?sender=unifers`); Unifers rows carry a
+    badge.
+  - New campaign first asks Send with: Outreach Engine (the existing wizard) or
+    Unifers (`wizard/unifers-wizard.tsx`): name, an Outreach audience list
+    whose active, unsuppressed contacts become leads, the email sequence, the
+    Unifers mailboxes, the sending window and stop rules, then draft, start
+    now or schedule. Unifers has no edit endpoint, so the campaign is created
+    in one call at the end.
+  - **Generate with AI** (`wizard/campaign-writer.tsx`) writes the subject and
+    body of every step in one Claude Haiku call: `contacts.draftCampaign` →
+    agent `/internal/crm/draft-campaign` (`apps/agent/agent/lib/campaign-draft.ts`).
+    It sends only the product summary, the lead type brief, the tagline, up to
+    five common titles and companies from the chosen list, and the placeholders
+    the list can fill (`audienceFields` in `lib/unifers/campaign-draft.ts`).
+    Thinking is off and `max_tokens` is 450 per step (`campaign-draft-config.ts`).
+    Placeholders the list cannot fill are removed from the answer.
+    Links are off by default: "Add a website link to the first email" turns
+    them on. When off, Claude is told to write none and any URL is removed.
+  - **Sign-off.** The model writes no signature. On create, every body gets
+    `UNIFERS.signOff` (`Regards,`) and the first name of the sending mailbox's
+    From name, written as text (`signOffName`). Unifers fills
+    `{{sender.firstName}}` from its account profile, not from the mailbox, so
+    the wizard does not use it. With no ticked mailbox, the default mailbox
+    signs. Ticked mailboxes with different first names get no sign-off and a
+    warning. A body that already has `{{sender.…}}` is left as it is. The
+    wizard checkbox turns the sign-off off.
+  - **Footer.** "Lines after the name (optional)" is free text: an address,
+    a phone, any line. `signEmail` adds it under the name in every email, or
+    after the body when there is no name. It is kept in this browser's
+    `localStorage` (`UNIFERS.footer.storageKey`) for the next campaign.
+  - A Unifers campaign opens at `/outreach/campaigns/u-<id>`
+    (`parseUnifersRouteId`): status and controls, analytics, steps and leads by
+    event.
+  - **Reply text.** The Unifers API returns who replied, never what they wrote:
+    a replied lead is only `email`, `name` and step names. The Replied tab reads
+    the text from mail the CRM already synced, through `contacts.unifersReplies`
+    (`ContactEmailService.replies`): the newest INBOUND `EmailMessage` from each
+    lead's address since the campaign was created. This works only after the
+    sending mailbox is connected in Settings → Connections. Linking a mailbox
+    with a different address is allowed (`accountLinking.allowDifferentEmails`).
+    Without it, the tab says the reply is not synced and links to Connections.
+    Owners and admins see every synced reply (`scope: "all"`). A member sees
+    only replies whose `syncedByUserId` is their own, from the mailbox they
+    connected (`scope: "own"`). The role check is `isWorkspaceAdmin`.
+  - Lead generation → Leads has "Send N with Unifers", which adds the selected
+    rows with an email to an open campaign.
+- **Leads go in batches of 1,000** (`addLeadsInBatches`), the Unifers limit.
+- **Every response is parsed with Zod** (`lib/unifers/schemas.ts`); an unknown
+  campaign status reads as draft instead of breaking the page.
+
+### One email from a contact
+
+**Send email** on a contact opens `components/unifers/send-email-dialog.tsx`.
+Claude writes the subject and body (see `docs/agent.md`). The rep edits them and
+picks a verified Unifers mailbox. Send creates a one-lead campaign named
+"Email to <name> · <time>" that starts now. The window and stop rules are
+`UNIFERS.singleSend` in `lib/unifers/unifers-config.ts`.
+
+Starting a campaign is owner or admin only, so a member gets a 403 on send.
+A lead already in another Unifers campaign is not added, and nothing is sent.
+
+#### Follow-up and reply tracking
+
+The Send email dialog can add one follow-up. Claude writes it with the first email. The date starts
+from the contact's **Next follow-up** (or three days out) and is saved back on the contact. Unifers
+sends it as a second step, subject "Re: …", and stops it on a reply (`stopConditions.onReply`).
+
+Each send is saved as an EMAIL activity on the contact. Its `meta` holds the Unifers campaign id,
+the sender and the follow-up day (`@crm/validation/unifers-send`). `contacts.logUnifersSend` writes
+it and `contacts.unifersSends` reads it. The contact's Overview shows **Emails sent with Unifers**:
+the app asks Unifers for each campaign's analytics and shows Replied, Bounced, Clicked, Opened,
+Delivered, Sent or Queued, plus the follow-up state. The logic is `sendStatus` in
+`lib/unifers/single-send.ts`.

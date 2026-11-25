@@ -6,6 +6,7 @@ import type {
 import { z } from "zod";
 import { CONTEXT } from "./context-config";
 import { contextDev, describe } from "./context-dev";
+import { personFromUnifers } from "./unifers";
 
 export type EnrichedMatch = PersonEnrichResponse["match"];
 
@@ -150,6 +151,18 @@ export async function personByProfileUrl(
 	} catch (error) {
 		return classify(error);
 	}
+}
+
+export async function profileByUrl(profileUrl: string): Promise<PersonMatch> {
+	const primary = await personByProfileUrl(profileUrl);
+	if (primary.outcome === "found") return primary;
+
+	const backup = await personFromUnifers(profileUrl);
+	if (backup.outcome === "found") return backup;
+
+	return primary.outcome === "skipped" && backup.outcome === "failed"
+		? backup
+		: primary;
 }
 
 export type IdentityClues = {

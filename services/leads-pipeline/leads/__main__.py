@@ -159,6 +159,40 @@ def cmd_stats(args) -> int:
     return 0
 
 
+def cmd_partners(args) -> int:
+    from .partners.config import PARTNERS
+    from .partners.run import run_partners
+    from .partners.spec import folder
+    s = load_settings()
+    base = folder(s.data_dir)
+    base.mkdir(parents=True, exist_ok=True)
+    lock = open(base / PARTNERS["files"]["lock"], "w")
+    if not _try_lock(lock):
+        log.warning("another partner research run is in progress; exiting")
+        return 0
+    fetcher = Fetcher(s)
+    try:
+        return run_partners(s, fetcher)
+    finally:
+        fetcher.close()
+        lock.close()
+
+
+def cmd_backfill(args) -> int:
+    s = load_settings()
+    store = Store(s.data_dir)
+    fetcher = Fetcher(s)
+    try:
+        from .sources.competitors import backfill_services
+        pages = args.pages if args.pages and args.pages > 0 else None
+        filled = backfill_services(fetcher, store, pages=pages)
+        store.save()
+        log.info("backfill complete: %d client service(s) updated", filled)
+        return 0
+    finally:
+        fetcher.close()
+
+
 def main() -> int:
     setup_logging()
     p = argparse.ArgumentParser(prog="leads")
@@ -168,11 +202,16 @@ def main() -> int:
     r.add_argument("--sources", help=f"comma list from {list(stages.SOURCES)} (default: all)")
     r.add_argument("--batch", type=int, help="override BATCH_SIZE")
     st = sub.add_parser("stats", help="print counts from the workbook")
-    for sp in (r, st):  # read before import by profile.current(); listed here for --help
+    bf = sub.add_parser("backfill", help="backfill competitor client services from saved pages")
+    bf.add_argument("--pages", type=int, default=0, help="maximum pages to re-fetch (default: 0 for all)")
+    pr = sub.add_parser("partners", help="partner research: the search saved by the CRM")
+    for sp in (r, st, bf):
         sp.add_argument("--profile", choices=list(LABELS), default=GPU,
                         help="gpu (default) or training: separate data, settings, sources and rules")
+    pr.set_defaults(func=cmd_partners)
     r.set_defaults(func=cmd_run)
     st.set_defaults(func=cmd_stats)
+    bf.set_defaults(func=cmd_backfill)
     args = p.parse_args()
     return args.func(args)
 

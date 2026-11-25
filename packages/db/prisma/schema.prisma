@@ -20,6 +20,7 @@ model User {
   image         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  removedAt     DateTime?
   sessions      Session[]
   accounts      Account[]
 
@@ -295,6 +296,7 @@ enum LeadSource {
   REFERRAL
   COLD_OUTREACH
   DIRECT
+  PARTNERSHIP
   OTHER
 }
 
@@ -303,6 +305,7 @@ model Product {
   name               String
   shortDescription   String
   detailedDescription String?
+  website            String?
   category           String
   type               String
   color              String

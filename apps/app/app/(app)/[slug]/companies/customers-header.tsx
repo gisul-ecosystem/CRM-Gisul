@@ -25,9 +25,9 @@ export function CustomersHeader() {
 	return (
 		<header className={styles.top}>
 			<div className={styles.topText}>
-				<h1 className={styles.title}>Customers</h1>
+				<h1 className={styles.title}>Contacts</h1>
 				<p className={styles.subtitle}>
-					Manage customer companies and the people you work with.
+					Manage companies and the people you work with.
 				</p>
 			</div>
 			<div className={styles.actions}>

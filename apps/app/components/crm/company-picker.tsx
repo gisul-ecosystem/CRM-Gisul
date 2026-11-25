@@ -1,5 +1,7 @@
 "use client";
 
+import Edit from "@carbon/icons-react/es/Edit";
+import { Button } from "@crm/ui/components/button";
 import { Combobox, type ComboboxOption } from "@crm/ui/components/combobox";
 import {
 	Command,
@@ -9,7 +11,13 @@ import {
 	CommandItem,
 	CommandList,
 } from "@crm/ui/components/command";
+import { Icon } from "@crm/ui/components/icon";
 import { Spinner } from "@crm/ui/components/spinner";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@crm/ui/components/tooltip";
 import { useSearchInput } from "@crm/ui/hooks/use-search-input";
 import { cn } from "@crm/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -164,6 +172,7 @@ export function InlineCompanyField({
 	saving = false,
 	none,
 	company,
+	onOpen,
 }: {
 	label?: string;
 	value: string;
@@ -171,6 +180,7 @@ export function InlineCompanyField({
 	saving?: boolean;
 	none?: { value: string; label: string };
 	company?: { id: string; name: string } | null;
+	onOpen?: (companyId: string) => void;
 }) {
 	const id = useId();
 
@@ -193,6 +203,21 @@ export function InlineCompanyField({
 					className="w-full"
 				/>
 				{saving ? <Spinner /> : null}
+				{company && onOpen ? (
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon-xs"
+								onClick={() => onOpen(company.id)}
+							>
+								<Icon icon={Edit} />
+								<span className="sr-only">Edit company</span>
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>Edit company</TooltipContent>
+					</Tooltip>
+				) : null}
 			</div>
 		</div>
 	);

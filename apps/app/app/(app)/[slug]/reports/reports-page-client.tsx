@@ -12,6 +12,7 @@ import { Spinner } from "@crm/ui/components/spinner";
 import { formatDay, formatMoney, formatMoneyCompact } from "@crm/ui/lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useId, useState } from "react";
+import { ActivityHubTabs } from "@/components/activity-hub-tabs";
 import { leadSourceLabel } from "@/lib/lead-fields";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
@@ -169,6 +170,7 @@ export function ReportsPageClient() {
 
 	return (
 		<div className={styles.wrap}>
+			<ActivityHubTabs active="reports" />
 			<header className={styles.top}>
 				<div className={styles.topText}>
 					<h1 className={styles.display}>Reports</h1>

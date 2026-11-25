@@ -12,6 +12,10 @@ import {
 	DropdownMenuLabel,
 	DropdownMenuTrigger,
 } from "@crm/ui/components/dropdown-menu";
+import {
+	EntityLogo,
+	type EntityLogoTone,
+} from "@crm/ui/components/entity-logo";
 import { Icon } from "@crm/ui/components/icon";
 import { TablePagination } from "@crm/ui/components/table-pagination";
 import { useSearchInput } from "@crm/ui/hooks/use-search-input";
@@ -21,11 +25,11 @@ import { useQueryStates } from "nuqs";
 import { useMemo, useState } from "react";
 import { contactName } from "@/components/crm/contact-name";
 import { ProductMark } from "@/components/crm/product-mark";
+import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
+import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { searchParsers } from "@/components/data-table/list-search-params";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { LocalRelativeTime } from "@/components/local-date-time";
-import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
-import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { CompaniesBulkActions } from "./companies-bulk-actions";
@@ -63,21 +67,16 @@ export function CompaniesTable() {
 	);
 	const [scope, setScope] = useState<Scope>("all");
 	const me = useQuery(trpc.users.me.queryOptions());
-	const columns = useColumnVisibility<ColumnId>(
-		"crm.companies.columns.v1",
-		{
-			product: true,
-			primaryContact: true,
-			owner: true,
-			openDeals: true,
-			lastActivity: true,
-		},
-	);
+	const columns = useColumnVisibility<ColumnId>("crm.companies.columns.v1", {
+		product: true,
+		primaryContact: true,
+		owner: true,
+		openDeals: true,
+		lastActivity: true,
+	});
 
 	const listInput =
-		scope === "mine" && me.data?.id
-			? { ...input, owner: [me.data.id] }
-			: input;
+		scope === "mine" && me.data?.id ? { ...input, owner: [me.data.id] } : input;
 
 	const companies = useQuery({
 		...trpc.companies.list.queryOptions(listInput),
@@ -212,7 +211,10 @@ export function CompaniesTable() {
 										/>
 									</th>
 									<th>
-										<button type="button" onClick={() => query.toggleSort("name")}>
+										<button
+											type="button"
+											onClick={() => query.toggleSort("name")}
+										>
 											Company
 										</button>
 									</th>
@@ -273,9 +275,13 @@ export function CompaniesTable() {
 										</td>
 										<td>
 											<div className={styles.entity}>
-												<span className={styles.av}>
-													{companyInitials(row.name)}
-												</span>
+												<EntityLogo
+													src={row.iconUrl ?? row.logoUrl}
+													darkSrc={row.iconDarkUrl}
+													tone={row.iconTone as EntityLogoTone | null}
+													name={row.name}
+													size="lg"
+												/>
 												<span className={styles.entityText}>
 													<b>{row.name}</b>
 													<small>{row.domain ?? "—"}</small>
@@ -384,15 +390,6 @@ export function CompaniesTable() {
 			</section>
 		</div>
 	);
-}
-
-function companyInitials(name: string): string {
-	const parts = name.trim().split(/\s+/).filter(Boolean);
-	if (parts.length === 0) return "?";
-	if (parts.length === 1) return (parts[0] ?? "?").slice(0, 2).toUpperCase();
-	const first = parts[0]?.charAt(0) ?? "";
-	const second = parts[1]?.charAt(0) ?? "";
-	return `${first}${second}`.toUpperCase() || "?";
 }
 
 function personInitials(name: string): string {

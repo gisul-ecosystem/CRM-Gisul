@@ -1,5 +1,9 @@
 # Domains that are never leads: big companies, platforms, job boards, free hosts.
 # One registered domain per line. Subdomains are matched automatically.
+racko.ai
+kanonkode.com
+aaptor.com
+gisul.co.in
 google.com
 googleusercontent.com
 microsoft.com

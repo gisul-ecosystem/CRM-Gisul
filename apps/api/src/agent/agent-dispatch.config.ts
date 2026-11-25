@@ -11,4 +11,5 @@ export const AGENT_DISPATCH = {
 		redeliverBatch: 20,
 	},
 	fieldBackfill: { concurrency: 8 },
+	emailDraft: { timeoutMs: 2 * MINUTE_MS },
 } as const;

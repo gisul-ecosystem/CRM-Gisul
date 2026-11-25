@@ -7,11 +7,13 @@ import List from "@carbon/icons-react/es/List";
 import OverflowMenuVertical from "@carbon/icons-react/es/OverflowMenuVertical";
 import Renew from "@carbon/icons-react/es/Renew";
 import Search from "@carbon/icons-react/es/Search";
+import StarFilled from "@carbon/icons-react/es/StarFilled";
 import { Checkbox } from "@crm/ui/components/checkbox";
 import { Icon } from "@crm/ui/components/icon";
 import { TablePagination } from "@crm/ui/components/table-pagination";
 import { useSearchInput } from "@crm/ui/hooks/use-search-input";
 import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
+import { LEAD_CATEGORY_LABEL } from "@crm/validation/lead-origin";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useQueryStates } from "nuqs";
@@ -35,8 +37,8 @@ import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 import { ContactsBulkActions } from "./contacts-bulk-actions";
 import { contactsSearchParams } from "./contacts-search-params";
 import { LeadsAnalytics } from "./leads-analytics";
-import { LeadsFilters } from "./leads-filters";
 import styles from "./leads-design.module.css";
+import { LeadsFilters } from "./leads-filters";
 
 type ContactRow = RouterOutputs["contacts"]["list"]["rows"][number];
 type StatusTab = (typeof LEAD_STATUS_TABS)[number]["id"];
@@ -210,7 +212,10 @@ export function ContactsTable() {
 									<div className={styles.who}>
 										<span className={styles.av}>{initials(row)}</span>
 										<span className={styles.whoText}>
-											<b>{contactName(row)}</b>
+											<b>
+												{contactName(row)}
+												<PrimaryMark row={row} />
+											</b>
 											<small>{row.company?.name ?? row.email ?? "—"}</small>
 										</span>
 									</div>
@@ -220,9 +225,7 @@ export function ContactsTable() {
 								</div>
 								<div className={styles.leadCardMeta}>
 									<span>{row.product?.name ?? "No product"}</span>
-									<span>
-										{row.owner?.name.split(/\s+/)[0] ?? "Unassigned"}
-									</span>
+									<span>{row.owner?.name.split(/\s+/)[0] ?? "Unassigned"}</span>
 									{row.nextFollowUpAt ? (
 										<span>
 											Follow-up <LocalRelativeTime date={row.nextFollowUpAt} />
@@ -277,11 +280,12 @@ export function ContactsTable() {
 										</td>
 										<td>
 											<div className={styles.who}>
-												<span className={styles.av}>
-													{initials(row)}
-												</span>
+												<span className={styles.av}>{initials(row)}</span>
 												<span className={styles.whoText}>
-													<b>{contactName(row)}</b>
+													<b>
+														{contactName(row)}
+														<PrimaryMark row={row} />
+													</b>
 													<small>{row.title || row.email || "—"}</small>
 												</span>
 											</div>
@@ -314,7 +318,11 @@ export function ContactsTable() {
 										</td>
 										<td>
 											{row.leadSource ? (
-												leadSourceLabel(row.leadSource)
+												row.leadCategory ? (
+													`${leadSourceLabel(row.leadSource)} (${LEAD_CATEGORY_LABEL[row.leadCategory]})`
+												) : (
+													leadSourceLabel(row.leadSource)
+												)
 											) : (
 												<span className={styles.blank}>—</span>
 											)}
@@ -388,9 +396,7 @@ export function ContactsTable() {
 				)}
 
 				<div className={styles.footer}>
-					<p className={styles.note}>
-						Manage products in Settings → Products.
-					</p>
+					<p className={styles.note}>Manage products in Settings → Products.</p>
 					<TablePagination
 						page={query.page}
 						totalPages={totalPages}
@@ -420,3 +426,20 @@ function ownerInitials(name: string): string {
 	return `${first}${last}`.toUpperCase() || "?";
 }
 
+function PrimaryMark({
+	row,
+}: {
+	row: { isPrimaryContact: boolean; company: { name: string } | null };
+}) {
+	if (!row.isPrimaryContact) return null;
+	const label = `Primary contact at ${row.company?.name ?? "their company"}`;
+	return (
+		<span title={label} className="ml-1.5 inline-flex align-middle">
+			<Icon
+				icon={StarFilled}
+				aria-label={label}
+				className="size-3.5 text-primary"
+			/>
+		</span>
+	);
+}

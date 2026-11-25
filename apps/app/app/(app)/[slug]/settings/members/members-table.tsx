@@ -19,10 +19,12 @@ import {
 import { Icon } from "@crm/ui/components/icon";
 import { PersonAvatar } from "@crm/ui/components/person-avatar";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 import { ListSearch } from "@/components/data-table/list-search";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { LocalRelativeTime } from "@/components/local-date-time";
+import { ConfirmDialog } from "@/components/outreach/confirm-dialog";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
@@ -40,6 +42,8 @@ const STATUS_LABEL = {
 
 type MemberActions = {
 	canManage: boolean;
+	canRemove: boolean;
+	onRemove: (member: MemberRow) => void;
 	teams: Team[];
 	pending: boolean;
 	onChangeRole: (member: MemberRow, role: Role) => void;
@@ -142,7 +146,7 @@ function columns(actions: MemberActions): DataTableColumn<MemberRow>[] {
 			align: "right",
 			width: "w-[6%]",
 			cell: (row) =>
-				actions.canManage ? (
+				actions.canManage || (actions.canRemove && !row.isViewer) ? (
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button variant="ghost" size="icon" disabled={actions.pending}>
@@ -152,40 +156,55 @@ function columns(actions: MemberActions): DataTableColumn<MemberRow>[] {
 						</DropdownMenuTrigger>
 
 						<DropdownMenuContent align="end">
-							<DropdownMenuLabel>Role</DropdownMenuLabel>
-							{WORKSPACE_ROLE_ORDER.map((role) => (
-								<DropdownMenuItem
-									key={role}
-									data-checked={row.role === role}
-									onSelect={() => {
-										if (row.role === role) return;
-										actions.onChangeRole(row, role);
-									}}
-								>
-									Make {ROLE_LABEL[role].toLowerCase()}
-								</DropdownMenuItem>
-							))}
+							{actions.canManage ? (
+								<>
+									<DropdownMenuLabel>Role</DropdownMenuLabel>
+									{WORKSPACE_ROLE_ORDER.map((role) => (
+										<DropdownMenuItem
+											key={role}
+											data-checked={row.role === role}
+											onSelect={() => {
+												if (row.role === role) return;
+												actions.onChangeRole(row, role);
+											}}
+										>
+											Make {ROLE_LABEL[role].toLowerCase()}
+										</DropdownMenuItem>
+									))}
 
-							<DropdownMenuSeparator />
-							<DropdownMenuLabel>Team</DropdownMenuLabel>
-							{actions.teams.map((team) => (
-								<DropdownMenuItem
-									key={team.id}
-									data-checked={row.teamId === team.id}
-									onSelect={() => {
-										if (row.teamId === team.id) return;
-										actions.onChangeTeam(row, team.id);
-									}}
-								>
-									{team.name}
-								</DropdownMenuItem>
-							))}
-							<DropdownMenuItem
-								disabled={row.teamId === null}
-								onSelect={() => actions.onChangeTeam(row, null)}
-							>
-								No team
-							</DropdownMenuItem>
+									<DropdownMenuSeparator />
+									<DropdownMenuLabel>Team</DropdownMenuLabel>
+									{actions.teams.map((team) => (
+										<DropdownMenuItem
+											key={team.id}
+											data-checked={row.teamId === team.id}
+											onSelect={() => {
+												if (row.teamId === team.id) return;
+												actions.onChangeTeam(row, team.id);
+											}}
+										>
+											{team.name}
+										</DropdownMenuItem>
+									))}
+									<DropdownMenuItem
+										disabled={row.teamId === null}
+										onSelect={() => actions.onChangeTeam(row, null)}
+									>
+										No team
+									</DropdownMenuItem>
+								</>
+							) : null}
+							{actions.canRemove && !row.isViewer ? (
+								<>
+									{actions.canManage ? <DropdownMenuSeparator /> : null}
+									<DropdownMenuItem
+										variant="destructive"
+										onSelect={() => actions.onRemove(row)}
+									>
+										Remove from CRM
+									</DropdownMenuItem>
+								</>
+							) : null}
 						</DropdownMenuContent>
 					</DropdownMenu>
 				) : null,
@@ -225,6 +244,21 @@ export function MembersTable() {
 		}),
 	);
 
+	const [removing, setRemoving] = useState<MemberRow | null>(null);
+
+	const remove = useMutation(
+		trpc.workspace.removeMember.mutationOptions({
+			onSuccess: async () => {
+				await cache.workspace();
+				toast.success(
+					`${removing?.name ?? "That person"} was removed and signed out.`,
+				);
+				setRemoving(null);
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
 	const facetCounts = members.data?.facetCounts;
 	const teamList = teams.data ?? [];
 
@@ -253,25 +287,40 @@ export function MembersTable() {
 	];
 
 	return (
-		<DataTable
-			query={query}
-			search={<ListSearch placeholder="Search by name or email…" />}
-			columns={columns({
-				canManage: workspace.data?.canChangeRoles ?? false,
-				teams: teamList,
-				pending: setRole.isPending || setTeam.isPending,
-				onChangeRole: (member, role) =>
-					setRole.mutate({ memberId: member.id, role }),
-				onChangeTeam: (member, teamId) =>
-					setTeam.mutate({ memberId: member.id, teamId }),
-			})}
-			rows={members.data?.rows ?? []}
-			total={members.data?.total ?? 0}
-			facetCounts={facetCounts}
-			facets={facets}
-			getRowId={(row) => row.id}
-			loading={members.isFetching}
-			empty="Nobody matches this view."
-		/>
+		<>
+			<DataTable
+				query={query}
+				search={<ListSearch placeholder="Search by name or email…" />}
+				columns={columns({
+					canManage: workspace.data?.canChangeRoles ?? false,
+					canRemove: workspace.data?.canRemoveMembers ?? false,
+					onRemove: setRemoving,
+					teams: teamList,
+					pending: setRole.isPending || setTeam.isPending || remove.isPending,
+					onChangeRole: (member, role) =>
+						setRole.mutate({ memberId: member.id, role }),
+					onChangeTeam: (member, teamId) =>
+						setTeam.mutate({ memberId: member.id, teamId }),
+				})}
+				rows={members.data?.rows ?? []}
+				total={members.data?.total ?? 0}
+				facetCounts={facetCounts}
+				facets={facets}
+				getRowId={(row) => row.id}
+				loading={members.isFetching}
+				empty="Nobody matches this view."
+			/>
+			<ConfirmDialog
+				open={removing !== null}
+				title={`Remove ${removing?.name ?? "this person"}?`}
+				description={`${removing?.email ?? "They"} is signed out at once and cannot sign in again until an owner allows them back. Their contacts, deals and activities stay in the CRM.`}
+				action="Remove"
+				pending={remove.isPending}
+				onConfirm={() => {
+					if (removing) remove.mutate({ memberId: removing.id });
+				}}
+				onClose={() => setRemoving(null)}
+			/>
+		</>
 	);
 }

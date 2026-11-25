@@ -4,6 +4,7 @@ const MB = 1024 * KB;
 export const CONTACT_IO = {
 	export: { maxRows: 10_000 },
 	import: { maxRows: 2_000, maxBytes: 2 * MB },
+	leads: { maxRows: 200 },
 	headers: [
 		"firstName",
 		"lastName",

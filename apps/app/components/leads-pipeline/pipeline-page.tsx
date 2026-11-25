@@ -11,16 +11,7 @@ import {
 import { Icon } from "@crm/ui/components/icon";
 import { Tabs, TabsList, TabsTrigger } from "@crm/ui/components/tabs";
 import type { ReactNode } from "react";
-import {
-	PageShell,
-	PageShellActions,
-	PageShellContent,
-	PageShellDescription,
-	PageShellHeader,
-	PageShellHeading,
-	PageShellLoading,
-	PageShellTitle,
-} from "@/components/page-shell";
+import { PageShellLoading } from "@/components/page-shell";
 import { PipelineError } from "@/lib/leads-pipeline/client";
 import { leadProfile, type ProfileStatus } from "@/lib/leads-pipeline/schemas";
 import {
@@ -43,88 +34,80 @@ const UNAVAILABLE = new Map<string, { title: string; description: string }>(
 	}),
 );
 
-export function PipelinePage({
-	title,
-	description,
-	actions,
+type Problem = { title: string; description: string };
+
+function problemFor(error: Error | null): Problem | null {
+	if (!error) return null;
+	const fallback = {
+		title: "The lead generation pipeline is unavailable",
+		description: error.message,
+	};
+	return error instanceof PipelineError
+		? (UNAVAILABLE.get(error.code) ?? fallback)
+		: fallback;
+}
+
+export function PipelineProblem({ error }: { error: Error }) {
+	const problem = problemFor(error);
+	return <ProblemNotice problem={problem} />;
+}
+
+function ProblemNotice({ problem }: { problem: Problem | null }) {
+	return (
+		<Empty>
+			<EmptyHeader>
+				<EmptyMedia variant="icon">
+					<Icon icon={Plug} />
+				</EmptyMedia>
+				<EmptyTitle>
+					{problem?.title ?? "The pipeline has no profiles"}
+				</EmptyTitle>
+				<EmptyDescription>
+					{problem?.description ??
+						"The pipeline answered, but it lists no lead profiles."}
+				</EmptyDescription>
+			</EmptyHeader>
+		</Empty>
+	);
+}
+
+export function PipelineGate({
 	children,
 }: {
-	title: ReactNode;
-	description?: ReactNode;
-	actions?: ReactNode;
 	children: (profile: ProfileStatus) => ReactNode;
 }) {
 	const status = usePipelineStatus();
 	const [profile, setProfile] = useLeadProfile();
 
-	const problem = status.error
-		? status.error instanceof PipelineError
-			? (UNAVAILABLE.get(status.error.code) ?? {
-					title: "The lead generation pipeline is unavailable",
-					description: status.error.message,
-				})
-			: {
-					title: "The lead generation pipeline is unavailable",
-					description: status.error.message,
-				}
-		: null;
+	const problem = problemFor(status.error);
 
 	const profiles = status.data?.profiles ?? [];
 	const current =
 		profiles.find((entry) => entry.profile === profile) ?? profiles[0];
 
+	if (status.isPending) return <PageShellLoading />;
+	if (problem || !current) {
+		return <ProblemNotice problem={problem} />;
+	}
+
 	return (
-		<PageShell>
-			<PageShellHeader>
-				<PageShellHeading>
-					<PageShellTitle>{title}</PageShellTitle>
-					{description ? (
-						<PageShellDescription>{description}</PageShellDescription>
-					) : null}
-				</PageShellHeading>
-				{actions && !problem ? (
-					<PageShellActions>{actions}</PageShellActions>
-				) : null}
-			</PageShellHeader>
-			<PageShellContent>
-				{status.isPending ? (
-					<PageShellLoading />
-				) : problem || !current ? (
-					<Empty>
-						<EmptyHeader>
-							<EmptyMedia variant="icon">
-								<Icon icon={Plug} />
-							</EmptyMedia>
-							<EmptyTitle>
-								{problem?.title ?? "The pipeline has no profiles"}
-							</EmptyTitle>
-							<EmptyDescription>
-								{problem?.description ??
-									"The pipeline answered, but it lists no lead profiles."}
-							</EmptyDescription>
-						</EmptyHeader>
-					</Empty>
-				) : (
-					<div className="flex flex-col gap-6">
-						<Tabs
-							value={current.profile}
-							onValueChange={(next) => {
-								const parsed = leadProfile.safeParse(next);
-								if (parsed.success) void setProfile(parsed.data);
-							}}
-						>
-							<TabsList>
-								{profiles.map((entry) => (
-									<TabsTrigger key={entry.profile} value={entry.profile}>
-										{entry.label}
-									</TabsTrigger>
-								))}
-							</TabsList>
-						</Tabs>
-						{children(current)}
-					</div>
-				)}
-			</PageShellContent>
-		</PageShell>
+		<div className="flex flex-col gap-6">
+			<Tabs
+				value={current.profile}
+				onValueChange={(next) => {
+					const parsed = leadProfile.safeParse(next);
+					if (parsed.success) void setProfile(parsed.data);
+				}}
+			>
+				<TabsList>
+					{profiles.map((entry) => (
+						<TabsTrigger key={entry.profile} value={entry.profile}>
+							{entry.label}
+						</TabsTrigger>
+					))}
+				</TabsList>
+			</Tabs>
+			{children(current)}
+		</div>
 	);
 }

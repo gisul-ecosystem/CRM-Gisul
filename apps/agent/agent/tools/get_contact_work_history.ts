@@ -1,14 +1,13 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import {
-	CONTEXT_DEV_PEOPLE,
-	CONTEXT_DEV_SOURCE,
-	enabled,
+	LINKEDIN_SOURCE,
+	linkedinReadable,
 	unavailable,
 } from "../lib/capabilities";
 import { contactProfileSlug } from "../lib/crm";
 import { spend } from "../lib/focus";
-import { personByProfileUrl } from "../lib/people";
+import { profileByUrl } from "../lib/people";
 
 export default defineTool({
 	description:
@@ -17,8 +16,8 @@ export default defineTool({
 		contactId: z.string(),
 	}),
 	async execute({ contactId }) {
-		if (!(await enabled(CONTEXT_DEV_PEOPLE))) {
-			return { found: false as const, ...unavailable(CONTEXT_DEV_SOURCE) };
+		if (!(await linkedinReadable())) {
+			return { found: false as const, ...unavailable(LINKEDIN_SOURCE) };
 		}
 
 		const profileRef = await contactProfileSlug(contactId);
@@ -32,7 +31,7 @@ export default defineTool({
 		const charge = spend(2);
 		if (!charge.ok) return { found: false as const, reason: charge.reason };
 
-		const result = await personByProfileUrl(profileRef.profileUrl);
+		const result = await profileByUrl(profileRef.profileUrl);
 		if (result.outcome !== "found") {
 			return { found: false as const, reason: result.reason };
 		}

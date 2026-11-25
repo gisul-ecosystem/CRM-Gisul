@@ -27,7 +27,7 @@ const sans = Poppins({
 });
 
 export const metadata: Metadata = {
-	title: "Customers",
+	title: "Contacts",
 };
 
 export default function CompaniesPage({

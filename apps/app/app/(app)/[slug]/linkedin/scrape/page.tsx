@@ -1,22 +1,11 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
-import { PageShellFallback } from "@/components/page-shell";
-import { requireSession } from "@/lib/session";
-import { ScrapeView } from "./scrape-view";
+import { redirect } from "next/navigation";
+import { hubPath, LEAD_HUB } from "@/lib/lead-hub/lead-hub-config";
 
-export const metadata: Metadata = {
-	title: "Search and scrape",
-};
+export const instant = false;
 
-export default function LinkedInScrapePage() {
-	return (
-		<Suspense fallback={<PageShellFallback />}>
-			<Scrape />
-		</Suspense>
-	);
-}
-
-async function Scrape() {
-	await requireSession();
-	return <ScrapeView />;
+export default async function LinkedinScrapeRedirect({
+	params,
+}: PageProps<"/[slug]/linkedin/scrape">) {
+	const { slug } = await params;
+	redirect(`/${slug}${hubPath("find", LEAD_HUB.views.find.linkedin)}`);
 }

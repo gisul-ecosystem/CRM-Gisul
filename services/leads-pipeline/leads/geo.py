@@ -25,7 +25,8 @@ _PVT_RE = re.compile(r"\b(?:pvt\.?|private)\s+(?:ltd\.?|limited)\b", re.I)
 AI_RE = re.compile(
     r"\b(?:ai|a\.i\.|genai|gen-ai|generative|agentic|llms?|ml|machine learning|"
     r"deep learning|neural|computer vision|nlp|robotics|autonomous|speech|voice ai|"
-    r"foundation models?|gpus?|data cent(?:er|re)s?)\b",
+    r"foundation models?|gpus?|data cent(?:er|re)s?)\b"
+    r"|الذكاء الاصطناعي|تعلم الآلة|التعلم الآلي|التعلم العميق|الرؤية الحاسوبية|معالجة اللغات الطبيعية",
     re.I,
 )
 # For long texts (article bodies, long descriptions), where a bare "AI" is often incidental.
@@ -33,7 +34,9 @@ STRONG_AI_RE = re.compile(
     r"\b(?:artificial intelligence|generative ai|genai|agentic ai|ai agents?|llms?|"
     r"large language models?|machine learning|deep learning|computer vision|foundation models?|"
     r"ai[- ](?:powered|native|first|led|driven|based|startup|platform|models?|infrastructure)|"
-    r"gpus?|model training|inference)\b",
+    r"gpus?|model training|inference)\b"
+    r"|الذكاء الاصطناعي|الذكاء الإصطناعي|تعلم الآلة|التعلم الآلي|التعلم العميق|الرؤية الحاسوبية|"
+    r"نماذج لغوية كبيرة|الذكاء الاصطناعي التوليدي",
     re.I,
 )
 
@@ -101,12 +104,68 @@ COUNTRIES = {
                       cities=["Jakarta", "Bandung", "Surabaya", "Yogyakarta", "Tangerang"],
                       places=["Indonesia", "Denpasar", "Bali", "Medan", "Semarang", "Bekasi", "Depok", "Makassar"],
                       reg=r"\bJl\.\s+[A-Z]|\bPT\.?\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,4}\s+(?:Tbk|Indonesia)\b"),
+    "United Arab Emirates": dict(code="AE", tld="ae", phone="+971", aliases=("UAE", "Emirates"),
+                                 cities=["Dubai", "Abu Dhabi", "Sharjah"],
+                                 places=["United Arab Emirates", "UAE", "Ajman", "Ras Al Khaimah", "Fujairah",
+                                         "Al Ain", "DIFC", "ADGM", "Dubai Internet City", "Dubai Silicon Oasis",
+                                         "Masdar City", "الإمارات العربية المتحدة", "دبي", "أبوظبي"],
+                                 reg=r"\bFZ-?LLC\b|\bFZ-?E\b|\bFZCO\b|\bDMCC\b|\bTrade\s+Licen[cs]e\s+(?:No|Number)"),
+    "Saudi Arabia": dict(code="SA", tld="sa", phone="+966", aliases=("KSA", "Saudi"),
+                         cities=["Riyadh", "Jeddah", "Dammam"],
+                         places=["Saudi Arabia", "KSA", "Al Khobar", "Khobar", "Dhahran", "Makkah", "Madinah",
+                                 "NEOM", "المملكة العربية السعودية", "الرياض", "جدة"],
+                         reg=r"\bC\.?\s?R\.?\s*(?:No\.?|Number)?\s*:?\s*[1-7]\d{9}\b|سجل\s+تجاري\s*(?:رقم)?\s*:?\s*[1-7]\d{9}"),
+    "Qatar": dict(code="QA", tld="qa", phone="+974", cities=["Doha"],
+                  places=["Qatar", "Lusail", "Al Wakrah", "Al Rayyan", "قطر", "الدوحة"],
+                  reg=r"\bQFC\s+(?:No|Licen[cs]e)|Qatar\s+Financial\s+Cent(?:re|er)|\bQSTP\b"),
+    "Australia": dict(code="AU", tld="au", phone="+61", aliases=("AU",),
+                      cities=["Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide"],
+                      places=["Australia", "Canberra", "New South Wales", "NSW", "Queensland", "Gold Coast",
+                              "Hobart", "Darwin", "Parramatta"],
+                      reg=r"\bA\.?B\.?N\.?\s*:?\s*\d{2}\s?\d{3}\s?\d{3}\s?\d{3}\b|\bPty\.?\s*Ltd\b"),
+    "United States": dict(code="US", tld="us", phone="+1", aliases=("USA", "US", "U.S.", "United States of America"),
+                          cities=["San Francisco", "New York", "Austin", "Boston", "Seattle"],
+                          places=["United States", "USA", "Silicon Valley", "California", "Texas", "Palo Alto",
+                                  "Mountain View", "San Jose", "Los Angeles", "Chicago", "Denver", "Atlanta"],
+                          reg=r"\bEIN\s*:?\s*\d{2}-\d{7}\b|\bDelaware\s+(?:corporation|C-Corp)\b"),
 }
+GULF = ("United Arab Emirates", "Saudi Arabia", "Qatar")
 _OTHER = {name: (c["code"], re.compile(c["reg"], re.I if name != "Thailand" else 0),
                  re.compile(r"\b(?:" + "|".join(re.escape(p) for p in c["cities"] + c["places"]) + r")\b", re.I))
           for name, c in COUNTRIES.items() if name != "India"}
 _BY_CODE = {c["code"]: name for name, c in COUNTRIES.items()}
 _BY_TLD = {c["tld"]: name for name, c in COUNTRIES.items()}
+
+# Places a search result title names that are never a company ('Best AWS Course | Nagpur | X').
+_INDIAN_PLACES = [
+    "India", "Bengaluru", "Bangalore", "Hyderabad", "Secunderabad", "Pune", "Chennai", "Mumbai", "Navi Mumbai",
+    "Thane", "Delhi", "New Delhi", "Delhi NCR", "NCR", "Noida", "Greater Noida", "Gurgaon", "Gurugram",
+    "Faridabad", "Ghaziabad", "Kolkata", "Ahmedabad", "Kochi", "Cochin", "Coimbatore", "Jaipur", "Chandigarh",
+    "Mohali", "Indore", "Lucknow", "Nagpur", "Nashik", "Bhubaneswar", "Visakhapatnam", "Vizag", "Vijayawada",
+    "Thiruvananthapuram", "Trivandrum", "Mysuru", "Mysore", "Mangaluru", "Mangalore", "Vadodara", "Surat",
+    "Rajkot", "Bhopal", "Patna", "Ranchi", "Kanpur", "Agra", "Varanasi", "Dehradun", "Madurai", "Tiruchirappalli",
+    "Trichy", "Salem", "Hubli", "Belgaum", "Aurangabad", "Raipur", "Guwahati", "Amritsar", "Ludhiana", "Jalandhar",
+    "Goa", "Karnataka", "Maharashtra", "Tamil Nadu", "Telangana", "Andhra Pradesh", "Kerala", "Gujarat",
+    "Rajasthan", "Uttar Pradesh", "West Bengal", "Madhya Pradesh", "Punjab", "Haryana", "Odisha", "Bihar",
+]
+PLACE_NAMES = frozenset(
+    p.lower() for p in (
+        _INDIAN_PLACES
+        + list(COUNTRIES)
+        + [p for c in COUNTRIES.values() for p in c["cities"] + c.get("places", [])]
+        + ["Online", "Worldwide", "Global", "Near Me", "USA", "UK", "Singapore", "Dubai", "UAE"]
+    )
+)
+
+
+def is_place_name(text: str) -> bool:
+    """'Nagpur', 'Pune, Maharashtra', 'Dubai UAE' -> True."""
+    words = re.sub(r"[^\w\s,]", " ", (text or "").lower())
+    parts = [p.strip() for p in re.split(r"[,/]|\s+-\s+", words) if p.strip()]
+    if not parts:
+        return False
+    return all(p in PLACE_NAMES or " ".join(p.split()) in PLACE_NAMES
+               or all(w in PLACE_NAMES for w in p.split()) for p in parts)
 
 
 def country_names(raw: str) -> Tuple[str, ...]:
@@ -114,7 +173,8 @@ def country_names(raw: str) -> Tuple[str, ...]:
     out = []
     for part in (raw or "").split(","):
         p = part.strip().lower()
-        name = next((n for n, c in COUNTRIES.items() if p in (n.lower(), c["code"].lower())), "")
+        name = next((n for n, c in COUNTRIES.items()
+                     if p in (n.lower(), c["code"].lower(), *(a.lower() for a in c.get("aliases", ())))), "")
         if name and name not in out:
             out.append(name)
     return tuple(out)

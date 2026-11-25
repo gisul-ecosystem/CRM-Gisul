@@ -3,6 +3,7 @@ const {
   SEND_BATCH_SIZE,
   SEND_BATCH_PAUSE_MS,
   SEND_DAY_TZ,
+  STOP_CHECK_MS,
 } = require('./config');
 const { sleep } = require('./utils');
 const db = require('./db');
@@ -32,14 +33,18 @@ async function recordSuccessfulSend(ownerId) {
  * After every SEND_BATCH_SIZE successful sends in this run, pause SEND_BATCH_PAUSE_MS.
  * sessionSentCount = how many sent so far in the current job (not daily total).
  */
-async function maybeBatchPause(sessionSentCount, log = console.log) {
+async function maybeBatchPause(sessionSentCount, log = console.log, shouldStop = () => false) {
   if (!SEND_BATCH_SIZE || sessionSentCount <= 0) return false;
   if (sessionSentCount % SEND_BATCH_SIZE !== 0) return false;
   const mins = Math.round(SEND_BATCH_PAUSE_MS / 60000);
   await log(
     `Buffer: ${SEND_BATCH_SIZE} messages sent in this run — pausing ${mins} minute(s) before continuing…`
   );
-  await sleep(SEND_BATCH_PAUSE_MS);
+  const resumeAt = Date.now() + SEND_BATCH_PAUSE_MS;
+  while (Date.now() < resumeAt) {
+    if (shouldStop()) return true;
+    await sleep(Math.min(STOP_CHECK_MS, resumeAt - Date.now()));
+  }
   await log('Buffer done — resuming sends');
   return true;
 }

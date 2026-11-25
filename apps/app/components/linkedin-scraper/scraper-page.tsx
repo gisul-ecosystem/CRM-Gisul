@@ -10,16 +10,7 @@ import {
 } from "@crm/ui/components/empty";
 import { Icon } from "@crm/ui/components/icon";
 import type { ReactNode } from "react";
-import {
-	PageShell,
-	PageShellActions,
-	PageShellContent,
-	PageShellDescription,
-	PageShellHeader,
-	PageShellHeading,
-	PageShellLoading,
-	PageShellTitle,
-} from "@/components/page-shell";
+import { PageShellLoading } from "@/components/page-shell";
 import { ScraperError } from "@/lib/linkedin-scraper/client";
 import { useScraperStatus } from "@/lib/linkedin-scraper/use-status";
 
@@ -38,17 +29,7 @@ const UNAVAILABLE = new Map<string, { title: string; description: string }>(
 	}),
 );
 
-export function ScraperPage({
-	title,
-	description,
-	actions,
-	children,
-}: {
-	title: ReactNode;
-	description?: ReactNode;
-	actions?: ReactNode;
-	children: ReactNode;
-}) {
+export function ScraperGate({ children }: { children: ReactNode }) {
 	const status = useScraperStatus();
 
 	const problem =
@@ -64,36 +45,19 @@ export function ScraperPage({
 					}
 				: null;
 
-	return (
-		<PageShell>
-			<PageShellHeader>
-				<PageShellHeading>
-					<PageShellTitle>{title}</PageShellTitle>
-					{description ? (
-						<PageShellDescription>{description}</PageShellDescription>
-					) : null}
-				</PageShellHeading>
-				{actions && !problem ? (
-					<PageShellActions>{actions}</PageShellActions>
-				) : null}
-			</PageShellHeader>
-			<PageShellContent>
-				{status.isPending ? (
-					<PageShellLoading />
-				) : problem ? (
-					<Empty>
-						<EmptyHeader>
-							<EmptyMedia variant="icon">
-								<Icon icon={Plug} />
-							</EmptyMedia>
-							<EmptyTitle>{problem.title}</EmptyTitle>
-							<EmptyDescription>{problem.description}</EmptyDescription>
-						</EmptyHeader>
-					</Empty>
-				) : (
-					children
-				)}
-			</PageShellContent>
-		</PageShell>
-	);
+	if (status.isPending) return <PageShellLoading />;
+	if (problem) {
+		return (
+			<Empty>
+				<EmptyHeader>
+					<EmptyMedia variant="icon">
+						<Icon icon={Plug} />
+					</EmptyMedia>
+					<EmptyTitle>{problem.title}</EmptyTitle>
+					<EmptyDescription>{problem.description}</EmptyDescription>
+				</EmptyHeader>
+			</Empty>
+		);
+	}
+	return children;
 }

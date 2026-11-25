@@ -18,28 +18,43 @@ import time
 from typing import List
 
 from .. import training
-from ..geo import COUNTRIES, city_country
+from ..geo import COUNTRIES, city_country, is_place_name
 from ..config import Settings
 from ..fetch import Fetcher
 from ..people_search import BRAVE_URL, PAUSE
 from ..store import Candidate, Store
-from ..util import extract_domain, is_blocked
+from ..util import _extract, extract_domain, is_blocked, name_from_domain
 
 log = logging.getLogger(__name__)
 
 
 _NOT_A_NAME = re.compile(r"startups?\b|companies|\bstudios? in\b|"
                          r"training|course|courses|institute in|classes in|best|top \d*|certification|"
-                         r"online|near me|fees|placement|\bin [A-Z]", re.I)
+                         r"online|near me|fees|placement|\bin [A-Z]|"
+                         r"^(?:home|home page|welcome.*|about(?: us)?|contact(?: us)?|official (?:site|website))$",
+                         re.I)
+
+
+def _letters(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (text or "").lower())
 
 
 def name_from_title(title: str, domain: str) -> str:
-    """'Best DevOps Training in Pune | XYZ Academy' -> 'XYZ Academy'; else from the domain."""
-    for part in re.split(r"\s+[|\-–—:]\s+", title or ""):
-        part = part.strip()
-        if 2 <= len(part) <= 50 and not _NOT_A_NAME.search(part):
+    """'Best DevOps Training in Pune | XYZ Academy' -> 'XYZ Academy'. A part that matches the
+    website ('CloudBlitz' for cloudblitz.in) wins; a place ('Nagpur') is never a name; else the
+    domain gives the name."""
+    parts = [re.sub(r"^welcome to\s+", "", p.strip(), flags=re.I)
+             for p in re.split(r"\s+[|\-–—:]\s+", title or "") if p.strip()]
+    stem = _letters(_extract(domain or "").domain)
+    if len(stem) >= 3:
+        for part in parts:
+            letters = _letters(part)
+            if 2 <= len(part) <= 50 and letters and (stem in letters or (len(letters) >= 4 and letters in stem)):
+                return part
+    for part in parts:
+        if 2 <= len(part) <= 50 and not _NOT_A_NAME.search(part) and not is_place_name(part):
             return part
-    return domain.split(".")[0].replace("-", " ").title()
+    return name_from_domain(domain)
 
 
 # ---------------------------------------------------------------- GPU leads' own search list
@@ -80,11 +95,33 @@ SEA_SKIP = {
 }
 
 
+GULF_SKIP = {
+    "bayt.com", "gulftalent.com", "naukrigulf.com", "dubizzle.com", "dubizzle.sa", "opensooq.com",
+    "yellowpages.ae", "yellowpages-uae.com", "connect.ae", "uaecontact.com", "dubaibizdirectory.com",
+    "saudiyellowpages.com", "qatarliving.com", "qatar.yellowpages.qa", "kuwaitlocal.com", "bahrainyellow.com",
+    "omanyellowpages.com", "gulfnews.com", "khaleejtimes.com", "thenationalnews.com", "arabnews.com",
+    "zawya.com", "gulfbusiness.com", "arabianbusiness.com", "argaam.com", "saudigazette.com.sa",
+    "gulf-times.com", "thepeninsulaqatar.com", "timesofoman.com", "gdnonline.com", "arabtimesonline.com",
+    "wamda.com", "magnitt.com", "bayut.com", "propertyfinder.ae", "noon.com", "amazon.ae", "amazon.sa",
+    "talabat.com", "careem.com", "glassdoor.ae", "indeed.ae", "khda.gov.ae", "u.ae", "my.gov.sa",
+}
+
+
+# Australian and US job boards, directories, news and marketplaces (both profiles)
+AU_US_SKIP = {
+    "seek.com.au", "indeed.com", "indeed.com.au", "glassdoor.com", "glassdoor.com.au", "jora.com",
+    "yellowpages.com", "yellowpages.com.au", "truelocal.com.au", "yelp.com", "bbb.org", "crunchbase.com",
+    "clutch.co", "goodfirms.co", "builtin.com", "wellfound.com", "angel.co", "techcrunch.com", "forbes.com",
+    "itnews.com.au", "afr.com", "smh.com.au", "startupdaily.net", "smartcompany.com.au", "amazon.com",
+    "ebay.com", "ebay.com.au", "gumtree.com.au", "upwork.com", "fiverr.com", "ziprecruiter.com",
+}
+
+
 def _lists(profile: str):
     """(cities, topics, skip) for a profile."""
     if profile == "training":
-        return training.CITIES, training.TOPICS, training.SEARCH_SKIP | SEA_SKIP
-    return GPU_CITIES, GPU_TOPICS, GPU_SKIP | SEA_SKIP
+        return training.CITIES, training.TOPICS, training.SEARCH_SKIP | SEA_SKIP | GULF_SKIP | AU_US_SKIP
+    return GPU_CITIES, GPU_TOPICS, GPU_SKIP | SEA_SKIP | GULF_SKIP | AU_US_SKIP
 
 
 def target_cities(india_cities: List[str], countries=("India",)) -> List[str]:
@@ -106,7 +143,7 @@ def query_country(q: str) -> str:
 
 
 # Brave serves results by country only for some countries; the rest search everywhere
-BRAVE_COUNTRIES = {"IN", "MY", "ID"}
+BRAVE_COUNTRIES = {"IN", "MY", "ID", "AU", "US"}
 
 
 SERPER_URL = "https://google.serper.dev/search"
@@ -138,21 +175,23 @@ def run_query(name: str, key: str, fetcher: Fetcher, q: str):
     if name == "serper":
         status, data = fetcher.post_json(SERPER_URL, {"q": q, "gl": code.lower(), "num": 10},
                                          headers={"X-API-KEY": key, "Content-Type": "application/json"})
-        rows = [{"url": r.get("link", ""), "title": r.get("title", "")} for r in (data or {}).get("organic", [])] \
+        rows = [{"url": r.get("link", ""), "title": r.get("title", ""), "snippet": r.get("snippet", "")}
+                for r in (data or {}).get("organic", [])] \
             if isinstance(data, dict) else []
         return status, rows
     if name == "tavily":
         status, data = fetcher.post_json(TAVILY_URL, {"query": q, "max_results": 20, "search_depth": "basic",
                                                       "country": country.lower()},
                                          headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
-        rows = [{"url": r.get("url", ""), "title": r.get("title", "")} for r in (data or {}).get("results", [])] \
+        rows = [{"url": r.get("url", ""), "title": r.get("title", ""), "snippet": r.get("content", "")}
+                for r in (data or {}).get("results", [])] \
             if isinstance(data, dict) else []
         return status, rows
     status, data, _ = fetcher.get_json(
         BRAVE_URL, params={"q": q, "count": 20, "country": code if code in BRAVE_COUNTRIES else "ALL",
                             "search_lang": "en"},
         headers={"X-Subscription-Token": key, "Accept": "application/json"})
-    rows = [{"url": r.get("url", ""), "title": r.get("title", "")}
+    rows = [{"url": r.get("url", ""), "title": r.get("title", ""), "snippet": r.get("description", "")}
             for r in ((data or {}).get("web") or {}).get("results") or []] if isinstance(data, dict) else []
     return status, rows
 

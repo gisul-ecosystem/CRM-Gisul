@@ -5,12 +5,24 @@ const { sleep, gotoWithRetry } = require('./utils');
 async function isLoggedIn(page) {
   const url = page.url();
   if (!url.includes('linkedin.com')) return false;
-  if (url.includes('/login') || url.includes('/checkpoint') || url.includes('/uas/login')) {
+  if (
+    url.includes('/login') ||
+    url.includes('/checkpoint') ||
+    url.includes('/uas/login') ||
+    url.includes('/authwall') ||
+    url.includes('/signup')
+  ) {
     return false;
   }
 
-  const loggedInPaths = ['/feed', '/mynetwork', '/messaging', '/notifications', '/jobs', '/in/'];
+  const loggedInPaths = ['/feed', '/mynetwork', '/messaging', '/notifications', '/jobs', '/in/', '/onboarding', '/start'];
   if (loggedInPaths.some((p) => url.includes(p))) return true;
+
+  const cookies = await page
+    .context()
+    .cookies('https://www.linkedin.com')
+    .catch(() => []);
+  if (cookies.some((c) => c.name === 'li_at' && c.value)) return true;
 
   const globalNav = page.locator(
     'nav.global-nav, .global-nav__me, [data-test-global-nav-link="feed"], header.global-nav'
@@ -102,7 +114,7 @@ async function forceBackToLinkedIn(context, fallbackPage) {
   return { page: main, loggedIn: false };
 }
 
-async function waitForManualLogin(page, timeoutMs = 600000, context = null) {
+async function waitForManualLogin(page, timeoutMs = 600000, context = null, shouldStop = () => false) {
   console.log('[linkedin] Complete sign-in in the browser.');
   console.log('[linkedin] Prefer LinkedIn email + password (Google SSO often gets stuck on a blank page).');
   console.log('[linkedin] If stuck on Google: click Back to LinkedIn in the app, or open https://www.linkedin.com/feed/');
@@ -110,6 +122,7 @@ async function waitForManualLogin(page, timeoutMs = 600000, context = null) {
   const ctx = context || page.context();
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
+    if (shouldStop()) throw new Error('Stopped while waiting for LinkedIn sign-in');
     const authed = await findLoggedInPage(ctx, page);
     if (authed) {
       console.log(`[linkedin] Authenticated → ${authed.url()}`);
@@ -132,25 +145,36 @@ async function saveLinkedInSession(context, sessionPath) {
   await context.storageState({ path: sessionPath });
 }
 
-async function ensureLinkedInLoggedIn(page, context, sessionPath, { preferManual = false } = {}) {
+async function ensureLinkedInLoggedIn(
+  page,
+  context,
+  sessionPath,
+  { preferManual = false, log = async () => {}, shouldStop = () => false } = {}
+) {
   await gotoWithRetry(page, FEED_URL);
   await sleep(1200);
 
   if (await isLoggedIn(page)) {
+    await log('LinkedIn session OK');
     await saveLinkedInSession(context, sessionPath);
     return;
   }
 
+  await log(
+    `LinkedIn did not accept the saved session (page: ${page.url().slice(0, 120)}). Sign in or pass the check in the browser viewer within 10 minutes, or click Stop.`
+  );
+
   if (preferManual || !LINKEDIN_EMAIL || !LINKEDIN_PASSWORD) {
-    await gotoWithRetry(page, LOGIN_URL);
-    await waitForManualLogin(page, undefined, context);
+    if (!page.url().includes('/checkpoint')) await gotoWithRetry(page, LOGIN_URL);
+    await waitForManualLogin(page, undefined, context, shouldStop);
+    await log('LinkedIn sign-in done');
   } else {
     await gotoWithRetry(page, LOGIN_URL);
     await page.locator('input#username, input[name="session_key"]').first().fill(LINKEDIN_EMAIL);
     await page.locator('input#password, input[name="session_password"]').first().fill(LINKEDIN_PASSWORD);
     await page.locator('button[type="submit"]').first().click();
     await sleep(3000);
-    if (page.url().includes('/checkpoint')) await waitForManualLogin(page, undefined, context);
+    if (page.url().includes('/checkpoint')) await waitForManualLogin(page, undefined, context, shouldStop);
     if (!(await isLoggedIn(page))) throw new Error('LinkedIn credential login failed');
   }
 

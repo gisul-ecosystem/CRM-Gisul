@@ -10,6 +10,8 @@ export const scraperKeys = {
 	jobs: ["linkedin-scraper", "jobs"] as const,
 	profiles: ["linkedin-scraper", "profiles"] as const,
 	queue: ["linkedin-scraper", "queue"] as const,
+	companies: ["linkedin-scraper", "companies"] as const,
+	companyOptions: ["linkedin-scraper", "company-options"] as const,
 	sent: (date: string) => ["linkedin-scraper", "sent", date] as const,
 };
 
@@ -36,6 +38,8 @@ export function useScraperCache(): ScraperCache {
 				scraperKeys.jobs,
 				scraperKeys.profiles,
 				scraperKeys.queue,
+				scraperKeys.companies,
+				scraperKeys.companyOptions,
 			]),
 		queue: () =>
 			run([scraperKeys.status, scraperKeys.queue, scraperKeys.profiles]),

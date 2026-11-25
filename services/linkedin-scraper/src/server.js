@@ -4,22 +4,63 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const express = require('express');
-const { ROOT, PORT, MONGODB_URI, MONGODB_DB, OPENAI_API_KEY, ANTHROPIC_API_KEY, SEND_DAY_TZ, OUT_DIR } = require('./config');
+const {
+  ROOT,
+  PORT,
+  MONGODB_URI,
+  MONGODB_DB,
+  OPENAI_API_KEY,
+  ANTHROPIC_API_KEY,
+  SEND_DAY_TZ,
+  OUT_DIR,
+  POST_SEARCH,
+  COMPANY_SEARCH,
+  BROWSER_SLOTS,
+  SCRAPER_USERS,
+} = require('./config');
 const { CONNECTION_TYPES, buildSearchUrl, resolveConnectionType } = require('./search');
-const { runScrapeJob, getJobStatus } = require('./scrape-job');
-const { runSendQueueJob, getSendJobStatus } = require('./send-queue-job');
-const { startLinkedInConnect, getLinkedInJob, hasLinkedInSession, logoutLinkedIn, rescueLinkedInBrowser } = require('./linkedin-login-job');
+const { runScrapeJob, getJobStatus, requestScrapeStop, runningUsers: scrapeUsers } = require('./scrape-job');
+const { buildPostSearchUrl } = require('./posts');
+const { buildCompanySearchUrl, pickFilters } = require('./companies');
+const FIRST_DEGREE_TYPES = ['all_connections', 'connections_search', 'first_degree'];
+const { runSendQueueJob, getSendJobStatus, runningUsers: sendUsers } = require('./send-queue-job');
+const {
+  startLinkedInConnect,
+  getLinkedInJob,
+  hasLinkedInSession,
+  logoutLinkedIn,
+  rescueLinkedInBrowser,
+  runningUsers: loginUsers,
+} = require('./linkedin-login-job');
 const { listProducts, parseProductIds } = require('./products');
 const { userPaths } = require('./paths');
 const { getRagStatus, buildIndex } = require('./rag/index');
 const { getSendBudget } = require('./send-limits');
-const { writeDailySendReportExcel } = require('./export');
+const { writeDailySendReportExcel, companiesWorkbook } = require('./export');
 const { ensureDirs, maskUri } = require('./utils');
 const { parseConnectionFile } = require('./import-profiles');
 const multer = require('multer');
 const db = require('./db');
+const slots = require('./slots');
+const { normalizeTemplate, renderTemplate } = require('./message-template');
 
-const USER_ID = 'local';
+const BROWSER_BUSY = {
+  error: `All ${BROWSER_SLOTS.count} LinkedIn browsers are in use by other people. Try again when one of their jobs finishes.`,
+  code: 'BROWSER_BUSY',
+};
+
+function activeBrowserUsers() {
+  return new Set([...scrapeUsers(), ...sendUsers(), ...loginUsers()]);
+}
+
+function browserBusyFor(userId) {
+  return slots.claim(userId, activeBrowserUsers()) === null;
+}
+
+function viewerPathFor(userId) {
+  const path = slots.viewerPathFor(userId);
+  return path ? `${BROWSER_VIEWER_PATH}&path=${encodeURIComponent(path)}` : '';
+}
 const NOVNC_UPSTREAM = { hostname: '127.0.0.1', port: 6080 };
 const BROWSER_VIEWER_PATH = '/vnc/vnc_lite.html?autoconnect=1&scale=true';
 const upload = multer({
@@ -72,6 +113,14 @@ const NOVNC_FIT_CSS = `
 
 const app = express();
 app.use(express.json());
+app.use('/api', (req, res, next) => {
+  const raw = String(req.get(SCRAPER_USERS.header) || '').trim();
+  if (raw && !SCRAPER_USERS.idPattern.test(raw)) {
+    return res.status(400).json({ error: 'Invalid user id' });
+  }
+  req.userId = raw || SCRAPER_USERS.fallback;
+  return next();
+});
 app.use(express.static(path.join(ROOT, 'public')));
 
 /** Same-origin proxy so the VNC iframe works reliably (avoids broken cross-port embeds). */
@@ -152,14 +201,22 @@ app.use('/vnc', (req, res) => {
 function attachNovncWsProxy(server) {
   server.on('upgrade', (req, socket, head) => {
     if (!req.url || !req.url.startsWith('/websockify')) return;
+    const token = req.url.split('?')[0].split('/')[2] || '';
+    const port = slots.viewerPortForToken(token);
+    if (!port) {
+      socket.write(['HTTP/1.1 403 Forbidden', 'Connection: close', '', ''].join('\r\n'));
+      socket.destroy();
+      return;
+    }
 
     const proxyReq = http.request({
-      ...NOVNC_UPSTREAM,
-      path: req.url,
+      hostname: NOVNC_UPSTREAM.hostname,
+      port,
+      path: '/websockify',
       method: 'GET',
       headers: {
         ...req.headers,
-        host: `${NOVNC_UPSTREAM.hostname}:${NOVNC_UPSTREAM.port}`,
+        host: `${NOVNC_UPSTREAM.hostname}:${port}`,
       },
     });
 
@@ -184,11 +241,11 @@ function attachNovncWsProxy(server) {
   });
 }
 
-app.get('/api/connection-types', (_req, res) => {
+app.get('/api/connection-types', (req, res) => {
   res.json(CONNECTION_TYPES);
 });
 
-app.get('/api/products', (_req, res) => {
+app.get('/api/products', (req, res) => {
   res.json({
     products: listProducts(),
     aiConfigured: Boolean(ANTHROPIC_API_KEY || OPENAI_API_KEY),
@@ -197,7 +254,7 @@ app.get('/api/products', (_req, res) => {
   });
 });
 
-app.post('/api/rag/rebuild', (_req, res) => {
+app.post('/api/rag/rebuild', (req, res) => {
   const index = buildIndex();
   res.json({
     ok: true,
@@ -208,9 +265,9 @@ app.post('/api/rag/rebuild', (_req, res) => {
   });
 });
 
-app.get('/api/status', async (_req, res) => {
+app.get('/api/status', async (req, res) => {
   try {
-    const paths = userPaths(USER_ID);
+    const paths = userPaths(req.userId);
     const linkedInConnected = hasLinkedInSession(paths.linkedinSession);
     let totalProfiles = 0;
     let queueCount = 0;
@@ -218,11 +275,11 @@ app.get('/api/status', async (_req, res) => {
     let mongoOk = true;
     try {
       await db.connectMongo();
-      totalProfiles = await db.profiles.countProfiles(USER_ID);
-      queueCount = await db.profiles.countQueue(USER_ID);
-      user = await db.users.getUser(USER_ID);
+      totalProfiles = await db.profiles.countProfiles(req.userId);
+      queueCount = await db.profiles.countQueue(req.userId);
+      user = await db.users.getUser(req.userId);
       if (linkedInConnected) {
-        await db.users.markLinkedInConnected(USER_ID, true);
+        await db.users.markLinkedInConnected(req.userId, true);
       }
     } catch (err) {
       mongoOk = false;
@@ -231,48 +288,49 @@ app.get('/api/status', async (_req, res) => {
 
     let sendBudget = null;
     try {
-      sendBudget = await getSendBudget(USER_ID);
+      sendBudget = await getSendBudget(req.userId);
     } catch {
       sendBudget = null;
     }
 
     res.json({
       linkedInConnected,
-      linkedInJob: getLinkedInJob(USER_ID),
-      scrapeJob: getJobStatus(USER_ID),
-      sendJob: getSendJobStatus(USER_ID),
+      linkedInJob: getLinkedInJob(req.userId),
+      scrapeJob: getJobStatus(req.userId),
+      sendJob: getSendJobStatus(req.userId),
       sendBudget,
       totalProfiles,
       queueCount,
       user,
       mongo: { ok: mongoOk, uri: maskUri(MONGODB_URI), db: MONGODB_DB },
       inDocker: String(process.env.IN_DOCKER || '').toLowerCase() === 'true',
-      browserViewerUrl: BROWSER_VIEWER_PATH,
+      browserViewerUrl: viewerPathFor(req.userId),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/linkedin/connect', async (_req, res) => {
+app.post('/api/linkedin/connect', async (req, res) => {
+  if (browserBusyFor(req.userId)) return res.status(409).json(BROWSER_BUSY);
   try {
     await db.connectMongo();
-    await db.users.upsertUser({ userId: USER_ID, name: 'Local operator' });
-    const job = await startLinkedInConnect(USER_ID);
+    await db.users.upsertUser({ userId: req.userId, name: req.userId === SCRAPER_USERS.fallback ? 'Local operator' : 'CRM user' });
+    const job = await startLinkedInConnect(req.userId);
     res.json({ ok: true, job });
   } catch (err) {
     res.status(409).json({ error: err.message });
   }
 });
 
-app.post('/api/linkedin/logout', async (_req, res) => {
+app.post('/api/linkedin/logout', async (req, res) => {
   try {
-    const scrape = getJobStatus(USER_ID);
-    const send = getSendJobStatus(USER_ID);
+    const scrape = getJobStatus(req.userId);
+    const send = getSendJobStatus(req.userId);
     if (scrape?.status === 'running' || send?.status === 'running') {
       return res.status(409).json({ error: 'Stop the running scrape/send job before logging out' });
     }
-    const result = await logoutLinkedIn(USER_ID);
+    const result = await logoutLinkedIn(req.userId);
     res.json({
       ok: true,
       linkedInConnected: false,
@@ -286,9 +344,9 @@ app.post('/api/linkedin/logout', async (_req, res) => {
   }
 });
 
-app.post('/api/linkedin/back', async (_req, res) => {
+app.post('/api/linkedin/back', async (req, res) => {
   try {
-    const result = await rescueLinkedInBrowser(USER_ID);
+    const result = await rescueLinkedInBrowser(req.userId);
     res.json({
       ok: true,
       ...result,
@@ -301,20 +359,20 @@ app.post('/api/linkedin/back', async (_req, res) => {
   }
 });
 
-app.get('/api/linkedin/status', async (_req, res) => {
-  const paths = userPaths(USER_ID);
+app.get('/api/linkedin/status', async (req, res) => {
+  const paths = userPaths(req.userId);
   const connected = hasLinkedInSession(paths.linkedinSession);
   if (connected) {
     try {
       await db.connectMongo();
-      await db.users.markLinkedInConnected(USER_ID, true);
+      await db.users.markLinkedInConnected(req.userId, true);
     } catch {
       /* ignore */
     }
   }
   res.json({
     connected,
-    job: getLinkedInJob(USER_ID),
+    job: getLinkedInJob(req.userId),
   });
 });
 
@@ -330,11 +388,11 @@ app.get('/api/preview-url', (req, res) => {
   }
 });
 
-app.get('/api/results', async (_req, res) => {
+app.get('/api/results', async (req, res) => {
   try {
     await db.connectMongo();
     const { nameFromSlug } = require('./utils');
-    const profiles = await db.profiles.listProfiles(USER_ID, { limit: 1000 });
+    const profiles = await db.profiles.listProfiles(req.userId, { limit: 1000 });
     res.json({
       profiles: profiles.map((p) => ({
         ...p,
@@ -347,30 +405,30 @@ app.get('/api/results', async (_req, res) => {
   }
 });
 
-app.get('/api/jobs', async (_req, res) => {
+app.get('/api/jobs', async (req, res) => {
   try {
     await db.connectMongo();
-    const jobs = await db.jobs.listScrapeJobs(USER_ID, { limit: 50 });
+    const jobs = await db.jobs.listScrapeJobs(req.userId, { limit: 50 });
     res.json({ jobs });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get('/api/users', async (_req, res) => {
+app.get('/api/users', async (req, res) => {
   try {
     await db.connectMongo();
-    const users = await db.users.listUsers();
-    res.json({ users });
+    const user = await db.users.getUser(req.userId);
+    res.json({ users: user ? [user] : [] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get('/api/queue', async (_req, res) => {
+app.get('/api/queue', async (req, res) => {
   try {
     await db.connectMongo();
-    const items = await db.profiles.listQueue(USER_ID, { status: 'queued', limit: 2000 });
+    const items = await db.profiles.listQueue(req.userId, { status: 'queued', limit: 2000 });
     res.json({ items, count: items.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -382,9 +440,34 @@ app.patch('/api/queue/:slug', async (req, res) => {
     await db.connectMongo();
     const message = String(req.body?.message || '').trim();
     if (!message) return res.status(400).json({ error: 'message is required' });
-    const item = await db.profiles.updateQueuedMessage(USER_ID, req.params.slug, message);
+    const item = await db.profiles.updateQueuedMessage(req.userId, req.params.slug, message);
     if (!item) return res.status(404).json({ error: 'Profile not found' });
     res.json({ item });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/queue/template', async (req, res) => {
+  if (getSendJobStatus(req.userId).status === 'running') {
+    return res.status(409).json({ error: 'Send job is running — wait until it finishes' });
+  }
+  let template;
+  try {
+    template = normalizeTemplate(req.body?.template);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  if (!template) return res.status(400).json({ error: 'Write or upload a template first' });
+  try {
+    await db.connectMongo();
+    const slugs = Array.isArray(req.body?.slugs) ? req.body.slugs.filter(Boolean) : [];
+    const queued = await db.profiles.listQueue(req.userId, { status: 'queued', limit: 2000 });
+    const targets = slugs.length ? queued.filter((item) => slugs.includes(item.slug)) : queued;
+    for (const item of targets) {
+      await db.profiles.updateQueuedMessage(req.userId, item.slug, renderTemplate(template, item));
+    }
+    res.json({ ok: true, message: `Template applied to ${targets.length} queued draft(s)` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -395,7 +478,7 @@ app.post('/api/queue/skip', async (req, res) => {
     await db.connectMongo();
     const slugs = Array.isArray(req.body?.slugs) ? req.body.slugs : [];
     for (const slug of slugs) {
-      await db.profiles.markQueueSkipped(USER_ID, slug);
+      await db.profiles.markQueueSkipped(req.userId, slug);
     }
     res.json({ ok: true, skipped: slugs.length });
   } catch (err) {
@@ -405,13 +488,13 @@ app.post('/api/queue/skip', async (req, res) => {
 
 app.post('/api/queue/clear', async (req, res) => {
   try {
-    if (getSendJobStatus(USER_ID).status === 'running') {
+    if (getSendJobStatus(req.userId).status === 'running') {
       return res.status(409).json({ error: 'Send job is running — wait until it finishes' });
     }
     await db.connectMongo();
     const slugs = Array.isArray(req.body?.slugs) ? req.body.slugs.filter(Boolean) : [];
     const [product = ''] = parseProductIds(String(req.body?.product || ''));
-    const cleared = await db.profiles.clearQueue(USER_ID, { slugs, product });
+    const cleared = await db.profiles.clearQueue(req.userId, { slugs, product });
     res.json({ ok: true, cleared, message: `Cleared ${cleared} queued draft(s)` });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -419,14 +502,15 @@ app.post('/api/queue/clear', async (req, res) => {
 });
 
 app.post('/api/queue/send', async (req, res) => {
-  if (getSendJobStatus(USER_ID).status === 'running') {
+  if (browserBusyFor(req.userId)) return res.status(409).json(BROWSER_BUSY);
+  if (getSendJobStatus(req.userId).status === 'running') {
     return res.status(409).json({ error: 'Send job already running' });
   }
-  if (getJobStatus(USER_ID).status === 'running') {
+  if (getJobStatus(req.userId).status === 'running') {
     return res.status(409).json({ error: 'Scrape is running — wait until it finishes' });
   }
 
-  const paths = userPaths(USER_ID);
+  const paths = userPaths(req.userId);
   if (!hasLinkedInSession(paths.linkedinSession)) {
     return res.status(401).json({ error: 'Connect LinkedIn first' });
   }
@@ -440,17 +524,17 @@ app.post('/api/queue/send', async (req, res) => {
   const slugs = Array.isArray(req.body?.slugs) ? req.body.slugs.filter(Boolean) : [];
   res.json({ ok: true, message: 'Send started', slugs });
 
-  runSendQueueJob(USER_ID, { slugs }).catch((err) => {
-    console.error(`[send-queue:${USER_ID}]`, err.message);
+  runSendQueueJob(req.userId, { slugs }).catch((err) => {
+    console.error(`[send-queue:${req.userId}]`, err.message);
   });
 });
 
-app.get('/api/queue/send-status', (_req, res) => {
-  res.json(getSendJobStatus(USER_ID));
+app.get('/api/queue/send-status', (req, res) => {
+  res.json(getSendJobStatus(req.userId));
 });
 
-app.get('/api/results/download', async (_req, res) => {
-  const paths = userPaths(USER_ID);
+app.get('/api/results/download', async (req, res) => {
+  const paths = userPaths(req.userId);
   if (!fs.existsSync(paths.excel)) {
     return res.status(404).json({ error: 'No export yet. Run a search first.' });
   }
@@ -460,19 +544,19 @@ app.get('/api/results/download', async (_req, res) => {
 app.get('/api/reports/daily-sends', async (req, res) => {
   try {
     await db.connectMongo();
-    const budget = await getSendBudget(USER_ID);
+    const budget = await getSendBudget(req.userId);
     const date = String(req.query.date || budget.date || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: 'Use date=YYYY-MM-DD' });
     }
 
-    const sent = await db.profiles.listSentOnDate(USER_ID, date, SEND_DAY_TZ);
+    const sent = await db.profiles.listSentOnDate(req.userId, date, SEND_DAY_TZ);
     ensureDirs(OUT_DIR);
     const filePath = path.join(OUT_DIR, `daily-sends-${date}.xlsx`);
     await writeDailySendReportExcel(sent, filePath, {
       date,
       timeZone: SEND_DAY_TZ,
-      ownerId: USER_ID,
+      ownerId: req.userId,
       dailyLimit: budget.limit,
       dailySentCounter: budget.date === date ? budget.sent : sent.length,
     });
@@ -486,9 +570,9 @@ app.get('/api/reports/daily-sends', async (req, res) => {
 app.get('/api/reports/daily-sends/summary', async (req, res) => {
   try {
     await db.connectMongo();
-    const budget = await getSendBudget(USER_ID);
+    const budget = await getSendBudget(req.userId);
     const date = String(req.query.date || budget.date || '').trim();
-    const sent = await db.profiles.listSentOnDate(USER_ID, date, SEND_DAY_TZ);
+    const sent = await db.profiles.listSentOnDate(req.userId, date, SEND_DAY_TZ);
     res.json({
       date,
       timeZone: SEND_DAY_TZ,
@@ -508,11 +592,12 @@ app.get('/api/reports/daily-sends/summary', async (req, res) => {
 });
 
 app.post('/api/scrape/start', async (req, res) => {
-  if (getJobStatus(USER_ID).status === 'running') {
+  if (browserBusyFor(req.userId)) return res.status(409).json(BROWSER_BUSY);
+  if (getJobStatus(req.userId).status === 'running') {
     return res.status(409).json({ error: 'Scrape already running' });
   }
 
-  const paths = userPaths(USER_ID);
+  const paths = userPaths(req.userId);
   if (!hasLinkedInSession(paths.linkedinSession)) {
     return res.status(401).json({ error: 'Connect LinkedIn first' });
   }
@@ -531,6 +616,14 @@ app.post('/api/scrape/start', async (req, res) => {
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
+  if (filters.sendMessages && (filters.profileUrl || !FIRST_DEGREE_TYPES.includes(filters.connectionType))) {
+    return res.status(400).json({
+      error: 'Auto-send works only for your connections. Choose a 1st-degree search, or turn auto-send off.',
+    });
+  }
+  if (filters.sendMessages && getSendJobStatus(req.userId).status === 'running') {
+    return res.status(409).json({ error: 'Send job is running — wait until it finishes' });
+  }
   res.json({
     ok: true,
     message: 'Scrape started',
@@ -538,20 +631,217 @@ app.post('/api/scrape/start', async (req, res) => {
     previewUrl: filters.profileUrl || buildSearchUrl(filters),
   });
 
-  runScrapeJob(USER_ID, filters).catch((err) => {
-    console.error(`[scrape-job:${USER_ID}]`, err.message);
+  runScrapeJob(req.userId, filters).catch((err) => {
+    console.error(`[scrape-job:${req.userId}]`, err.message);
   });
 });
 
-app.post('/api/scrape/import', upload.single('file'), async (req, res) => {
-  if (getJobStatus(USER_ID).status === 'running') {
+app.post('/api/scrape/posts', async (req, res) => {
+  if (browserBusyFor(req.userId)) return res.status(409).json(BROWSER_BUSY);
+  if (getJobStatus(req.userId).status === 'running') {
     return res.status(409).json({ error: 'Scrape already running' });
   }
-  if (getSendJobStatus(USER_ID).status === 'running') {
+  if (getSendJobStatus(req.userId).status === 'running') {
     return res.status(409).json({ error: 'Send job is running — wait until it finishes' });
   }
 
-  const paths = userPaths(USER_ID);
+  const paths = userPaths(req.userId);
+  if (!hasLinkedInSession(paths.linkedinSession)) {
+    return res.status(401).json({ error: 'Connect LinkedIn first' });
+  }
+
+  const body = req.body || {};
+  const keywords = String(body.keywords || '').replace(/\s+/g, ' ').trim();
+  if (!keywords) {
+    return res.status(400).json({ error: 'Enter keywords to search posts for' });
+  }
+  if (keywords.length > POST_SEARCH.maxKeywordChars) {
+    return res.status(400).json({ error: `Keep keywords under ${POST_SEARCH.maxKeywordChars} characters` });
+  }
+  const datePosted = POST_SEARCH.datePosted.includes(body.datePosted)
+    ? body.datePosted
+    : POST_SEARCH.defaultDatePosted;
+  const maxPosts = Math.min(
+    POST_SEARCH.maxPostsCap,
+    Math.max(1, Number(body.maxPosts) || POST_SEARCH.defaultMaxPosts)
+  );
+
+  try {
+    await db.connectMongo();
+  } catch (err) {
+    return res.status(503).json({
+      error: `MongoDB not available: ${err.message}. Start local MongoDB first.`,
+    });
+  }
+
+  let filters;
+  try {
+    filters = normalizeFilters({
+      maxResults: maxPosts,
+      aiMessages: body.aiMessages,
+      rescrape: body.rescrape,
+      products: body.products,
+      productContext: body.productContext,
+      productFraming: body.productFraming,
+      messageTemplate: body.messageTemplate,
+      sendMessages: false,
+    });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  filters.connectionType = 'post_search';
+  filters.keywords = keywords;
+  filters.datePosted = datePosted;
+  filters.sendMessages = false;
+
+  const runs = await db.postSearchLimits.getDailyPostRuns(req.userId);
+  if (runs.runCount >= POST_SEARCH.dailyRunLimit) {
+    return res.status(429).json({
+      error: `Post search limit reached: ${POST_SEARCH.dailyRunLimit} run(s) per day, to keep the LinkedIn account safe. Try again tomorrow.`,
+    });
+  }
+  await db.postSearchLimits.recordPostRun(req.userId);
+
+  res.json({
+    ok: true,
+    message: `Post search started — up to ${maxPosts} post(s), drafts queue only. Run ${runs.runCount + 1} of ${POST_SEARCH.dailyRunLimit} today.`,
+    previewUrl: buildPostSearchUrl({ keywords, datePosted }),
+  });
+
+  runScrapeJob(req.userId, filters).catch((err) => {
+    console.error(`[scrape-posts:${req.userId}]`, err.message);
+  });
+});
+
+app.get('/api/company-search/options', async (req, res) => {
+  let runsToday = 0;
+  try {
+    await db.connectMongo();
+    runsToday = (await db.companySearchLimits.getDailyCompanyRuns(req.userId)).runCount;
+  } catch {
+    runsToday = 0;
+  }
+  res.json({
+    industries: COMPANY_SEARCH.industries.map(({ id, label }) => ({ id, label })),
+    countries: COMPANY_SEARCH.countries.map(({ id, label }) => ({ id, label })),
+    defaultMaxCompanies: COMPANY_SEARCH.defaultMaxCompanies,
+    maxCompaniesCap: COMPANY_SEARCH.maxCompaniesCap,
+    dailyRunLimit: COMPANY_SEARCH.dailyRunLimit,
+    runsToday,
+  });
+});
+
+app.post('/api/scrape/companies', async (req, res) => {
+  if (browserBusyFor(req.userId)) return res.status(409).json(BROWSER_BUSY);
+  if (getJobStatus(req.userId).status === 'running') {
+    return res.status(409).json({ error: 'Scrape already running' });
+  }
+  if (getSendJobStatus(req.userId).status === 'running') {
+    return res.status(409).json({ error: 'Send job is running — wait until it finishes' });
+  }
+
+  const paths = userPaths(req.userId);
+  if (!hasLinkedInSession(paths.linkedinSession)) {
+    return res.status(401).json({ error: 'Connect LinkedIn first' });
+  }
+
+  const body = req.body || {};
+  const keywords = String(body.keywords || '').replace(/\s+/g, ' ').trim();
+  if (keywords.length > COMPANY_SEARCH.maxKeywordChars) {
+    return res.status(400).json({ error: `Keep keywords under ${COMPANY_SEARCH.maxKeywordChars} characters` });
+  }
+  const industries = pickFilters(body.industries, COMPANY_SEARCH.industries);
+  const countries = pickFilters(body.countries, COMPANY_SEARCH.countries);
+  if (!industries.length && !keywords) {
+    return res.status(400).json({ error: 'Pick at least one industry, or enter keywords' });
+  }
+  const anyCountry = body.anyCountry === true;
+  if (!countries.length && !anyCountry) {
+    return res.status(400).json({ error: 'Pick at least one country, or choose Any country' });
+  }
+  if (anyCountry) countries.length = 0;
+  const maxCompanies = Math.min(
+    COMPANY_SEARCH.maxCompaniesCap,
+    Math.max(1, Number(body.maxCompanies) || COMPANY_SEARCH.defaultMaxCompanies)
+  );
+
+  try {
+    await db.connectMongo();
+  } catch (err) {
+    return res.status(503).json({ error: `MongoDB not available: ${err.message}` });
+  }
+
+  const runs = await db.companySearchLimits.getDailyCompanyRuns(req.userId);
+  if (runs.runCount >= COMPANY_SEARCH.dailyRunLimit) {
+    return res.status(429).json({
+      error: `Company search limit reached: ${COMPANY_SEARCH.dailyRunLimit} run(s) per day, to keep the LinkedIn account safe. Try again tomorrow.`,
+    });
+  }
+  await db.companySearchLimits.recordCompanyRun(req.userId);
+
+  const filters = {
+    connectionType: 'company_search',
+    rescrape: body.rescrape === true,
+    sendMessages: false,
+    aiMessages: false,
+    maxResults: maxCompanies,
+    companySearch: { keywords, industries, countries, maxCompanies },
+  };
+
+  res.json({
+    ok: true,
+    message: `Company search started — up to ${maxCompanies} companies. Run ${runs.runCount + 1} of ${COMPANY_SEARCH.dailyRunLimit} today.`,
+    previewUrl: buildCompanySearchUrl({ keywords, industries, countries }),
+  });
+
+  runScrapeJob(req.userId, filters).catch((err) => {
+    console.error(`[scrape-companies:${req.userId}]`, err.message);
+  });
+});
+
+app.get('/api/companies', async (req, res) => {
+  try {
+    await db.connectMongo();
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = Math.max(0, Number(req.query.skip) || 0);
+    const result = await db.companies.listCompanies(req.userId, {
+      q: String(req.query.q || '').trim().slice(0, 100),
+      country: String(req.query.country || '').trim(),
+      industry: String(req.query.industry || '').trim(),
+      limit,
+      skip,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/companies/download', async (req, res) => {
+  try {
+    await db.connectMongo();
+    const companies = await db.companies.allCompanies(req.userId);
+    if (!companies.length) return res.status(404).json({ error: 'No companies yet. Run a company search first.' });
+    const workbook = await companiesWorkbook(companies);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="linkedin-companies.xlsx"');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    if (!res.headersSent) res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/scrape/import', upload.single('file'), async (req, res) => {
+  if (browserBusyFor(req.userId)) return res.status(409).json(BROWSER_BUSY);
+  if (getJobStatus(req.userId).status === 'running') {
+    return res.status(409).json({ error: 'Scrape already running' });
+  }
+  if (getSendJobStatus(req.userId).status === 'running') {
+    return res.status(409).json({ error: 'Send job is running — wait until it finishes' });
+  }
+
+  const paths = userPaths(req.userId);
   if (!hasLinkedInSession(paths.linkedinSession)) {
     return res.status(401).json({ error: 'Connect LinkedIn first' });
   }
@@ -591,6 +881,7 @@ app.post('/api/scrape/import', upload.single('file'), async (req, res) => {
       products: req.body?.products,
       productContext: req.body?.productContext,
       productFraming: req.body?.productFraming,
+      messageTemplate: req.body?.messageTemplate,
       sendMessages: false,
     });
   } catch (err) {
@@ -617,13 +908,20 @@ app.post('/api/scrape/import', upload.single('file'), async (req, res) => {
     },
   });
 
-  runScrapeJob(USER_ID, filters).catch((err) => {
-    console.error(`[scrape-import:${USER_ID}]`, err.message);
+  runScrapeJob(req.userId, filters).catch((err) => {
+    console.error(`[scrape-import:${req.userId}]`, err.message);
   });
 });
 
-app.get('/api/job', (_req, res) => {
-  res.json(getJobStatus(USER_ID));
+app.post('/api/scrape/stop', (req, res) => {
+  if (!requestScrapeStop(req.userId)) {
+    return res.status(409).json({ error: 'No scrape is running' });
+  }
+  res.json({ ok: true, message: 'Stopping — the current profile finishes, then everything scraped so far is saved' });
+});
+
+app.get('/api/job', (req, res) => {
+  res.json(getJobStatus(req.userId));
 });
 
 /** { racko: "…" } per-product text (targeting brief / message framing) — object or JSON string (multipart import). */
@@ -668,6 +966,7 @@ function normalizeFilters(raw) {
     ),
     productContext: normalizeProductContext(raw.productContext),
     productFraming: normalizeProductContext(raw.productFraming),
+    messageTemplate: normalizeTemplate(raw.messageTemplate),
   };
   if (raw.profileUrl && !profileUrl) {
     throw new Error('Invalid LinkedIn profile URL. Use https://www.linkedin.com/in/username');
@@ -679,7 +978,9 @@ function normalizeFilters(raw) {
 async function main() {
   try {
     await db.connectMongo();
-    await db.users.upsertUser({ userId: USER_ID, name: 'Local operator' });
+    await db.users.upsertUser({ userId: SCRAPER_USERS.fallback, name: 'Local operator' });
+    const repaired = await db.profiles.repairNotificationCountNames();
+    if (repaired) console.log(`[repair] Removed LinkedIn notification counts from ${repaired} profile name(s)`);
     db.startAtlasBackup();
   } catch (err) {
     console.warn(`[mongo] Could not connect on startup: ${err.message}`);

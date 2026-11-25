@@ -250,6 +250,7 @@ export function DealSheet({ dealId }: { dealId: string }) {
 function DealOverview({ deal }: { deal: Deal }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
+	const openRecord = useOpenRecord();
 
 	const users = useQuery(trpc.users.list.queryOptions());
 
@@ -339,6 +340,7 @@ function DealOverview({ deal }: { deal: Deal }) {
 						company={deal.company}
 						saving={isSaving("companyId")}
 						onSave={(companyId) => save({ companyId })}
+						onOpen={(id) => openRecord({ kind: "company", id })}
 					/>
 					<InlineSelectField
 						label="Owner"

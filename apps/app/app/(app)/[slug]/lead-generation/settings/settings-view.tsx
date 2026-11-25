@@ -22,7 +22,8 @@ import { Switch } from "@crm/ui/components/switch";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useId, useState } from "react";
 import { toast } from "sonner";
-import { PipelinePage } from "@/components/leads-pipeline/pipeline-page";
+import { LeadHubPage } from "@/components/lead-hub/lead-hub-page";
+import { PipelineGate } from "@/components/leads-pipeline/pipeline-page";
 import { settingsApi } from "@/lib/leads-pipeline/api";
 import { pipelineKeys, usePipelineCache } from "@/lib/leads-pipeline/cache";
 import { segmentLabel, sourceLabel } from "@/lib/leads-pipeline/labels";
@@ -34,14 +35,27 @@ import type {
 
 export function SettingsView() {
 	return (
-		<PipelinePage
-			title="Lead generation settings"
-			description="What each profile looks for, how much it does per run, and the keys it uses. Saved settings apply from the next run."
-		>
-			{(profile) => (
-				<SettingsLoader key={profile.profile} profile={profile.profile} />
-			)}
-		</PipelinePage>
+		<LeadHubPage
+			title="Settings"
+			tabs={[
+				{
+					value: "pipeline",
+					label: "Website pipeline",
+					description:
+						"What each profile looks for, how much it does per run, and the keys it uses. Saved settings apply from the next run. The LinkedIn account is under Overview → LinkedIn.",
+					content: (
+						<PipelineGate>
+							{(profile) => (
+								<SettingsLoader
+									key={profile.profile}
+									profile={profile.profile}
+								/>
+							)}
+						</PipelineGate>
+					),
+				},
+			]}
+		/>
 	);
 }
 

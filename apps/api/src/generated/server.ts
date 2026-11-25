@@ -17,7 +17,7 @@ import { activitiesListInput, activitiesListOutput, timelineInput, timelineOutpu
 import { agentListOutput, agentReviseInput, agentReviseOutput, agentIdInput, agentFilesOutput, agentSaveFileInput, agentSaveFileOutput, agentByIdOutput, agentHistoryInput, agentHistoryOutput, agentActivityOutput, agentUpdateInput, agentUpdateOutput, agentDeployInput, agentDeployOutput, agentPauseOutput, agentResumeOutput, agentArchiveOutput, agentRestoreOutput, agentRemoveOutput, agentRunNowInput, agentRunNowOutput, agentRetryRunInput, agentRetryRunOutput, agentCancelRunInput, agentCancelRunOutput } from "../agent/agents.contracts";
 import { apiKeyListInput, apiKeyListOutput, createApiKeyInput, createApiKeyOutput, revokeApiKeyInput, revokeApiKeyOutput } from "../api-keys/api-keys.contracts";
 import { companyListInput, companyListOutput, companyExportInput, companyExportOutput, companyImportTemplateOutput, companyImportInput, companyImportOutput, companyIdInput, companyDetailOutput, companyOptionsInput, companyOptionOutput, companyCreateInput, companySummaryOutput, companyUpdateArgs, companyArchiveResultOutput, companyBulkOwnerInput, companyBulkResultOutput, companyBulkInput, companyEnrichOutput, companyResearchOutput, setPrimaryContactInput, companySetPrimaryContactOutput } from "../companies/companies.contracts";
-import { contactListInput, contactListOutput, contactExportInput, contactExportOutput, contactImportTemplateOutput, contactImportInput, contactImportOutput, contactIdInput, contactByIdOutput, contactCreateInput, contactBasicOutput, contactUpdateArgs, contactNameOutput, contactEnrichOutput, contactBulkOwnerInput, bulkResultOutput, contactBulkCompanyInput, contactBulkInput, factDecisionInput, decideFactOutput } from "../contacts/contacts.contracts";
+import { contactListInput, contactListOutput, contactExportInput, contactExportOutput, contactImportTemplateOutput, contactImportInput, contactImportOutput, contactMatchLeadsInput, contactMatchLeadsOutput, contactImportLeadsInput, contactImportLeadsOutput, contactIdInput, contactByIdOutput, contactCreateInput, contactBasicOutput, contactUpdateArgs, contactNameOutput, contactEnrichOutput, contactBulkOwnerInput, bulkResultOutput, contactBulkCompanyInput, contactBulkInput, factDecisionInput, decideFactOutput, contactDraftEmailInput, contactDraftEmailOutput, contactDraftCampaignInput, contactDraftCampaignOutput, contactLogUnifersSendInput, contactLogUnifersSendOutput, contactUnifersSendsOutput, contactUnifersRepliesInput, contactUnifersRepliesOutput } from "../contacts/contacts.contracts";
 import { conversationListInput, conversationListOutput, builderListOutput, builderResourceSearchInput, builderResourcesOutput, conversationIdInput, builderConversationDetailOutput, conversationEventsInput, conversationEventsOutput, conversationSaveInput, conversationIdOutput, builderConversationCreateInput, builderConversationSubmitInput, builderQuestionResponseInput, builderResponseRatingInput, builderResponseRatingOutput, conversationShareStatusOutput, conversationShareTokenOutput, sharedConversationInput, sharedConversationOutput } from "../conversations/conversations.contracts";
 import { currencySettingsOutput, setReportingCurrencyInput, setManualRateInput, removeManualRateInput } from "../currency/currency.contracts";
 import { dashboardSummaryInput, dashboardSummaryOutput, dashboardReportInput, dashboardReportOutput } from "../dashboard/dashboard.contracts";
@@ -32,7 +32,7 @@ import { agentModelOutput, modelCatalogOutput, setAgentModelInput, researchKeyOu
 import { slackStatusOutput, slackMatchesOutput, slackChannelsInput, slackChannelsOutput, slackJoinChannelInput, slackJoinChannelOutput, slackRefreshPeopleOutput, slackCreateChannelInput, slackCreateChannelOutput, slackDisconnectOutput } from "../slack/slack.contracts";
 import { ssoSignInOptionsOutput, ssoSettingsOutput, ssoProviderListInput, ssoProviderListOutput, registerSsoProviderInput, ssoProviderOutput, deleteSsoProviderInput, deleteSsoProviderOutput } from "../sso/sso.contracts";
 import { trackingSettingsOutput, trackingFlagInput, cookieLifetimeInput, addDomainInput, trackedDomainOutput, removeDomainInput, rotateSiteIdOutput, verifyInput, verifyOutput, sourcesOutput, companyActivityInput, websiteActivityOutput, contactActivityInput } from "../tracking/tracking.contracts";
-import { workspaceOutput, memberListInput, memberListOutput, teamItemOutput, roleItemOutput, invitationSettingsOutput, updateWorkspaceInput, setMemberRoleInput, workspaceMemberOutput, updateMemberTeamInput, createTeamInput, leadSettingsOutput, createLeadFieldInput, leadFieldOutput, updateLeadFieldInput, deleteLeadFieldInput, createLeadAssignmentRuleInput, leadAssignmentRuleOutput, updateLeadAssignmentRuleInput, deleteLeadAssignmentRuleInput, updateDefaultLeadOwnerInput, defaultLeadOwnerOutput, integrationsOverviewOutput, toggleIntegrationInput, integrationItemOutput, activitySettingsOverviewOutput, updateDefaultActivitySettingsInput, defaultActivitySettingsOutput, updateReminderRulesInput, reminderRulesOutput, updateCompletionBehaviorInput, completionBehaviorOutput, createActivityTypeInput, activityTypeItemOutput, updateActivityTypeInput, deleteActivityTypeInput, createActivityAssignmentRuleInput, activityAssignmentRuleOutput, updateActivityAssignmentRuleInput, deleteActivityAssignmentRuleInput, dataManagementOverviewOutput, createBackupInput, backupItemOutput, backupIdInput, backupDownloadOutput, clearDeletedDataInput, clearDeletedDataOutput, archiveInactiveRecordsInput, archiveInactiveRecordsOutput, entityInput, exportDataOutput, importDataInput, importDataOutput, importTemplateOutput, duplicateEntityInput, duplicateGroupsOutput } from "../workspace/workspace.contracts";
+import { workspaceOutput, memberListInput, memberListOutput, teamItemOutput, roleItemOutput, invitationSettingsOutput, updateWorkspaceInput, setMemberRoleInput, workspaceMemberOutput, removeMemberInput, memberRemovalOutput, removedMembersOutput, allowMemberAgainInput, updateMemberTeamInput, createTeamInput, leadSettingsOutput, createLeadFieldInput, leadFieldOutput, updateLeadFieldInput, deleteLeadFieldInput, createLeadAssignmentRuleInput, leadAssignmentRuleOutput, updateLeadAssignmentRuleInput, deleteLeadAssignmentRuleInput, updateDefaultLeadOwnerInput, defaultLeadOwnerOutput, integrationsOverviewOutput, toggleIntegrationInput, integrationItemOutput, activitySettingsOverviewOutput, updateDefaultActivitySettingsInput, defaultActivitySettingsOutput, updateReminderRulesInput, reminderRulesOutput, updateCompletionBehaviorInput, completionBehaviorOutput, createActivityTypeInput, activityTypeItemOutput, updateActivityTypeInput, deleteActivityTypeInput, createActivityAssignmentRuleInput, activityAssignmentRuleOutput, updateActivityAssignmentRuleInput, deleteActivityAssignmentRuleInput, dataManagementOverviewOutput, createBackupInput, backupItemOutput, backupIdInput, backupDownloadOutput, clearDeletedDataInput, clearDeletedDataOutput, archiveInactiveRecordsInput, archiveInactiveRecordsOutput, entityInput, exportDataOutput, importDataInput, importDataOutput, importTemplateOutput, duplicateEntityInput, duplicateGroupsOutput } from "../workspace/workspace.contracts";
 import type { UsersRouter } from "../users/users.router";
 
 const appRouter = t.router({
@@ -238,6 +238,14 @@ const appRouter = t.router({
       .input(contactImportInput)
       .output(contactImportOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    matchLeads: publicProcedure
+      .input(contactMatchLeadsInput)
+      .output(contactMatchLeadsOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    importLeads: publicProcedure
+      .input(contactImportLeadsInput)
+      .output(contactImportLeadsOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     byId: publicProcedure
       .input(contactIdInput)
       .output(contactByIdOutput)
@@ -293,7 +301,27 @@ const appRouter = t.router({
     decideFact: publicProcedure
       .input(factDecisionInput)
       .output(decideFactOutput)
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    draftEmail: publicProcedure
+      .input(contactDraftEmailInput)
+      .output(contactDraftEmailOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    draftCampaign: publicProcedure
+      .input(contactDraftCampaignInput)
+      .output(contactDraftCampaignOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    logUnifersSend: publicProcedure
+      .input(contactLogUnifersSendInput)
+      .output(contactLogUnifersSendOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    unifersSends: publicProcedure
+      .input(contactIdInput)
+      .output(contactUnifersSendsOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    unifersReplies: publicProcedure
+      .input(contactUnifersRepliesInput)
+      .output(contactUnifersRepliesOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
     }),
   conversations: t.router({
     list: publicProcedure
@@ -851,6 +879,17 @@ const appRouter = t.router({
     setMemberRole: publicProcedure
       .input(setMemberRoleInput)
       .output(workspaceMemberOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    removeMember: publicProcedure
+      .input(removeMemberInput)
+      .output(memberRemovalOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    removedMembers: publicProcedure
+      .output(removedMembersOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    allowMemberAgain: publicProcedure
+      .input(allowMemberAgainInput)
+      .output(memberRemovalOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     updateMemberTeam: publicProcedure
       .input(updateMemberTeamInput)

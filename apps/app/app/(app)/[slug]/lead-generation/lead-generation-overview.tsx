@@ -24,7 +24,8 @@ import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { useMutation } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { toast } from "sonner";
-import { PipelinePage } from "@/components/leads-pipeline/pipeline-page";
+import { CountryPicker } from "@/components/leads-pipeline/country-picker";
+import { PipelineGate } from "@/components/leads-pipeline/pipeline-page";
 import { RunLog } from "@/components/leads-pipeline/run-log";
 import { LocalDateTime } from "@/components/local-date-time";
 import { pipelineApi } from "@/lib/leads-pipeline/api";
@@ -33,14 +34,11 @@ import { sourceLabel } from "@/lib/leads-pipeline/labels";
 import type { ProfileStatus } from "@/lib/leads-pipeline/schemas";
 import { COUNT, DATE_TIME } from "@/lib/outreach/format";
 
-export function LeadGenerationOverview() {
+export function PipelineOverviewPanel() {
 	return (
-		<PipelinePage
-			title="Lead generation"
-			description="Finds companies and decision makers from public sources, checks their emails, and scores each lead."
-		>
+		<PipelineGate>
 			{(profile) => <OverviewBody key={profile.profile} status={profile} />}
-		</PipelinePage>
+		</PipelineGate>
 	);
 }
 
@@ -82,6 +80,7 @@ function RunCard({ status }: { status: ProfileStatus }) {
 	const batchId = useId();
 	const [sources, setSources] = useState<string[]>(status.dailySources);
 	const [batch, setBatch] = useState(String(status.batch));
+	const [countries, setCountries] = useState<string[]>(status.targetCountries);
 	const batchNumber = Number(batch);
 	const batchValid =
 		Number.isInteger(batchNumber) &&
@@ -89,7 +88,8 @@ function RunCard({ status }: { status: ProfileStatus }) {
 		batchNumber <= status.maxBatch;
 
 	const start = useMutation({
-		mutationFn: () => pipelineApi.run(status.profile, batchNumber, sources),
+		mutationFn: () =>
+			pipelineApi.run(status.profile, batchNumber, sources, countries),
 		onSuccess: (result) => {
 			toast.success(result.message);
 			void cache.run(status.profile);
@@ -154,6 +154,12 @@ function RunCard({ status }: { status: ProfileStatus }) {
 							))}
 						</div>
 					</FieldSet>
+					<CountryPicker
+						options={status.countryOptions}
+						value={countries}
+						onChange={setCountries}
+						disabled={status.running}
+					/>
 					<Field>
 						<FieldLabel htmlFor={batchId}>Companies in this run</FieldLabel>
 						<Input
@@ -185,7 +191,10 @@ function RunCard({ status }: { status: ProfileStatus }) {
 							<Button
 								size="sm"
 								disabled={
-									start.isPending || sources.length === 0 || !batchValid
+									start.isPending ||
+									sources.length === 0 ||
+									countries.length === 0 ||
+									!batchValid
 								}
 								onClick={() => start.mutate()}
 							>

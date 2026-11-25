@@ -25,6 +25,10 @@ export function canChangeRole(role: WorkspaceRole | null): boolean {
 	return isWorkspaceAdmin(role);
 }
 
+export function canRemoveMembers(role: WorkspaceRole | null): boolean {
+	return role === "owner";
+}
+
 export function canManageCurrency(role: WorkspaceRole | null): boolean {
 	return isWorkspaceAdmin(role);
 }
@@ -71,8 +75,15 @@ export async function ensureWorkspaceMembership(
 				where: { organizationId: workspace.id },
 			});
 
+			const self = await tx.user.findUnique({
+				where: { id: userId },
+				select: { removedAt: true },
+			});
+			if (self?.removedAt) return undefined;
+
 			if (enrolled === 0) {
 				const existing = await tx.user.findMany({
+					where: { removedAt: null },
 					select: { id: true },
 					orderBy: [{ createdAt: "asc" }, { id: "asc" }],
 				});
