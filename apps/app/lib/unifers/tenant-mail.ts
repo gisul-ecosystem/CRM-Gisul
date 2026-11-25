@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { unifersKey, unifersUrl, unifersWorkspace } from "./bridge";
-import type { TenantReply } from "./replies";
+import { replyHtml, type TenantReply } from "./replies";
 import { emailAccountsResponse } from "./schemas";
 import { UNIFERS } from "./unifers-config";
 
@@ -9,9 +9,15 @@ const CONFIG = UNIFERS.tenantMail;
 
 type Credentials = { tenantId: string; clientId: string; clientSecret: string };
 
+export type SendingMailbox = { email: string; name: string | null };
+
 const tokenResponse = z.object({
 	access_token: z.string().min(1),
 	expires_in: z.coerce.number().positive(),
+});
+
+const tokenClaims = z.object({
+	roles: z.array(z.string()).nullish(),
 });
 
 const graphError = z.object({
@@ -19,6 +25,7 @@ const graphError = z.object({
 });
 
 const graphMessage = z.object({
+	id: z.string(),
 	from: z
 		.object({
 			emailAddress: z.object({
@@ -86,7 +93,19 @@ async function accessToken(credentials: Credentials): Promise<string> {
 	return cachedToken.value;
 }
 
-export async function unifersMailboxes(): Promise<string[]> {
+function tokenRoles(token: string): string[] {
+	const payload = token.split(".")[1] ?? "";
+	try {
+		const json: unknown = JSON.parse(
+			Buffer.from(payload, "base64url").toString("utf8"),
+		);
+		return tokenClaims.parse(json).roles ?? [];
+	} catch {
+		return [];
+	}
+}
+
+export async function unifersMailboxes(): Promise<SendingMailbox[]> {
 	const key = unifersKey();
 	if (!key) return [];
 	const headers = new Headers({ "x-api-key": key, accept: "application/json" });
@@ -100,16 +119,24 @@ export async function unifersMailboxes(): Promise<string[]> {
 		throw new Error(`Unifers did not list its mailboxes (${response.status}).`);
 	}
 	const parsed = emailAccountsResponse.parse(await response.json());
-	return [
-		...new Set(parsed.accounts.map((account) => account.email.toLowerCase())),
-	].slice(0, CONFIG.maxMailboxes);
+	const sending = parsed.accounts.filter(
+		(account) => account.status === "verified",
+	);
+	const byEmail = new Map<string, SendingMailbox>();
+	for (const account of sending) {
+		const email = account.email.toLowerCase();
+		if (!byEmail.has(email)) {
+			byEmail.set(email, { email, name: account.fromName?.trim() || null });
+		}
+	}
+	return [...byEmail.values()].slice(0, CONFIG.maxMailboxes);
 }
 
 function firstPage(mailbox: string, since: string): string {
 	const params = new URLSearchParams({
 		$filter: `receivedDateTime ge ${since}`,
 		$orderby: "receivedDateTime desc",
-		$select: "from,subject,bodyPreview,uniqueBody,receivedDateTime,webLink",
+		$select: "id,from,subject,bodyPreview,uniqueBody,receivedDateTime,webLink",
 		$top: String(CONFIG.pageSize),
 	});
 	return `${CONFIG.graphUrl}/users/${encodeURIComponent(mailbox)}/messages?${params.toString()}`;
@@ -117,12 +144,12 @@ function firstPage(mailbox: string, since: string): string {
 
 async function mailboxReplies(
 	token: string,
-	mailbox: string,
+	mailbox: SendingMailbox,
 	leads: ReadonlySet<string>,
 	since: string,
 ): Promise<TenantReply[]> {
 	const found = new Map<string, TenantReply>();
-	let next: string | null = firstPage(mailbox, since);
+	let next: string | null = firstPage(mailbox.email, since);
 	for (let page = 0; next && page < CONFIG.maxPages; page += 1) {
 		const response = await fetch(next, {
 			headers: {
@@ -151,7 +178,9 @@ async function mailboxReplies(
 			).slice(0, CONFIG.maxText);
 			found.set(from, {
 				email: from,
-				mailbox,
+				mailbox: mailbox.email,
+				mailboxName: mailbox.name,
+				messageId: message.id,
 				subject: message.subject ?? null,
 				text,
 				sentAt: new Date(message.receivedDateTime).toISOString(),
@@ -164,16 +193,58 @@ async function mailboxReplies(
 	return [...found.values()];
 }
 
+async function tokenWith(
+	credentials: Credentials,
+	needed: readonly string[],
+	label: string,
+): Promise<string> {
+	const token = await accessToken(credentials);
+	const roles = tokenRoles(token);
+	if (needed.some((role) => roles.includes(role))) return token;
+	cachedToken = null;
+	throw new Error(
+		`The Microsoft app signs in, but its token has no ${label} application permission (it has: ${roles.join(", ") || "none"}). In Entra, open the app → API permissions, add Microsoft Graph → Application permissions → ${label}, then click Grant admin consent.`,
+	);
+}
+
+export async function sendTenantReply(
+	credentials: Credentials,
+	mailbox: string,
+	messageId: string,
+	text: string,
+): Promise<void> {
+	const token = await tokenWith(credentials, CONFIG.sendRoles, "Mail.Send");
+	const response = await fetch(
+		`${CONFIG.graphUrl}/users/${encodeURIComponent(mailbox)}/messages/${encodeURIComponent(messageId)}/reply`,
+		{
+			method: "POST",
+			headers: {
+				authorization: `Bearer ${token}`,
+				"content-type": "application/json",
+			},
+			body: JSON.stringify({ comment: replyHtml(text) }),
+			signal: AbortSignal.timeout(CONFIG.timeoutMs),
+		},
+	);
+	if (response.ok) return;
+	const error = graphError.safeParse(await response.json().catch(() => null));
+	throw new Error(
+		error.success
+			? `${error.data.error.code}: ${error.data.error.message}`
+			: `Microsoft answered ${response.status}.`,
+	);
+}
+
 export async function tenantReplies(
 	credentials: Credentials,
-	mailboxes: readonly string[],
+	mailboxes: readonly SendingMailbox[],
 	emails: readonly string[],
 	since: string | null,
 ): Promise<{
 	replies: TenantReply[];
 	failed: { mailbox: string; reason: string }[];
 }> {
-	const token = await accessToken(credentials);
+	const token = await tokenWith(credentials, CONFIG.readRoles, "Mail.Read");
 	const leads = new Set(emails.map((email) => email.toLowerCase()));
 	const from = since ?? new Date(Date.now() - CONFIG.lookbackMs).toISOString();
 	const results = await Promise.allSettled(
@@ -182,7 +253,7 @@ export async function tenantReplies(
 	const latest = new Map<string, TenantReply>();
 	const failed: { mailbox: string; reason: string }[] = [];
 	results.forEach((result, index) => {
-		const mailbox = mailboxes[index] ?? "";
+		const mailbox = mailboxes[index]?.email ?? "";
 		if (result.status === "rejected") {
 			failed.push({
 				mailbox,

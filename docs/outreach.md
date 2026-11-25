@@ -183,13 +183,25 @@ browser ──► CRM app /api/unifers/<path>      (apps/app/app/api/unifers/[..
     connecting a mailbox. The app registration needs the Graph application
     permission `Mail.Read` with admin consent. `POST /api/unifers/replies`
     (`lib/unifers/tenant-mail.ts`, server only) lists the mailboxes from
-    Unifers `/email-accounts`, gets an app-only token, and reads each mailbox's
+    Unifers `/email-accounts` (verified ones only), gets an app-only token, and reads each mailbox's
     messages since the campaign was created (`UNIFERS.tenantMail`). It keeps the
     newest message from each lead, using `uniqueBody` so quoted text is left out.
     Owners and admins read every Unifers mailbox; a member reads only the
     mailbox with their own login address. The page merges these with the synced
     replies (`mergeReplies`) and shows the newest. A mailbox Microsoft refuses
     is named on the page; the others still show.
+  - **Reply.** Each reply with a Graph message id has a Reply button, on the
+    campaign's Replied tab and in the contact sheet's "Their latest reply"
+    (`components/unifers/lead-reply.tsx`, last 30 days). `ReplyDialog` starts
+    with the sending mailbox's sign-off and the saved footer, and "Draft with
+    AI" calls `contacts.draftReply` → agent `POST /internal/crm/draft-reply`
+    (`REPLY_DRAFT`: Haiku, thinking off, 300 output tokens, the lead's text cut
+    to 1,200 characters, no sign-off, no links). The same section sits at the
+    top of the contact's Activity tab, above the timeline. Send posts to
+    `POST /api/unifers/replies/send`, which calls Graph `messages/{id}/reply`
+    as that mailbox, so the answer stays in the thread with theirs quoted. It
+    needs the Graph application permission `Mail.Send`. The mailbox must be a
+    verified Unifers mailbox; a member may reply only from their own.
   - Lead generation → Leads has "Send N with Unifers", which adds the selected
     rows with an email to an open campaign.
 - **Leads go in batches of 1,000** (`addLeadsInBatches`), the Unifers limit.

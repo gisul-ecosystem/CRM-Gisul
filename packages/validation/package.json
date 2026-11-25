@@ -11,6 +11,7 @@
 		"./builder-question": "./src/builder-question.ts",
 		"./enrichment-queue": "./src/enrichment-queue.ts",
 		"./campaign-draft": "./src/campaign-draft.ts",
+		"./reply-draft": "./src/reply-draft.ts",
 		"./email-draft": "./src/email-draft.ts",
 		"./eve-stream": "./src/eve-stream.ts",
 		"./eve-tool": "./src/eve-tool.ts",

@@ -75,6 +75,13 @@ export function signOffName(
 	return { kind: "none" };
 }
 
+export function mailboxFirstName(mailbox: string, name: string | null): string {
+	return (
+		senderNameForAccount({ email: mailbox, fromName: name }).split(/\s+/)[0] ??
+		""
+	);
+}
+
 export function signEmail(
 	body: string,
 	ending: { name: string | null; footer: string },

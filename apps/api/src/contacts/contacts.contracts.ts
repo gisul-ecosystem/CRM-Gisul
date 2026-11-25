@@ -14,6 +14,7 @@ import {
 } from "@crm/validation/campaign-draft";
 import { EMAIL_DRAFT_LIMITS, emailDraft } from "@crm/validation/email-draft";
 import { leadCategory, leadOriginDetails } from "@crm/validation/lead-origin";
+import { replyDraft, replyDraftRequest } from "@crm/validation/reply-draft";
 import {
 	unifersReplies,
 	unifersRepliesInput,
@@ -446,6 +447,10 @@ export const contactDraftEmailOutput = emailDraft;
 export const contactDraftCampaignInput = campaignDraftRequest;
 
 export const contactDraftCampaignOutput = campaignDraft;
+
+export const contactDraftReplyInput = replyDraftRequest;
+
+export const contactDraftReplyOutput = replyDraft;
 
 export const contactLogUnifersSendInput = unifersSendInput;
 

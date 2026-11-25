@@ -20,6 +20,8 @@ export type TenantRepliesRequest = z.infer<typeof tenantRepliesRequest>;
 export const tenantReply = z.object({
 	email: z.string(),
 	mailbox: z.string(),
+	mailboxName: z.string().nullable(),
+	messageId: z.string(),
 	subject: z.string().nullable(),
 	text: z.string(),
 	sentAt: z.string(),
@@ -38,6 +40,16 @@ export const tenantRepliesResponse = z.object({
 
 export type TenantRepliesResponse = z.infer<typeof tenantRepliesResponse>;
 
+export const tenantSendRequest = z.object({
+	mailbox: z.string().trim().toLowerCase().pipe(z.email()),
+	messageId: z.string().trim().min(1),
+	text: z.string().trim().min(1).max(UNIFERS.tenantMail.maxReplyChars),
+});
+
+export type TenantSendRequest = z.infer<typeof tenantSendRequest>;
+
+export const tenantSendResponse = z.object({ sent: z.literal(true) });
+
 export type ShownReply = {
 	email: string;
 	subject: string | null;
@@ -45,6 +57,8 @@ export type ShownReply = {
 	sentAt: string;
 	contactId: string | null;
 	mailbox: string | null;
+	mailboxName: string | null;
+	messageId: string | null;
 	webLink: string | null;
 };
 
@@ -69,6 +83,8 @@ export function mergeReplies(
 			...reply,
 			email: reply.email.toLowerCase(),
 			mailbox: null,
+			mailboxName: null,
+			messageId: null,
 			webLink: null,
 		});
 	}
@@ -83,4 +99,13 @@ export function mergeReplies(
 		});
 	}
 	return shown;
+}
+
+export function replyHtml(text: string): string {
+	return text
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/\r?\n/g, "<br>");
 }

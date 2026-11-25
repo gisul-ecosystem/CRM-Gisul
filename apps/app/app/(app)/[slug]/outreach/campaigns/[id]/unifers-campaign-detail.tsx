@@ -25,6 +25,10 @@ import { useId, useState } from "react";
 import { toast } from "sonner";
 import { LocalDateTime } from "@/components/local-date-time";
 import { ConfirmDialog } from "@/components/outreach/confirm-dialog";
+import {
+	ReplyDialog,
+	type ReplyTarget,
+} from "@/components/unifers/reply-dialog";
 import { UnifersPage } from "@/components/unifers/unifers-page";
 import { COUNT, DATE_TIME } from "@/lib/outreach/format";
 import { useTRPC } from "@/lib/trpc/client";
@@ -306,6 +310,7 @@ function LeadsByEvent({ id, since }: { id: number; since: string | null }) {
 	const href = useWorkspaceUrl();
 	const [event, setEvent] = useState<LeadEvent>("replied");
 	const [page, setPage] = useState(1);
+	const [replying, setReplying] = useState<ReplyTarget | null>(null);
 	const { leadsPageSize } = UNIFERS;
 	const offset = (page - 1) * leadsPageSize;
 
@@ -326,7 +331,7 @@ function LeadsByEvent({ id, since }: { id: number; since: string | null }) {
 		refetchInterval: UNIFERS.refresh.listMs,
 	});
 	const tenant = useQuery({
-		queryKey: [...unifersKeys.leads(id, "replied", offset), "tenant-mail"],
+		queryKey: [...unifersKeys.replies, "campaign", id, offset, emails],
 		queryFn: () => repliesApi.fromTenant({ emails, since }),
 		enabled: emails.length > 0,
 		refetchInterval: UNIFERS.refresh.listMs,
@@ -405,6 +410,9 @@ function LeadsByEvent({ id, since }: { id: number; since: string | null }) {
 											contactHref={(contactId) =>
 												href(`/contacts/${contactId}`)
 											}
+											onReply={(reply) =>
+												setReplying({ ...reply, leadName: lead.name || null })
+											}
 										/>
 									</TableCell>
 								) : null}
@@ -465,6 +473,7 @@ function LeadsByEvent({ id, since }: { id: number; since: string | null }) {
 					</p>
 				) : null}
 			</CardContent>
+			<ReplyDialog target={replying} onClose={() => setReplying(null)} />
 		</Card>
 	);
 }
@@ -473,10 +482,12 @@ function ReplyCell({
 	reply,
 	loading,
 	contactHref,
+	onReply,
 }: {
 	reply: ShownReply | null;
 	loading: boolean;
 	contactHref: (contactId: string) => string;
+	onReply: (reply: Omit<ReplyTarget, "leadName">) => void;
 }) {
 	if (loading) return <Skeleton className="h-8 w-full" />;
 	if (!reply) {
@@ -509,6 +520,26 @@ function ReplyCell({
 				) : null}
 			</p>
 			<FormattedText text={reply.text || reply.subject || "(empty)"} />
+			{reply.mailbox && reply.messageId ? (
+				<div>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() =>
+							onReply({
+								email: reply.email,
+								subject: reply.subject,
+								text: reply.text,
+								mailbox: reply.mailbox ?? "",
+								mailboxName: reply.mailboxName,
+								messageId: reply.messageId ?? "",
+							})
+						}
+					>
+						Reply
+					</Button>
+				</div>
+			) : null}
 		</div>
 	);
 }

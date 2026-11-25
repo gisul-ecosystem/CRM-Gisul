@@ -11,6 +11,8 @@ export const unifersKeys = {
 	analytics: (id: number) => ["unifers", "analytics", id] as const,
 	leads: (id: number, event: LeadEvent, offset: number) =>
 		["unifers", "leads", id, event, offset] as const,
+	replies: ["unifers", "replies"] as const,
+	leadReply: (email: string) => ["unifers", "replies", "lead", email] as const,
 };
 
 export function useUnifersCache(): { everything(): Promise<void> } {

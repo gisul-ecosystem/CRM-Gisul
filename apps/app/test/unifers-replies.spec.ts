@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { unifersRepliesInput } from "@crm/validation/unifers-send";
-import { campaignStart, mergeReplies } from "../lib/unifers/replies";
+import { mailboxFirstName, signEmail } from "../lib/unifers/campaign-draft";
+import { campaignStart, mergeReplies, replyHtml } from "../lib/unifers/replies";
 
 describe("unifers replies", () => {
 	it("reads the campaign start as an ISO time, or none", () => {
@@ -27,6 +28,8 @@ describe("merging replies", () => {
 				{
 					email: "Asha@Acme.com",
 					mailbox: "johnd@getracko.in",
+					mailboxName: "John D",
+					messageId: "AAMk1",
 					subject: "Re: GPUs",
 					text: "Yes, call me.",
 					sentAt: "2026-11-25T09:00:00.000Z",
@@ -56,5 +59,21 @@ describe("merging replies", () => {
 			mailbox: "johnd@getracko.in",
 		});
 		expect(shown.get("ravi@beta.com")?.text).toBe("Not now.");
+	});
+});
+
+describe("replying from the CRM", () => {
+	it("turns the typed reply into safe HTML with line breaks", () => {
+		expect(replyHtml('Hi <b>Asha</b> & "team",\n\nThanks')).toBe(
+			"Hi &lt;b&gt;Asha&lt;/b&gt; &amp; &quot;team&quot;,<br><br>Thanks",
+		);
+	});
+
+	it("signs the reply with the mailbox's first name", () => {
+		const name = mailboxFirstName("johnd@getracko.in", "John D");
+		expect(name).toBe("John");
+		expect(signEmail("Thanks, Asha.", { name, footer: "" })).toBe(
+			"Thanks, Asha.\n\nRegards,\nJohn",
+		);
 	});
 });

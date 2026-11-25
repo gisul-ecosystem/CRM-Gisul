@@ -25,6 +25,8 @@ import {
 	contactDraftCampaignOutput,
 	contactDraftEmailInput,
 	contactDraftEmailOutput,
+	contactDraftReplyInput,
+	contactDraftReplyOutput,
 	contactEnrichOutput,
 	contactExportInput,
 	contactExportOutput,
@@ -273,6 +275,15 @@ export class ContactsRouter {
 		@Input() input: z.infer<typeof contactDraftCampaignInput>,
 	) {
 		return this.drafts.draftCampaign(input);
+	}
+
+	@Mutation({
+		input: contactDraftReplyInput,
+		output: contactDraftReplyOutput,
+		meta: restMeta("POST", "/contacts/draft-reply", ["Contacts"]),
+	})
+	async draftReply(@Input() input: z.infer<typeof contactDraftReplyInput>) {
+		return this.drafts.draftReply(input);
 	}
 
 	@Mutation({

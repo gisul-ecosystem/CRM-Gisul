@@ -48,7 +48,7 @@ export async function POST(request: Request): Promise<Response> {
 		const all = await unifersMailboxes();
 		const own = session.user.email.toLowerCase();
 		const mailboxes =
-			scope === "all" ? all : all.filter((mailbox) => mailbox === own);
+			scope === "all" ? all : all.filter((mailbox) => mailbox.email === own);
 		const result = mailboxes.length
 			? await tenantReplies(
 					credentials,
@@ -60,7 +60,7 @@ export async function POST(request: Request): Promise<Response> {
 		const answer: TenantRepliesResponse = {
 			configured: true,
 			scope,
-			mailboxes,
+			mailboxes: mailboxes.map((mailbox) => mailbox.email),
 			...result,
 		};
 		return Response.json(answer);

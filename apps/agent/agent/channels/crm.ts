@@ -5,6 +5,7 @@ import { schemas } from "@crm/validation";
 import { campaignDraftRequest } from "@crm/validation/campaign-draft";
 import { emailDraftRequest } from "@crm/validation/email-draft";
 import { eveTurnFailure } from "@crm/validation/eve-stream";
+import { replyDraftRequest } from "@crm/validation/reply-draft";
 import { defineChannel, GET, POST } from "eve/channels";
 import { z } from "zod";
 import { persistBuilderInputRequest } from "../lib/builder-input";
@@ -32,6 +33,7 @@ import {
 import { DISPATCH } from "../lib/dispatch-config";
 import { draftEmail } from "../lib/email-draft";
 import { settle } from "../lib/enrichment";
+import { draftReply } from "../lib/reply-draft";
 import { finishRun, runResultOf } from "../lib/run-runtime";
 import { attribute } from "../lib/session-purpose";
 import { createSlackChannel } from "../lib/slack-membership";
@@ -276,6 +278,24 @@ export default defineChannel({
 			}
 
 			return Response.json(await draftCampaign(parsed.data));
+		}),
+
+		POST("/internal/crm/draft-reply", async (request) => {
+			if (!authorised(request)) {
+				return new Response("Unauthorized", { status: 401 });
+			}
+
+			const parsed = replyDraftRequest.safeParse(
+				await request.json().catch(() => null),
+			);
+			if (!parsed.success) {
+				return Response.json(
+					{ outcome: "failed", reason: parsed.error.message },
+					{ status: 400 },
+				);
+			}
+
+			return Response.json(await draftReply(parsed.data));
 		}),
 	],
 

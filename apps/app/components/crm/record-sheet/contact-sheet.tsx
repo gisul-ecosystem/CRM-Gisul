@@ -57,6 +57,7 @@ import {
 	type DetailSheetTab,
 } from "@/components/detail-sheet";
 import { LocalDateTime, LocalRelativeDate } from "@/components/local-date-time";
+import { LeadReply } from "@/components/unifers/lead-reply";
 import { SendEmailDialog } from "@/components/unifers/send-email-dialog";
 import { SentEmails } from "@/components/unifers/sent-emails";
 import { factsByField } from "@/lib/contact-facts";
@@ -127,29 +128,41 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 
 	const tabs: DetailSheetTab[] = contact
 		? [
-			{
-				value: "overview",
-				label: "Overview",
-				content: <ContactOverview contact={contact} />,
-			},
-			{
-				value: "deals",
-				label: "Deals",
-				count: contact.deals.length,
-				content: <ContactDeals contact={contact} />,
-			},
-			{
-				value: "activity",
-				label: "Activity",
-				content: <Timeline anchor={{ contactId: contact.id }} />,
-			},
-			{
-				value: "agent",
-				label: "Agent",
-				content: <AgentPanel record={{ kind: "contact", id: contact.id }} />,
-				keepMounted: true,
-			},
-		]
+				{
+					value: "overview",
+					label: "Overview",
+					content: <ContactOverview contact={contact} />,
+				},
+				{
+					value: "deals",
+					label: "Deals",
+					count: contact.deals.length,
+					content: <ContactDeals contact={contact} />,
+				},
+				{
+					value: "activity",
+					label: "Activity",
+					content: (
+						<div className="flex min-h-0 flex-1 flex-col">
+							{contact.email ? (
+								<div className="max-h-80 shrink-0 overflow-y-auto border-b">
+									<LeadReply
+										email={contact.email}
+										name={contactName(contact)}
+									/>
+								</div>
+							) : null}
+							<Timeline anchor={{ contactId: contact.id }} />
+						</div>
+					),
+				},
+				{
+					value: "agent",
+					label: "Agent",
+					content: <AgentPanel record={{ kind: "contact", id: contact.id }} />,
+					keepMounted: true,
+				},
+			]
 		: [];
 
 	return (
@@ -490,6 +503,16 @@ function ContactOverview({ contact }: { contact: Contact }) {
 			</DetailSheetSection>
 
 			<SentEmails contactId={contact.id} hasEmail={Boolean(contact.email)} />
+
+			{contact.email ? (
+				<LeadReply
+					email={contact.email}
+					name={
+						[contact.firstName, contact.lastName].filter(Boolean).join(" ") ||
+						null
+					}
+				/>
+			) : null}
 
 			{contact.brief ? <Background brief={contact.brief} /> : null}
 

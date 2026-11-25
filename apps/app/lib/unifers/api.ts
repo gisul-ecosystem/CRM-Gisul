@@ -1,5 +1,10 @@
 import { unifersJson } from "./client";
-import { type TenantRepliesRequest, tenantRepliesResponse } from "./replies";
+import {
+	type TenantRepliesRequest,
+	type TenantSendRequest,
+	tenantRepliesResponse,
+	tenantSendResponse,
+} from "./replies";
 import {
 	addLeadsResponse,
 	analyticsResponse,
@@ -70,6 +75,11 @@ export const campaignsApi = {
 export const repliesApi = {
 	fromTenant: (input: TenantRepliesRequest) =>
 		unifersJson("/replies", tenantRepliesResponse, {
+			method: "POST",
+			json: input,
+		}),
+	send: (input: TenantSendRequest) =>
+		unifersJson("/replies/send", tenantSendResponse, {
 			method: "POST",
 			json: input,
 		}),

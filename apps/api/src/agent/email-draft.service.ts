@@ -8,6 +8,11 @@ import {
 	type EmailDraftRequest,
 	emailDraftAnswer,
 } from "@crm/validation/email-draft";
+import {
+	type ReplyDraft,
+	type ReplyDraftRequest,
+	replyDraftAnswer,
+} from "@crm/validation/reply-draft";
 import { Injectable, Logger } from "@nestjs/common";
 import { TRPCError } from "@trpc/server";
 import { AGENT_DISPATCH } from "./agent-dispatch.config";
@@ -24,6 +29,25 @@ export class EmailDraftService {
 			throw new TRPCError({
 				code: "BAD_GATEWAY",
 				message: `The agent sent unreadable emails: ${answer.error.message}`,
+			});
+		}
+		if (answer.data.outcome === "drafted") return answer.data.draft;
+		throw new TRPCError({
+			code:
+				answer.data.outcome === "not_configured"
+					? "PRECONDITION_FAILED"
+					: "BAD_GATEWAY",
+			message: answer.data.reason,
+		});
+	}
+
+	async draftReply(request: ReplyDraftRequest): Promise<ReplyDraft> {
+		const raw = await this.ask("/internal/crm/draft-reply", request);
+		const answer = replyDraftAnswer.safeParse(raw);
+		if (!answer.success) {
+			throw new TRPCError({
+				code: "BAD_GATEWAY",
+				message: `The agent sent an unreadable reply: ${answer.error.message}`,
 			});
 		}
 		if (answer.data.outcome === "drafted") return answer.data.draft;
