@@ -1,6 +1,11 @@
+import { isWorkspaceAdmin, workspaceRoleOf } from "@crm/auth";
 import { ActivityType, type Db } from "@crm/db";
 import {
+	UNIFERS_REPLY_LIMITS,
 	UNIFERS_SEND_PROVIDER,
+	type UnifersReplies,
+	type UnifersRepliesInput,
+	type UnifersReply,
 	type UnifersSend,
 	type UnifersSendInput,
 	unifersSendMeta,
@@ -114,5 +119,49 @@ export class ContactEmailService {
 				followUpAt: meta.data.followUpAt,
 			};
 		});
+	}
+
+	async replies(
+		input: UnifersRepliesInput,
+		actingUserId: string,
+	): Promise<UnifersReplies> {
+		const role = await workspaceRoleOf(actingUserId, this.db);
+		const scope = isWorkspaceAdmin(role) ? "all" : "own";
+		const rows = await this.db.emailMessage.findMany({
+			where: {
+				direction: "INBOUND",
+				...(scope === "own" ? { syncedByUserId: actingUserId } : {}),
+				fromEmail: { in: input.emails, mode: "insensitive" },
+				...(input.since ? { sentAt: { gte: new Date(input.since) } } : {}),
+			},
+			orderBy: { sentAt: "desc" },
+			take: input.emails.length * UNIFERS_REPLY_LIMITS.perLead,
+			select: {
+				fromEmail: true,
+				subject: true,
+				snippet: true,
+				body: true,
+				sentAt: true,
+				thread: { select: { contactId: true } },
+			},
+		});
+
+		const latest = new Map<string, UnifersReply>();
+		for (const row of rows) {
+			const email = row.fromEmail.toLowerCase();
+			if (latest.has(email)) continue;
+			const text = (row.body?.trim() || row.snippet?.trim() || "").slice(
+				0,
+				UNIFERS_REPLY_LIMITS.text,
+			);
+			latest.set(email, {
+				email,
+				contactId: row.thread.contactId,
+				subject: row.subject,
+				text,
+				sentAt: row.sentAt.toISOString(),
+			});
+		}
+		return { scope, replies: [...latest.values()] };
 	}
 }

@@ -10,7 +10,9 @@ import {
 	CardTitle,
 } from "@crm/ui/components/card";
 import { Field, FieldLabel } from "@crm/ui/components/field";
+import { FormattedText } from "@crm/ui/components/formatted-text";
 import { Input } from "@crm/ui/components/input";
+import { Link as TextLink } from "@crm/ui/components/link";
 import { SimpleTable, SimpleTableRow } from "@crm/ui/components/simple-table";
 import { Skeleton } from "@crm/ui/components/skeleton";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
@@ -18,11 +20,13 @@ import { TableCell } from "@crm/ui/components/table";
 import { TablePagination } from "@crm/ui/components/table-pagination";
 import { Tabs, TabsList, TabsTrigger } from "@crm/ui/components/tabs";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import NextLink from "next/link";
 import { useId, useState } from "react";
 import { toast } from "sonner";
+import { LocalDateTime } from "@/components/local-date-time";
 import { ConfirmDialog } from "@/components/outreach/confirm-dialog";
 import { UnifersPage } from "@/components/unifers/unifers-page";
-import { COUNT } from "@/lib/outreach/format";
+import { COUNT, DATE_TIME } from "@/lib/outreach/format";
 import { useTRPC } from "@/lib/trpc/client";
 import { campaignsApi } from "@/lib/unifers/api";
 import { unifersKeys, useUnifersCache } from "@/lib/unifers/cache";
@@ -30,6 +34,7 @@ import {
 	LEAD_EVENT_LABEL,
 	UNIFERS_CAMPAIGN_STATUS,
 } from "@/lib/unifers/labels";
+import { campaignStart } from "@/lib/unifers/replies";
 import {
 	type CampaignAction,
 	type CampaignAnalytics,
@@ -37,6 +42,7 @@ import {
 	type LeadEvent,
 } from "@/lib/unifers/schemas";
 import { UNIFERS } from "@/lib/unifers/unifers-config";
+import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 
 const PERCENT = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1 });
 
@@ -276,7 +282,7 @@ function Detail({ id, data }: { id: number; data: CampaignAnalytics }) {
 				</CardContent>
 			</Card>
 
-			<LeadsByEvent id={id} />
+			<LeadsByEvent id={id} since={campaignStart(campaign.createdAt)} />
 
 			<ConfirmDialog
 				open={cancelling}
@@ -291,7 +297,9 @@ function Detail({ id, data }: { id: number; data: CampaignAnalytics }) {
 	);
 }
 
-function LeadsByEvent({ id }: { id: number }) {
+function LeadsByEvent({ id, since }: { id: number; since: string | null }) {
+	const trpc = useTRPC();
+	const href = useWorkspaceUrl();
 	const [event, setEvent] = useState<LeadEvent>("replied");
 	const [page, setPage] = useState(1);
 	const { leadsPageSize } = UNIFERS;
@@ -304,12 +312,27 @@ function LeadsByEvent({ id }: { id: number }) {
 		refetchInterval: UNIFERS.refresh.listMs,
 	});
 
+	const emails =
+		event === "replied"
+			? (leads.data?.leads ?? []).map((lead) => lead.email)
+			: [];
+	const replies = useQuery({
+		...trpc.contacts.unifersReplies.queryOptions({ emails, since }),
+		enabled: emails.length > 0,
+		refetchInterval: UNIFERS.refresh.listMs,
+	});
+	const replyOf = new Map(
+		(replies.data?.replies ?? []).map((reply) => [reply.email, reply]),
+	);
+	const missing = emails.filter((email) => !replyOf.has(email.toLowerCase()));
+
 	return (
 		<Card>
 			<CardHeader>
 				<CardTitle>Leads by what they did</CardTitle>
 				<CardDescription>
-					Pick an event to see who it happened to, and at which email.
+					Pick an event to see who it happened to, and at which email. Replied
+					shows what each person wrote, from the mail the CRM has synced.
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="flex flex-col gap-4">
@@ -342,6 +365,9 @@ function LeadsByEvent({ id }: { id: number }) {
 						columns={[
 							{ id: "person", header: "Person" },
 							{ id: "steps", header: "Emails" },
+							...(event === "replied"
+								? [{ id: "reply", header: "Their reply" }]
+								: []),
 						]}
 					>
 						{leads.data.leads.map((lead) => (
@@ -355,6 +381,17 @@ function LeadsByEvent({ id }: { id: number }) {
 								<TableCell className="px-3 text-muted-foreground text-xs">
 									{lead.steps.join(", ") || "—"}
 								</TableCell>
+								{event === "replied" ? (
+									<TableCell className="min-w-72 px-3 align-top">
+										<ReplyCell
+											reply={replyOf.get(lead.email.toLowerCase()) ?? null}
+											loading={replies.isPending}
+											contactHref={(contactId) =>
+												href(`/contacts/${contactId}`)
+											}
+										/>
+									</TableCell>
+								) : null}
 							</SimpleTableRow>
 						))}
 					</SimpleTable>
@@ -369,7 +406,68 @@ function LeadsByEvent({ id }: { id: number }) {
 						loading={leads.isFetching}
 					/>
 				) : null}
+				{event === "replied" && replies.isError ? (
+					<p className="text-destructive text-xs">{replies.error.message}</p>
+				) : null}
+				{event === "replied" && replies.data?.scope === "own" ? (
+					<p className="text-muted-foreground text-xs">
+						You see replies that reached the mailbox you connected. Owners and
+						admins see replies from every connected mailbox.
+					</p>
+				) : null}
+				{event === "replied" && replies.isSuccess && missing.length > 0 ? (
+					<p className="text-muted-foreground text-xs">
+						Unifers does not share reply text. The CRM shows it once the mailbox
+						that sent the campaign is connected in{" "}
+						<TextLink asChild>
+							<NextLink href={href("/settings/connections")}>
+								Settings → Connections
+							</NextLink>
+						</TextLink>{" "}
+						and has synced.
+					</p>
+				) : null}
 			</CardContent>
 		</Card>
+	);
+}
+
+function ReplyCell({
+	reply,
+	loading,
+	contactHref,
+}: {
+	reply: {
+		contactId: string | null;
+		subject: string | null;
+		text: string;
+		sentAt: string;
+	} | null;
+	loading: boolean;
+	contactHref: (contactId: string) => string;
+}) {
+	if (loading) return <Skeleton className="h-8 w-full" />;
+	if (!reply) {
+		return (
+			<p className="text-muted-foreground text-xs">Not synced to the CRM.</p>
+		);
+	}
+	return (
+		<div className="flex flex-col gap-1">
+			<p className="text-muted-foreground text-xs">
+				<LocalDateTime date={reply.sentAt} options={DATE_TIME} />
+				{reply.contactId ? (
+					<>
+						{" · "}
+						<TextLink asChild>
+							<NextLink href={contactHref(reply.contactId)}>
+								Open contact
+							</NextLink>
+						</TextLink>
+					</>
+				) : null}
+			</p>
+			<FormattedText text={reply.text || reply.subject || "(empty)"} />
+		</div>
 	);
 }
