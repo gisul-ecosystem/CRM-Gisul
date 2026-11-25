@@ -1,0 +1,142 @@
+import { downloadFromScraper, scraperJson } from "./client";
+import {
+	type CompanyListQuery,
+	type CompanySearch,
+	clearResult,
+	companiesResponse,
+	companySearchOptions,
+	connectionTypes,
+	importStarted,
+	jobsResponse,
+	okMessage,
+	type PostSearch,
+	productsResponse,
+	queueItemResponse,
+	queueResponse,
+	ragRebuild,
+	resultsResponse,
+	type ScrapeFilters,
+	scraperStatus,
+	scrapeStarted,
+	sentSummary,
+	skipResult,
+} from "./schemas";
+
+export const scraperApi = {
+	status: () => scraperJson("/status", scraperStatus),
+	connectionTypes: () => scraperJson("/connection-types", connectionTypes),
+	products: () => scraperJson("/products", productsResponse),
+	rebuildKnowledge: () =>
+		scraperJson("/rag/rebuild", ragRebuild, { method: "POST" }),
+};
+
+export const linkedInApi = {
+	connect: () =>
+		scraperJson("/linkedin/connect", okMessage, { method: "POST" }),
+	logout: () => scraperJson("/linkedin/logout", okMessage, { method: "POST" }),
+	backToLinkedIn: () =>
+		scraperJson("/linkedin/back", okMessage, { method: "POST" }),
+};
+
+export const scrapeApi = {
+	start: (filters: ScrapeFilters) =>
+		scraperJson("/scrape/start", scrapeStarted, {
+			method: "POST",
+			json: filters,
+		}),
+	importFile: (
+		file: File,
+		options: Pick<
+			ScrapeFilters,
+			| "maxResults"
+			| "startIndex"
+			| "products"
+			| "aiMessages"
+			| "rescrape"
+			| "messageTemplate"
+		>,
+	) => {
+		const form = new FormData();
+		form.set("file", file);
+		form.set("maxResults", String(options.maxResults));
+		form.set("startIndex", String(options.startIndex));
+		form.set("products", options.products.join(","));
+		form.set("aiMessages", String(options.aiMessages));
+		form.set("rescrape", String(options.rescrape));
+		form.set("messageTemplate", options.messageTemplate);
+		return scraperJson("/scrape/import", importStarted, {
+			method: "POST",
+			form,
+		});
+	},
+	posts: (search: PostSearch) =>
+		scraperJson("/scrape/posts", scrapeStarted, {
+			method: "POST",
+			json: search,
+		}),
+	companies: (search: CompanySearch) =>
+		scraperJson("/scrape/companies", scrapeStarted, {
+			method: "POST",
+			json: search,
+		}),
+	stop: () => scraperJson("/scrape/stop", okMessage, { method: "POST" }),
+	history: () => scraperJson("/jobs", jobsResponse),
+};
+
+export const profilesApi = {
+	list: () => scraperJson("/results", resultsResponse),
+	download: () => downloadFromScraper("/results/download"),
+};
+
+export const companiesApi = {
+	options: () => scraperJson("/company-search/options", companySearchOptions),
+	list: (query: CompanyListQuery, pageSize: number) =>
+		scraperJson("/companies", companiesResponse, {
+			query: {
+				q: query.q,
+				country: query.country,
+				industry: query.industry,
+				limit: pageSize,
+				skip: (query.page - 1) * pageSize,
+			},
+		}),
+	download: () => downloadFromScraper("/companies/download"),
+};
+
+export const queueApi = {
+	list: () => scraperJson("/queue", queueResponse),
+	edit: (slug: string, message: string) =>
+		scraperJson(`/queue/${encodeURIComponent(slug)}`, queueItemResponse, {
+			method: "PATCH",
+			json: { message },
+		}),
+	skip: (slugs: string[]) =>
+		scraperJson("/queue/skip", skipResult, {
+			method: "POST",
+			json: { slugs },
+		}),
+	clear: (slugs: string[]) =>
+		scraperJson("/queue/clear", clearResult, {
+			method: "POST",
+			json: { slugs },
+		}),
+	applyTemplate: (template: string, slugs: string[] = []) =>
+		scraperJson("/queue/template", okMessage, {
+			method: "POST",
+			json: { template, slugs },
+		}),
+	send: (slugs: string[]) =>
+		scraperJson("/queue/send", okMessage, {
+			method: "POST",
+			json: { slugs },
+		}),
+};
+
+export const reportsApi = {
+	sentOn: (date: string) =>
+		scraperJson("/reports/daily-sends/summary", sentSummary, {
+			query: { date },
+		}),
+	downloadSentOn: (date: string) =>
+		downloadFromScraper("/reports/daily-sends", { date }),
+};

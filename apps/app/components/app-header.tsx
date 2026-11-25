@@ -1,7 +1,5 @@
 "use client";
 
-import Asleep from "@carbon/icons-react/es/Asleep";
-import Light from "@carbon/icons-react/es/Light";
 import Logout from "@carbon/icons-react/es/Logout";
 import Menu from "@carbon/icons-react/es/Menu";
 import UserAvatar from "@carbon/icons-react/es/UserAvatar";
@@ -20,7 +18,6 @@ import { Separator } from "@crm/ui/components/separator";
 import { Skeleton } from "@crm/ui/components/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { EnrichmentQueue } from "@/components/enrichment-queue";
 import { useMobileNav } from "@/components/mobile-nav";
@@ -53,9 +50,9 @@ export function AppHeader({ user }: { user: User }) {
 				<Link
 					href={workspaceUrl()}
 					aria-label="Homepage"
-					className="hidden size-8 items-center justify-center text-foreground md:flex"
+					className="hidden h-8 items-center justify-center text-foreground md:flex"
 				>
-					<Logo className="size-5" />
+					<Logo className="h-5 w-auto max-w-[110px]" />
 				</Link>
 				<Separator orientation="vertical" className="mx-1 h-5 bg-transparent" />
 				<span className="min-w-0 truncate font-medium text-sm">{label}</span>
@@ -83,8 +80,8 @@ export function AppHeaderFallback() {
 			aria-busy="true"
 		>
 			<div className="flex shrink-0 items-center gap-1">
-				<span className="hidden size-8 items-center justify-center text-foreground md:flex">
-					<Logo className="size-5" />
+				<span className="hidden h-8 items-center justify-center text-foreground md:flex">
+					<Logo className="h-5 w-auto max-w-[110px]" />
 				</span>
 				<Separator orientation="vertical" className="mx-1 h-5 bg-transparent" />
 				<Skeleton className="h-4 w-24" />
@@ -103,9 +100,6 @@ export function AppHeaderFallback() {
 }
 
 function UserMenu({ user, onSignOut }: { user: User; onSignOut: () => void }) {
-	const { resolvedTheme, setTheme } = useTheme();
-	const isDark = resolvedTheme === "dark";
-
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
@@ -113,7 +107,7 @@ function UserMenu({ user, onSignOut }: { user: User; onSignOut: () => void }) {
 					variant="ghost"
 					size="icon"
 					aria-label="Account menu"
-					className="hover:bg-transparent aria-expanded:bg-transparent dark:hover:bg-transparent"
+					className="hover:bg-transparent aria-expanded:bg-transparent"
 				>
 					<Avatar className="size-7">
 						{user.image && <AvatarImage alt={user.name} src={user.image} />}
@@ -128,16 +122,6 @@ function UserMenu({ user, onSignOut }: { user: User; onSignOut: () => void }) {
 					<UserAvatar />
 					<span className="min-w-0 truncate">{user.email}</span>
 				</DropdownMenuLabel>
-				<DropdownMenuSeparator />
-				<DropdownMenuItem
-					onSelect={(event) => {
-						event.preventDefault();
-						setTheme(isDark ? "light" : "dark");
-					}}
-				>
-					{isDark ? <Light /> : <Asleep />}
-					{isDark ? "Light mode" : "Dark mode"}
-				</DropdownMenuItem>
 				<DropdownMenuSeparator />
 				<DropdownMenuItem onClick={onSignOut}>
 					<Logout />

@@ -586,7 +586,7 @@ export function DataTable<TRow, TSub = unknown>({
 					) : null
 				}
 			>
-				<TableHeader className="sticky top-0 z-10 bg-muted [&_th]:bg-muted [&_tr]:border-0 [&_tr]:shadow-[inset_0_-1px_0_var(--border)]">
+				<TableHeader className="sticky top-0 z-10 bg-muted [&_th]:bg-muted [&_th]:text-muted-foreground [&_tr]:border-0 [&_tr]:shadow-[inset_0_-1px_0_var(--border)]">
 					<TableRow>
 						{selection && (
 							<TableHead className={cn("h-11 w-10 px-3", HIDE_BELOW_CLASS.sm)}>

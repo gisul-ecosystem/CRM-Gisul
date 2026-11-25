@@ -24,7 +24,7 @@ const CONTROL =
 	"h-8 w-full justify-start px-2 font-normal hover:border-input hover:bg-muted/40 border border-transparent";
 const BLOCK_CONTROL = cn(
 	CONTROL,
-	"h-auto min-h-16 items-start whitespace-pre-wrap py-2 text-left leading-5",
+	"h-auto min-h-20 items-start whitespace-pre-wrap py-2.5 text-left text-sm/6",
 );
 
 export function savingField(update: {
@@ -61,7 +61,7 @@ export function InlineField({
 	onSave: (next: string) => void;
 	saving?: boolean;
 	placeholder?: string;
-	type?: "text" | "url" | "email" | "tel";
+	type?: "text" | "url" | "email" | "tel" | "date";
 	render?: (value: string) => React.ReactNode;
 	provenance?: React.ReactNode;
 	suggestion?: React.ReactNode;
@@ -326,6 +326,21 @@ export function InlineDateField({
 				/>
 				{saving ? <Spinner /> : null}
 			</div>
+		</div>
+	);
+}
+
+export function InlineStaticField({
+	label,
+	value,
+}: {
+	label: string;
+	value: string;
+}) {
+	return (
+		<div className={ROW}>
+			<span className={LABEL}>{label}</span>
+			<span className="min-w-0 truncate px-2 text-sm">{value}</span>
 		</div>
 	);
 }

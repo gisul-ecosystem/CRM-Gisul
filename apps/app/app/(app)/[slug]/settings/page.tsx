@@ -3,11 +3,7 @@ import { Suspense } from "react";
 import {
 	PageShell,
 	PageShellContent,
-	PageShellDescription,
-	PageShellHeader,
-	PageShellHeading,
 	PageShellLoading,
-	PageShellTitle,
 } from "@/components/page-shell";
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
@@ -15,6 +11,7 @@ import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { AgentModel } from "./agent-model";
 import { ArchiveRetention } from "./archive-retention";
 import { ResearchKey } from "./research-key";
+import styles from "./settings-design.module.css";
 import { WorkspaceForm } from "./workspace-form";
 
 export const metadata: Metadata = {
@@ -23,15 +20,15 @@ export const metadata: Metadata = {
 
 export default function GeneralSettingsPage() {
 	return (
-		<PageShell>
-			<PageShellHeader>
-				<PageShellHeading>
-					<PageShellTitle>General</PageShellTitle>
-					<PageShellDescription>
+		<PageShell className={styles.page}>
+			<header className={styles.top}>
+				<div className={styles.topText}>
+					<h1 className={styles.title}>General</h1>
+					<p className={styles.subtitle}>
 						Who you are, and the model the research agent thinks with.
-					</PageShellDescription>
-				</PageShellHeading>
-			</PageShellHeader>
+					</p>
+				</div>
+			</header>
 
 			<PageShellContent>
 				<Suspense fallback={<PageShellLoading />}>
@@ -58,7 +55,7 @@ async function Settings() {
 
 	return (
 		<HydrateClient>
-			<div className="flex max-w-3xl flex-col gap-6">
+			<div className={styles.stack}>
 				<WorkspaceForm />
 				<ResearchKey />
 				<ArchiveRetention />

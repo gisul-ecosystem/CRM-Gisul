@@ -1,0 +1,726 @@
+"use client";
+
+import TrashCan from "@carbon/icons-react/es/TrashCan";
+import { Button } from "@crm/ui/components/button";
+import { Checkbox } from "@crm/ui/components/checkbox";
+import { DatePicker } from "@crm/ui/components/date-picker";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyTitle,
+} from "@crm/ui/components/empty";
+import { Field, FieldLabel } from "@crm/ui/components/field";
+import { Icon } from "@crm/ui/components/icon";
+import { SimpleTable, SimpleTableRow } from "@crm/ui/components/simple-table";
+import { Skeleton } from "@crm/ui/components/skeleton";
+import { StatusIndicator } from "@crm/ui/components/status-indicator";
+import { TableCell } from "@crm/ui/components/table";
+import { TablePagination } from "@crm/ui/components/table-pagination";
+import { LEAD_ORIGIN_LIMITS } from "@crm/validation/lead-origin";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { useQueryState } from "nuqs";
+import { useId, useState } from "react";
+import { toast } from "sonner";
+import { LeadSheet } from "@/components/leads-pipeline/lead-sheet";
+import { PipelineGate } from "@/components/leads-pipeline/pipeline-page";
+import { ConfirmDialog } from "@/components/outreach/confirm-dialog";
+import {
+	ALL,
+	FilterSelect,
+	OutreachToolbar,
+	SearchBox,
+} from "@/components/outreach/toolbar";
+import { AddToUnifersDialog } from "@/components/unifers/add-to-campaign-dialog";
+import { LEAD_SOURCE_OPTIONS } from "@/lib/lead-fields";
+import { customSearchApi, leadsApi } from "@/lib/leads-pipeline/api";
+import { pipelineKeys, usePipelineCache } from "@/lib/leads-pipeline/cache";
+import {
+	intentTone,
+	segmentLabel,
+	segmentList,
+	verifiedTone,
+} from "@/lib/leads-pipeline/labels";
+import { LEADS_PIPELINE } from "@/lib/leads-pipeline/pipeline-config";
+import {
+	LEAD_INTENTS,
+	LEAD_SORTS,
+	type Lead,
+	type LeadFilters,
+	type LeadSort,
+	type ProfileStatus,
+	type RejectScope,
+} from "@/lib/leads-pipeline/schemas";
+import { useDebounced } from "@/lib/outreach/use-debounced";
+import { useCrmCache } from "@/lib/trpc/cache";
+import { useTRPC } from "@/lib/trpc/client";
+import { useWorkspaceUrl } from "@/lib/use-workspace-url";
+
+const NO_FILTERS: LeadFilters = {
+	q: "",
+	ready: false,
+	hasEmail: false,
+	intent: null,
+	segment: null,
+	country: null,
+	source: null,
+	foundFrom: null,
+	foundTo: null,
+	sort: "score",
+	latest: false,
+	perCompany: false,
+};
+
+const INTENT_OPTIONS = [
+	{ value: ALL, label: "Every intent" },
+	...LEAD_INTENTS.map((intent) => ({
+		value: intent,
+		label: `${segmentLabel(intent)} intent`,
+	})),
+];
+
+const REJECT_REASON = "Rejected in review";
+
+const SORT_LABELS: Record<LeadSort, string> = {
+	score: "Sort: best score",
+	company: "Sort: company A–Z",
+	newest: "Sort: newest first",
+	oldest: "Sort: oldest first",
+};
+
+const SORT_OPTIONS = LEAD_SORTS.map((sort) => ({
+	value: sort,
+	label: SORT_LABELS[sort],
+}));
+
+type Toggle = "ready" | "hasEmail" | "latest" | "perCompany";
+
+const TOGGLES: readonly { key: Toggle; label: string }[] = [
+	{ key: "ready", label: "Ready only" },
+	{ key: "hasEmail", label: "Has email" },
+	{ key: "latest", label: "From the last run" },
+	{ key: "perCompany", label: "One per company" },
+];
+
+type LeadSourceValue = (typeof LEAD_SOURCE_OPTIONS)[number]["value"];
+
+function leadKey(row: Lead): string {
+	return `${row.domain}|${row.full_name}|${row.email}`;
+}
+
+export function LeadsPanel() {
+	return (
+		<PipelineGate>
+			{(profile) => <LeadsBody key={profile.profile} status={profile} />}
+		</PipelineGate>
+	);
+}
+
+function LeadsBody({ status }: { status: ProfileStatus }) {
+	const toggleId = useId();
+	const [search, setSearch] = useState("");
+	const [filters, setFilters] = useState<LeadFilters>(NO_FILTERS);
+	const [page, setPage] = useState(1);
+	const [open, setOpen] = useState<Lead | null>(null);
+	const isCompetitors = status.profile === "competitors";
+	const [selected, setSelected] = useState<ReadonlyMap<string, Lead>>(
+		() => new Map(),
+	);
+	const [leadSource, setLeadSource] = useState<LeadSourceValue>(
+		LEADS_PIPELINE.addToCrm.defaultLeadSource,
+	);
+	const trpc = useTRPC();
+	const cache = useCrmCache();
+	const router = useRouter();
+	const workspaceUrl = useWorkspaceUrl();
+	const q = useDebounced(search, LEADS_PIPELINE.searchDebounceMs);
+	const [source, setSource] = useQueryState("source");
+	const applied = { ...filters, q, source };
+	const { pageSize } = LEADS_PIPELINE;
+
+	const leads = useQuery({
+		queryKey: pipelineKeys.leads(status.profile, applied, page),
+		queryFn: () => leadsApi.list(status.profile, applied, page, pageSize),
+		placeholderData: keepPreviousData,
+		refetchInterval: LEADS_PIPELINE.refresh.listMs,
+	});
+
+	const download = useMutation({
+		mutationFn: () => leadsApi.download(status.profile, applied),
+		onSuccess: (filename) => toast.success(`Downloaded ${filename}.`),
+		onError: (error) => toast.error(error.message),
+	});
+
+	const addToCrm = useMutation(
+		trpc.contacts.importLeads.mutationOptions({
+			onSuccess: async (result) => {
+				await Promise.all([cache.contact(), cache.company()]);
+				const parts = [
+					result.created > 0 ? `${result.created} added` : null,
+					result.existing > 0 ? `${result.existing} already in the CRM` : null,
+					result.failed > 0 ? `${result.failed} failed` : null,
+				].filter(Boolean);
+				toast.success(parts.join(" · ") || "Nothing to add.", {
+					action: {
+						label: "Open contacts",
+						onClick: () => router.push(workspaceUrl("/contacts")),
+					},
+				});
+				if (result.errors[0]) {
+					toast.message(
+						`${result.errors[0].name}: ${result.errors[0].message}`,
+					);
+				}
+				setSelected(new Map());
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	const toggle = (rowsToChange: Lead[], on: boolean) => {
+		setSelected((current) => {
+			const next = new Map(current);
+			for (const row of rowsToChange) {
+				if (on) next.set(leadKey(row), row);
+				else next.delete(leadKey(row));
+			}
+			return next;
+		});
+	};
+
+	const pipelineCache = usePipelineCache();
+	const [rejecting, setRejecting] = useState<RejectScope | null>(null);
+	const [unifersOpen, setUnifersOpen] = useState(false);
+	const [deleting, setDeleting] = useState(false);
+	const workspace = useQuery(trpc.workspace.get.queryOptions());
+	const isAdmin = workspace.data?.canChangeRoles ?? false;
+	const remove = useMutation({
+		mutationFn: (picked: Lead[]) => leadsApi.remove(status.profile, picked),
+		onSuccess: async (result, picked) => {
+			toast.success(result.message);
+			setDeleting(false);
+			setSelected((current) => {
+				const next = new Map(current);
+				for (const row of picked) next.delete(leadKey(row));
+				return next;
+			});
+			await pipelineCache.run(status.profile);
+		},
+		onError: (error) => toast.error(error.message),
+	});
+	const reject = useMutation({
+		mutationFn: (scope: RejectScope) =>
+			leadsApi.reject(
+				status.profile,
+				scope,
+				[...selected.values()],
+				REJECT_REASON,
+			),
+		onSuccess: async (result) => {
+			toast.success(result.message);
+			setRejecting(null);
+			setSelected(new Map());
+			await pipelineCache.run(status.profile);
+		},
+		onError: (error) => toast.error(error.message),
+	});
+
+	const { maxLeads } = LEADS_PIPELINE.addToCrm;
+	const withNames = [...selected.values()].filter(
+		(row) => row.full_name.trim() !== "",
+	);
+	const unifersLeads = [
+		...new Map(
+			[...selected.values()]
+				.filter((row) => row.email.trim() !== "")
+				.map((row) => [
+					row.email.trim().toLowerCase(),
+					{
+						email: row.email.trim(),
+						...(row.full_name ? { fullName: row.full_name } : {}),
+						...(row.company ? { companyName: row.company } : {}),
+						...(row.linkedin_url ? { linkedinUrl: row.linkedin_url } : {}),
+					},
+				]),
+		).values(),
+	];
+	const submitSelected = () =>
+		addToCrm.mutate({
+			leadSource,
+			category: status.profile,
+			leads: withNames.map((row) => ({
+				fullName: row.full_name,
+				email: row.email,
+				phone: row.phone,
+				title: row.title,
+				company: row.company,
+				domain: row.domain,
+				linkedinUrl: row.linkedin_url,
+				origin: {
+					segment: row.segment.slice(0, LEAD_ORIGIN_LIMITS.segment),
+					country: row.country.slice(0, LEAD_ORIGIN_LIMITS.country),
+					signal: row.signal.slice(0, LEAD_ORIGIN_LIMITS.signal),
+					source: row.source.slice(0, LEAD_ORIGIN_LIMITS.source),
+				},
+			})),
+		});
+
+	const change = (next: Partial<LeadFilters>) => {
+		setFilters((current) => ({ ...current, ...next }));
+		setPage(1);
+	};
+
+	const segmentOptions = [
+		{ value: ALL, label: "Every segment" },
+		...status.segments.map((segment) => ({
+			value: segment,
+			label: segmentLabel(segment),
+		})),
+	];
+	const countryOptions = [
+		{ value: ALL, label: "Every country" },
+		...status.countries.map((country) => ({ value: country, label: country })),
+	];
+
+	const searches = useQuery({
+		queryKey: pipelineKeys.customSearches(status.profile),
+		queryFn: () => customSearchApi.list(status.profile),
+		refetchInterval: LEADS_PIPELINE.refresh.idleMs,
+	});
+	const searchOptions = [
+		{ value: ALL, label: "Every source" },
+		...[
+			...new Map(
+				(searches.data?.searches ?? []).map((search) => [
+					search.slug,
+					search.name,
+				]),
+			),
+		].map(([value, label]) => ({ value, label: `Search: ${label}` })),
+	];
+	if (source && !searchOptions.some((option) => option.value === source)) {
+		searchOptions.push({ value: source, label: source });
+	}
+
+	const selectedDomains = new Set(
+		[...selected.values()].map((row) => row.domain),
+	).size;
+	const rows = leads.data?.rows ?? [];
+	const total = leads.data?.total ?? 0;
+	const inCrm = useQuery(
+		trpc.contacts.matchLeads.queryOptions(
+			{
+				leads: rows.map((row) => ({
+					key: leadKey(row),
+					fullName: row.full_name,
+					email: row.email,
+					domain: row.domain,
+					linkedinUrl: row.linkedin_url,
+				})),
+			},
+			{ enabled: rows.length > 0, placeholderData: keepPreviousData },
+		),
+	);
+	const crmKeys = new Set(
+		(inCrm.data?.matches ?? []).map((match) => match.key),
+	);
+	const selectable = rows;
+	const noValidEmail = rows.filter(
+		(row) => !row.email || row.verified_status !== "valid",
+	);
+	const pageSelected = selectable.filter((row) => selected.has(leadKey(row)));
+	const headerState =
+		selectable.length > 0 && pageSelected.length === selectable.length
+			? true
+			: pageSelected.length > 0
+				? "indeterminate"
+				: false;
+
+	return (
+		<div className="flex flex-col gap-4">
+			<OutreachToolbar>
+				<SearchBox
+					value={search}
+					onChange={(value) => {
+						setSearch(value);
+						setPage(1);
+					}}
+					placeholder="Search company, person, title or email"
+				/>
+				<FilterSelect
+					value={filters.intent ?? ALL}
+					onChange={(value) =>
+						change({
+							intent: LEAD_INTENTS.find((intent) => intent === value) ?? null,
+						})
+					}
+					options={INTENT_OPTIONS}
+					label="Intent"
+				/>
+				<FilterSelect
+					value={filters.segment ?? ALL}
+					onChange={(value) =>
+						change({ segment: value === ALL ? null : value })
+					}
+					options={segmentOptions}
+					label="Segment"
+				/>
+				<FilterSelect
+					value={filters.country ?? ALL}
+					onChange={(value) =>
+						change({ country: value === ALL ? null : value })
+					}
+					options={countryOptions}
+					label="Country"
+				/>
+				<div className="flex items-center gap-2">
+					<div className="w-40">
+						<DatePicker
+							value={filters.foundFrom}
+							placeholder="Found from"
+							onChange={(day) => change({ foundFrom: day || null })}
+						/>
+					</div>
+					<div className="w-40">
+						<DatePicker
+							value={filters.foundTo}
+							placeholder="Found to"
+							onChange={(day) => change({ foundTo: day || null })}
+						/>
+					</div>
+				</div>
+				<FilterSelect
+					value={filters.sort}
+					onChange={(value) => change({ sort: value })}
+					options={SORT_OPTIONS}
+					label="Sort"
+				/>
+				<FilterSelect
+					value={source ?? ALL}
+					onChange={(value) => {
+						void setSource(value === ALL ? null : value);
+						setPage(1);
+					}}
+					options={searchOptions}
+					label="Search"
+				/>
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={download.isPending || total === 0}
+					onClick={() => download.mutate()}
+				>
+					Download Excel
+				</Button>
+			</OutreachToolbar>
+
+			<div className="flex flex-wrap items-center gap-4">
+				{TOGGLES.map((toggle) => (
+					<Field key={toggle.key} orientation="horizontal" className="w-auto">
+						<Checkbox
+							id={`${toggleId}-${toggle.key}`}
+							checked={filters[toggle.key]}
+							onCheckedChange={(checked) =>
+								change({ [toggle.key]: checked === true })
+							}
+						/>
+						<FieldLabel htmlFor={`${toggleId}-${toggle.key}`}>
+							{toggle.label}
+						</FieldLabel>
+					</Field>
+				))}
+				<Button
+					variant="ghost"
+					size="sm"
+					disabled={noValidEmail.length === 0}
+					onClick={() => toggle(noValidEmail, true)}
+				>
+					Select no valid email (this page)
+				</Button>
+			</div>
+
+			{selected.size > 0 ? (
+				<div className="flex flex-wrap items-center gap-3">
+					<p className="text-sm">
+						{selected.size} selected
+						{selected.size > maxLeads
+							? ` — add at most ${maxLeads} at a time`
+							: ""}
+					</p>
+					<FilterSelect
+						value={leadSource}
+						onChange={setLeadSource}
+						options={LEAD_SOURCE_OPTIONS}
+						label="Lead source"
+					/>
+					<Button
+						size="sm"
+						disabled={
+							addToCrm.isPending ||
+							withNames.length === 0 ||
+							withNames.length > maxLeads
+						}
+						onClick={submitSelected}
+					>
+						{addToCrm.isPending
+							? "Adding…"
+							: `Add ${withNames.length} to CRM contacts`}
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={unifersLeads.length === 0}
+						onClick={() => setUnifersOpen(true)}
+					>
+						Send {unifersLeads.length} with Unifers
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={reject.isPending || status.running}
+						onClick={() => setRejecting("person")}
+					>
+						Reject people
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={reject.isPending || status.running}
+						onClick={() => setRejecting("company")}
+					>
+						Reject companies
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={!isAdmin || remove.isPending || status.running}
+						title={
+							isAdmin
+								? undefined
+								: "Only an owner or an admin can delete leads."
+						}
+						onClick={() => setDeleting(true)}
+					>
+						Delete {selected.size}
+					</Button>
+					<Button
+						variant="ghost"
+						size="sm"
+						disabled={
+							addToCrm.isPending || reject.isPending || remove.isPending
+						}
+						onClick={() => setSelected(new Map())}
+					>
+						Clear selection
+					</Button>
+				</div>
+			) : null}
+
+			{leads.isPending ? (
+				<Skeleton className="h-48 w-full rounded-lg" />
+			) : leads.isError ? (
+				<p className="text-destructive text-xs">{leads.error.message}</p>
+			) : rows.length === 0 ? (
+				<Empty className="border">
+					<EmptyHeader>
+						<EmptyTitle>
+							{status.summary.companies === 0 ? "No leads yet" : "No match"}
+						</EmptyTitle>
+						<EmptyDescription>
+							{status.summary.companies === 0
+								? "Start a run on the Lead generation overview. Leads appear here when a round finishes."
+								: "Change the search or the filters."}
+						</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
+			) : (
+				<SimpleTable
+					columns={[
+						{
+							id: "select",
+							srLabel: "Select",
+							width: "w-10",
+							header: (
+								<Checkbox
+									aria-label="Select every lead on this page"
+									checked={headerState}
+									disabled={selectable.length === 0}
+									onCheckedChange={(checked) =>
+										toggle(selectable, checked === true)
+									}
+								/>
+							),
+						},
+						{ id: "company", header: "Company" },
+						{ id: "person", header: "Person" },
+						{ id: "email", header: "Email" },
+						...(isCompetitors
+							? [
+									{ id: "competitor", header: "Competitor" },
+									{ id: "service", header: "Service they take" },
+								]
+							: [{ id: "segment", header: "Segment" }]),
+						{ id: "intent", header: "Intent" },
+						{ id: "found", header: "Found" },
+						{ id: "score", header: "Score", align: "right" },
+						...(isAdmin
+							? [{ id: "actions", srLabel: "Delete", width: "w-12" }]
+							: []),
+					]}
+				>
+					{rows.map((row) => (
+						<SimpleTableRow
+							key={leadKey(row)}
+							clickable
+							onClick={() => setOpen(row)}
+						>
+							<TableCell
+								className="px-3"
+								onClick={(event) => event.stopPropagation()}
+							>
+								<Checkbox
+									aria-label={`Select ${row.full_name || row.company}`}
+									checked={selected.has(leadKey(row))}
+									onCheckedChange={(checked) => toggle([row], checked === true)}
+								/>
+							</TableCell>
+							<TableCell className="max-w-56 px-3">
+								<p className="truncate">{row.company || row.domain}</p>
+								<p className="truncate text-muted-foreground text-xs">
+									{[row.domain, row.country].filter(Boolean).join(" · ")}
+								</p>
+							</TableCell>
+							<TableCell className="max-w-56 px-3">
+								<p className="truncate">{row.full_name || "—"}</p>
+								<p className="truncate text-muted-foreground text-xs">
+									{row.title}
+								</p>
+								{crmKeys.has(leadKey(row)) ? (
+									<StatusIndicator tone="success" label="In CRM" size="sm" />
+								) : null}
+							</TableCell>
+							<TableCell className="max-w-64 px-3">
+								{row.email ? (
+									<StatusIndicator
+										tone={verifiedTone(row.verified_status)}
+										label={row.email}
+										size="sm"
+									/>
+								) : (
+									"—"
+								)}
+							</TableCell>
+							{isCompetitors ? (
+								<>
+									<TableCell className="max-w-40 truncate px-3">
+										{row.competitor || "—"}
+									</TableCell>
+									<TableCell className="max-w-56 truncate px-3 text-xs">
+										{row.competitor_service || "—"}
+									</TableCell>
+								</>
+							) : (
+								<TableCell className="max-w-48 truncate px-3">
+									{segmentList(row.segment) || "—"}
+								</TableCell>
+							)}
+							<TableCell className="px-3">
+								{row.intent ? (
+									<StatusIndicator
+										tone={intentTone(row.intent)}
+										label={segmentLabel(row.intent)}
+										size="sm"
+									/>
+								) : (
+									"—"
+								)}
+							</TableCell>
+							<TableCell className="whitespace-nowrap px-3 text-muted-foreground text-xs">
+								{row.date_found.slice(0, 10) || "—"}
+							</TableCell>
+							<TableCell className="px-3 text-right tabular-nums">
+								{row.score || "—"}
+								{row.ready === "yes" ? " · ready" : ""}
+							</TableCell>
+							{isAdmin ? (
+								<TableCell
+									className="px-3"
+									onClick={(event) => event.stopPropagation()}
+								>
+									<Button
+										variant="ghost"
+										size="icon-sm"
+										aria-label={`Delete ${row.full_name || row.company || row.domain}`}
+										title="Delete this lead"
+										disabled={remove.isPending || status.running}
+										onClick={() => remove.mutate([row])}
+									>
+										<Icon icon={TrashCan} />
+									</Button>
+								</TableCell>
+							) : null}
+						</SimpleTableRow>
+					))}
+				</SimpleTable>
+			)}
+
+			{total > pageSize ? (
+				<TablePagination
+					page={page}
+					totalPages={Math.ceil(total / pageSize)}
+					pageSize={pageSize}
+					total={total}
+					onPageChange={setPage}
+					loading={leads.isFetching}
+				/>
+			) : null}
+
+			<LeadSheet
+				lead={open}
+				category={status.profile}
+				onClose={() => setOpen(null)}
+			/>
+
+			<AddToUnifersDialog
+				open={unifersOpen}
+				leads={unifersLeads}
+				onClose={() => setUnifersOpen(false)}
+				onDone={() => {
+					setUnifersOpen(false);
+					setSelected(new Map());
+				}}
+			/>
+
+			<ConfirmDialog
+				open={rejecting !== null}
+				title={
+					rejecting === "company"
+						? `Reject ${selectedDomains} compan${selectedDomains === 1 ? "y" : "ies"}?`
+						: `Reject ${selected.size} ${selected.size === 1 ? "person" : "people"}?`
+				}
+				description={
+					rejecting === "company"
+						? "Every row of these companies leaves the sheet, and later runs never add them again."
+						: "These rows leave the sheet, and later runs never add these people again. Their companies stay."
+				}
+				action="Reject"
+				pending={reject.isPending}
+				onConfirm={() => {
+					if (rejecting) reject.mutate(rejecting);
+				}}
+				onClose={() => setRejecting(null)}
+			/>
+
+			<ConfirmDialog
+				open={deleting}
+				title={`Delete ${selected.size} lead${selected.size === 1 ? "" : "s"}?`}
+				description="These rows leave the sheet. This cannot be undone here, but a later run can find them again. To keep them out for good, use Reject instead."
+				action="Delete"
+				pending={remove.isPending}
+				onConfirm={() => remove.mutate([...selected.values()])}
+				onClose={() => setDeleting(false)}
+			/>
+		</div>
+	);
+}

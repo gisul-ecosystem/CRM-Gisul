@@ -2,7 +2,9 @@
 
 import Email from "@carbon/icons-react/es/Email";
 import Partnership from "@carbon/icons-react/es/Partnership";
+import Send from "@carbon/icons-react/es/Send";
 import Star from "@carbon/icons-react/es/Star";
+import StarFilled from "@carbon/icons-react/es/StarFilled";
 import type { FieldValueJson } from "@crm/db/fields";
 import {
 	Accordion,
@@ -21,7 +23,9 @@ import { PersonAvatar } from "@crm/ui/components/person-avatar";
 import { SimpleTable, SimpleTableRow } from "@crm/ui/components/simple-table";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { TableCell } from "@crm/ui/components/table";
+import { LEAD_CATEGORY_LABEL } from "@crm/validation/lead-origin";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 import { AgentPanel } from "@/components/crm/agent-panel";
 import { InlineCompanyField } from "@/components/crm/company-picker";
@@ -33,6 +37,7 @@ import { FieldsCog, RecordFields } from "@/components/crm/fields/record-fields";
 import {
 	InlineField,
 	InlineSelectField,
+	InlineStaticField,
 	savingValue,
 } from "@/components/crm/inline-field";
 import { OwnerCell } from "@/components/crm/owner-cell";
@@ -52,8 +57,15 @@ import {
 	type DetailSheetTab,
 } from "@/components/detail-sheet";
 import { LocalDateTime, LocalRelativeDate } from "@/components/local-date-time";
+import { SendEmailDialog } from "@/components/unifers/send-email-dialog";
+import { SentEmails } from "@/components/unifers/sent-emails";
 import { factsByField } from "@/lib/contact-facts";
 import { ENRICHMENT_POLL_MS, isEnriching } from "@/lib/enrichment-status";
+import {
+	LEAD_SOURCE_OPTIONS,
+	LEAD_STATUS_OPTIONS,
+	toDateInputValue,
+} from "@/lib/lead-fields";
 import { savingField } from "@/lib/pending-field";
 import { hasContactLinks } from "@/lib/social-links";
 import { useCrmCache } from "@/lib/trpc/cache";
@@ -90,6 +102,7 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 	const { tab, setTab } = useRecordSheetView("overview");
+	const [composing, setComposing] = useState(false);
 
 	const query = useQuery({
 		...trpc.contacts.byId.queryOptions({ id: contactId }),
@@ -114,29 +127,29 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 
 	const tabs: DetailSheetTab[] = contact
 		? [
-				{
-					value: "overview",
-					label: "Overview",
-					content: <ContactOverview contact={contact} />,
-				},
-				{
-					value: "deals",
-					label: "Deals",
-					count: contact.deals.length,
-					content: <ContactDeals contact={contact} />,
-				},
-				{
-					value: "activity",
-					label: "Activity",
-					content: <Timeline anchor={{ contactId: contact.id }} />,
-				},
-				{
-					value: "agent",
-					label: "Agent",
-					content: <AgentPanel record={{ kind: "contact", id: contact.id }} />,
-					keepMounted: true,
-				},
-			]
+			{
+				value: "overview",
+				label: "Overview",
+				content: <ContactOverview contact={contact} />,
+			},
+			{
+				value: "deals",
+				label: "Deals",
+				count: contact.deals.length,
+				content: <ContactDeals contact={contact} />,
+			},
+			{
+				value: "activity",
+				label: "Activity",
+				content: <Timeline anchor={{ contactId: contact.id }} />,
+			},
+			{
+				value: "agent",
+				label: "Agent",
+				content: <AgentPanel record={{ kind: "contact", id: contact.id }} />,
+				keepMounted: true,
+			},
+		]
 		: [];
 
 	return (
@@ -181,6 +194,28 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 					<>
 						<ContactEnrichmentAction contactId={contact.id} />
 						{contact.email ? (
+							<>
+								<Button size="sm" onClick={() => setComposing(true)}>
+									<Icon icon={Send} data-icon="inline-start" />
+									<span className="hidden sm:inline">Send email</span>
+								</Button>
+								{composing ? (
+									<SendEmailDialog
+										open={composing}
+										onClose={() => setComposing(false)}
+										recipient={{
+											contactId: contact.id,
+											email: contact.email,
+											name: contactName(contact),
+											companyName: contact.company?.name ?? null,
+											productId: contact.product?.id ?? null,
+											nextFollowUpAt: contact.nextFollowUpAt ?? null,
+										}}
+									/>
+								) : null}
+							</>
+						) : null}
+						{contact.email ? (
 							<Button asChild variant="outline" size="sm">
 								<a href={`mailto:${contact.email}`}>
 									<Icon icon={Email} data-icon="inline-start" />
@@ -188,7 +223,7 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 								</a>
 							</Button>
 						) : null}
-						{contact.company && !contact.isPrimaryContact ? (
+						{contact.company ? (
 							<Button
 								variant="outline"
 								size="sm"
@@ -196,12 +231,19 @@ export function ContactSheet({ contactId }: { contactId: string }) {
 								onClick={() =>
 									setPrimary.mutate({
 										companyId: contact.company?.id ?? "",
-										contactId: contact.id,
+										contactId: contact.isPrimaryContact ? null : contact.id,
 									})
 								}
 							>
-								<Icon icon={Star} data-icon="inline-start" />
-								<span className="hidden sm:inline">Make primary</span>
+								<Icon
+									icon={contact.isPrimaryContact ? StarFilled : Star}
+									data-icon="inline-start"
+								/>
+								<span className="hidden sm:inline">
+									{contact.isPrimaryContact
+										? "Remove as Primary Contact"
+										: "Make Primary Contact"}
+								</span>
 							</Button>
 						) : null}
 						<RecordActions
@@ -288,8 +330,11 @@ function CompanyStat({
 function ContactOverview({ contact }: { contact: Contact }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
+	const openRecord = useOpenRecord();
 
 	const users = useQuery(trpc.users.list.queryOptions());
+	const products = useQuery(trpc.products.options.queryOptions());
+	const productOptions = products.data?.options ?? [];
 
 	const { applied, proposed } = factsByField(contact.facts);
 
@@ -345,6 +390,16 @@ function ContactOverview({ contact }: { contact: Contact }) {
 						onSave={(title) => save({ title })}
 						{...agentProps("title")}
 					/>
+					<InlineCompanyField
+						value={contact.company?.id ?? NONE}
+						company={contact.company}
+						saving={isSaving("companyId")}
+						none={{ value: NONE, label: "No company" }}
+						onSave={(companyId) =>
+							save({ companyId: companyId === NONE ? null : companyId })
+						}
+						onOpen={(id) => openRecord({ kind: "company", id })}
+					/>
 					<InlineField
 						label="Email"
 						value={contact.email}
@@ -359,6 +414,92 @@ function ContactOverview({ contact }: { contact: Contact }) {
 						saving={isSaving("phone")}
 						onSave={(phone) => save({ phone })}
 					/>
+					<InlineSelectField
+						label="Owner"
+						value={contact.owner?.id ?? NONE}
+						options={[
+							{ value: NONE, label: "Unassigned" },
+							...(users.data ?? []).map((user) => ({
+								value: user.id,
+								label: user.name,
+							})),
+						]}
+						onSave={(ownerId) =>
+							save({ ownerId: ownerId === NONE ? null : ownerId })
+						}
+					/>
+					<InlineSelectField
+						label="Product"
+						value={contact.product?.id ?? NONE}
+						options={[
+							{ value: NONE, label: "No product" },
+							...productOptions.map((product) => ({
+								value: product.id,
+								label: product.name,
+							})),
+						]}
+						onSave={(productId) =>
+							save({ productId: productId === NONE ? null : productId })
+						}
+					/>
+					<InlineSelectField
+						label="Status"
+						value={contact.leadStatus}
+						options={LEAD_STATUS_OPTIONS.map((option) => ({
+							value: option.value,
+							label: option.label,
+						}))}
+						onSave={(leadStatus) => save({ leadStatus })}
+					/>
+					<InlineSelectField
+						label="Source"
+						value={contact.leadSource ?? NONE}
+						options={[
+							{ value: NONE, label: "No source" },
+							...LEAD_SOURCE_OPTIONS.map((option) => ({
+								value: option.value,
+								label: option.label,
+							})),
+						]}
+						onSave={(leadSource) =>
+							save({ leadSource: leadSource === NONE ? null : leadSource })
+						}
+					/>
+					{contact.leadCategory ? (
+						<InlineStaticField
+							label="Lead type"
+							value={LEAD_CATEGORY_LABEL[contact.leadCategory]}
+						/>
+					) : null}
+					<InlineField
+						label="Next follow-up"
+						value={toDateInputValue(contact.nextFollowUpAt)}
+						type="date"
+						placeholder="Set date"
+						saving={isSaving("nextFollowUpAt")}
+						onSave={(nextFollowUpAt) =>
+							save({ nextFollowUpAt: nextFollowUpAt || null })
+						}
+					/>
+					<RecordFields
+						fields={contact.fields}
+						saving={isSavingField}
+						onSave={saveFields}
+					/>
+				</DetailSheetProperties>
+			</DetailSheetSection>
+
+			<SentEmails contactId={contact.id} hasEmail={Boolean(contact.email)} />
+
+			{contact.brief ? <Background brief={contact.brief} /> : null}
+
+			<WeKnowThem
+				relationship={contact.relationship}
+				contactName={contactName(contact)}
+			/>
+
+			<DetailSheetSection title="Profiles">
+				<DetailSheetProperties>
 					<InlineField
 						label="LinkedIn"
 						value={contact.linkedinUrl}
@@ -383,49 +524,13 @@ function ContactOverview({ contact }: { contact: Contact }) {
 						onSave={(githubUrl) => save({ githubUrl })}
 						{...agentProps("githubUrl")}
 					/>
-					<InlineCompanyField
-						value={contact.company?.id ?? NONE}
-						company={contact.company}
-						saving={isSaving("companyId")}
-						none={{ value: NONE, label: "No company" }}
-						onSave={(companyId) =>
-							save({ companyId: companyId === NONE ? null : companyId })
-						}
-					/>
-					<InlineSelectField
-						label="Owner"
-						value={contact.owner?.id ?? NONE}
-						options={[
-							{ value: NONE, label: "Unassigned" },
-							...(users.data ?? []).map((user) => ({
-								value: user.id,
-								label: user.name,
-							})),
-						]}
-						onSave={(ownerId) =>
-							save({ ownerId: ownerId === NONE ? null : ownerId })
-						}
-					/>
-					<RecordFields
-						fields={contact.fields}
-						saving={isSavingField}
-						onSave={saveFields}
-					/>
 				</DetailSheetProperties>
+				{hasContactLinks(contact) ? (
+					<div className="pt-1">
+						<ContactSocials contact={contact} />
+					</div>
+				) : null}
 			</DetailSheetSection>
-
-			{contact.brief ? <Background brief={contact.brief} /> : null}
-
-			<WeKnowThem
-				relationship={contact.relationship}
-				contactName={contactName(contact)}
-			/>
-
-			{hasContactLinks(contact) ? (
-				<DetailSheetSection title="Links">
-					<ContactSocials contact={contact} />
-				</DetailSheetSection>
-			) : null}
 
 			<WebsiteActivity contactId={contact.id} />
 		</DetailSheetBody>
@@ -595,42 +700,46 @@ function ContactDeals({ contact }: { contact: Contact }) {
 
 	if (contact.deals.length === 0) {
 		return (
-			<DetailSheetEmpty
-				icon={Partnership}
-				title="Not on any deals"
-				description={`${contactName(contact)} is not attached to anything being sold yet. Deals are opened on the company, then people are added to them.`}
-			/>
+			<DetailSheetBody>
+				<DetailSheetEmpty
+					icon={Partnership}
+					title="Not on any deals"
+					description={`${contactName(contact)} is not attached to anything being sold yet. Deals are opened on the company, then people are added to them.`}
+				/>
+			</DetailSheetBody>
 		);
 	}
 
 	return (
-		<SimpleTable variant="panel" columns={DEAL_COLUMNS}>
-			{contact.deals.map((deal) => (
-				<SimpleTableRow
-					key={deal.id}
-					clickable
-					onClick={() => openRecord({ kind: "deal", id: deal.id })}
-				>
-					<TableCell className="truncate py-2.5 pr-3 pl-5 font-medium">
-						{deal.name}
-					</TableCell>
-					<TableCell className="truncate px-3 py-2.5 text-muted-foreground">
-						{deal.role ?? <EmptyCellValue />}
-					</TableCell>
-					<TableCell className="px-3 py-2.5">
-						<DealStageMenu dealId={deal.id} stage={deal.stage} />
-					</TableCell>
-					<TableCell className="px-3 py-2.5 text-right">
-						<DealAmount
-							amountCents={deal.amountCents}
-							currency={deal.currency}
-						/>
-					</TableCell>
-					<TableCell className="px-3 py-2.5">
-						<OwnerCell owner={deal.owner} />
-					</TableCell>
-				</SimpleTableRow>
-			))}
-		</SimpleTable>
+		<DetailSheetBody>
+			<SimpleTable variant="panel" columns={DEAL_COLUMNS}>
+				{contact.deals.map((deal) => (
+					<SimpleTableRow
+						key={deal.id}
+						clickable
+						onClick={() => openRecord({ kind: "deal", id: deal.id })}
+					>
+						<TableCell className="truncate py-3 pr-3 pl-5 font-medium">
+							{deal.name}
+						</TableCell>
+						<TableCell className="truncate px-3 py-3 text-muted-foreground">
+							{deal.role ?? <EmptyCellValue />}
+						</TableCell>
+						<TableCell className="px-3 py-3">
+							<DealStageMenu dealId={deal.id} stage={deal.stage} />
+						</TableCell>
+						<TableCell className="px-3 py-3 text-right">
+							<DealAmount
+								amountCents={deal.amountCents}
+								currency={deal.currency}
+							/>
+						</TableCell>
+						<TableCell className="px-3 py-3">
+							<OwnerCell owner={deal.owner} />
+						</TableCell>
+					</SimpleTableRow>
+				))}
+			</SimpleTable>
+		</DetailSheetBody>
 	);
 }

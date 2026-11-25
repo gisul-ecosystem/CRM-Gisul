@@ -20,6 +20,7 @@ export class MailboxApiClient {
 		url: string,
 		accessToken: string,
 		params: Record<string, string | number | boolean | undefined> = {},
+		customHeaders: Record<string, string> = {},
 	): Promise<MailboxResult<T>> {
 		const target = new URL(url);
 		for (const [key, value] of Object.entries(params)) {
@@ -31,7 +32,10 @@ export class MailboxApiClient {
 
 		try {
 			const response = await fetch(target, {
-				headers: { authorization: `Bearer ${accessToken}` },
+				headers: {
+					authorization: `Bearer ${accessToken}`,
+					...customHeaders,
+				},
 				signal: controller.signal,
 			});
 

@@ -24,6 +24,7 @@
 	},
 	"dependencies": {
 		"@crm/auth": "workspace:*",
+		"@crm/brand": "workspace:*",
 		"@crm/db": "workspace:*",
 		"@crm/env": "workspace:*",
 		"@crm/telemetry": "workspace:*",

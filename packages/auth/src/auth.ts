@@ -1,4 +1,5 @@
 import { apiKey } from "@better-auth/api-key";
+import { PRODUCT_BRAND } from "@crm/brand";
 import { sso } from "@better-auth/sso";
 import { db } from "@crm/db";
 import { schemas } from "@crm/validation";
@@ -26,7 +27,7 @@ import { queueSlackInventorySync } from "./slack-sync";
 import {
 	hasSignInAllowList,
 	isWorkspaceEmail,
-	primaryWorkspaceDomain,
+	soleWorkspaceDomain,
 } from "./workspace";
 
 const socialProviders: NonNullable<BetterAuthOptions["socialProviders"]> = {};
@@ -45,10 +46,19 @@ if (env.google) {
 		accessType: "offline",
 	};
 
-	const hostedDomain = primaryWorkspaceDomain();
+	const hostedDomain = soleWorkspaceDomain();
 	if (hostedDomain) google.hd = hostedDomain;
 
 	socialProviders.google = google;
+}
+
+function nameFromEmail(email: string): string {
+	const local = email.split("@")[0] ?? email;
+	return local
+		.split(/[._-]+/)
+		.filter(Boolean)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+		.join(" ");
 }
 
 if (env.microsoft) {
@@ -63,14 +73,23 @@ if (env.microsoft) {
 
 		disableProfilePhoto: true,
 
-		mapProfileToUser: (profile) => ({
-			email: profile.email ?? profile.preferred_username ?? profile.upn,
-		}),
+		mapProfileToUser: (profile) => {
+			const email =
+				profile.email ?? profile.preferred_username ?? profile.upn ?? "";
+			const name =
+				profile.name ??
+				profile.displayName ??
+				(email ? nameFromEmail(email) : "User");
+			return {
+				name,
+				email,
+			};
+		},
 	};
 }
 
 export const auth = betterAuth({
-	appName: "CRM",
+	appName: PRODUCT_BRAND.productName,
 	baseURL: env.apiUrl,
 
 	database: prismaAdapter(db, {
@@ -87,6 +106,7 @@ export const auth = betterAuth({
 		accountLinking: {
 			enabled: true,
 			trustedProviders: [GOOGLE_PROVIDER_ID, MICROSOFT_PROVIDER_ID],
+			allowDifferentEmails: true,
 		},
 	},
 
@@ -267,7 +287,7 @@ export const auth = betterAuth({
 					}
 
 					if (!isWorkspaceEmail(user.email)) {
-						const domain = primaryWorkspaceDomain();
+						const domain = soleWorkspaceDomain();
 						throw new APIError("FORBIDDEN", {
 							message: domain
 								? `This CRM is private. Sign in with your @${domain} account.`
@@ -283,7 +303,33 @@ export const auth = betterAuth({
 		session: {
 			create: {
 				before: async (session) => {
+					const removed = await db.user.findUnique({
+						where: { id: session.userId },
+						select: { removedAt: true },
+					});
+					if (removed?.removedAt) {
+						throw new APIError("FORBIDDEN", {
+							message:
+								"You were removed from this CRM. Ask an owner to let you back in.",
+						});
+					}
+
 					const workspaceId = await ensureWorkspaceMembership(session.userId);
+
+					const user = await db.user.findUnique({
+						where: { id: session.userId },
+						select: { id: true, email: true, name: true },
+					});
+
+					if (user && user.email) {
+						const expected = nameFromEmail(user.email);
+						if (expected && user.name !== expected) {
+							await db.user.update({
+								where: { id: user.id },
+								data: { name: expected },
+							});
+						}
+					}
 
 					return {
 						data: { ...session, activeOrganizationId: workspaceId ?? null },

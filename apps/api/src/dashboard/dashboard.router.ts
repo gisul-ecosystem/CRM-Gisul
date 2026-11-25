@@ -5,6 +5,8 @@ import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { restMeta } from "../trpc/openapi";
 import {
+	dashboardReportInput,
+	dashboardReportOutput,
 	dashboardSummaryInput,
 	dashboardSummaryOutput,
 } from "./dashboard.contracts";
@@ -27,5 +29,17 @@ export class DashboardRouter {
 		@Input() input: z.infer<typeof dashboardSummaryInput>,
 	) {
 		return this.dashboard.summary(ctx.user.id, input);
+	}
+
+	@Query({
+		input: dashboardReportInput,
+		output: dashboardReportOutput,
+		meta: restMeta("GET", "/dashboard/report", ["Dashboard"]),
+	})
+	async report(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof dashboardReportInput>,
+	) {
+		return this.dashboard.report(ctx.user.id, input);
 	}
 }

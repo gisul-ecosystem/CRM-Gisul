@@ -1,25 +1,41 @@
+import { Bebas_Neue, Poppins } from "next/font/google";
 import { Suspense } from "react";
 import {
 	AgentBuilderShell,
 	AgentBuilderSidebarFallback,
 } from "@/components/agent-builder/agent-builder-shell";
 import { AgentBuilderSidebar } from "@/components/agent-builder/agent-builder-sidebar";
+import styles from "@/components/agent-builder/chat-design.module.css";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
+
+const display = Bebas_Neue({
+	weight: "400",
+	subsets: ["latin"],
+	variable: "--font-dashboard-display",
+});
+
+const sans = Poppins({
+	weight: ["400", "500", "600"],
+	subsets: ["latin"],
+	variable: "--font-dashboard-sans",
+});
 
 export default function AgentBuilderLayout({
 	children,
 }: Readonly<{ children: React.ReactNode }>) {
 	return (
-		<AgentBuilderShell
-			sidebar={
-				<Suspense fallback={<AgentBuilderSidebarFallback />}>
-					<PrefetchedAgentBuilderSidebar />
-				</Suspense>
-			}
-		>
-			{children}
-		</AgentBuilderShell>
+		<div className={`${display.variable} ${sans.variable} ${styles.shell}`}>
+			<AgentBuilderShell
+				sidebar={
+					<Suspense fallback={<AgentBuilderSidebarFallback />}>
+						<PrefetchedAgentBuilderSidebar />
+					</Suspense>
+				}
+			>
+				{children}
+			</AgentBuilderShell>
+		</div>
 	);
 }
 
@@ -41,7 +57,7 @@ async function PrefetchedAgentBuilderSidebar() {
 	return (
 		<HydrateClient>
 			<AgentBuilderSidebar
-				className="hidden w-[213px] flex-none border-r md:flex"
+				className="hidden md:flex"
 				initialData={{ conversations, agents, updatedAt }}
 			/>
 		</HydrateClient>

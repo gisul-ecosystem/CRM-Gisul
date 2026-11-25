@@ -335,7 +335,7 @@ function Idle({
 			<EmptyHeader>
 				<EmptyMedia>
 					<span className="flex size-8 items-center justify-center bg-foreground text-background">
-						<Logo className="size-4" />
+						<Logo variant="mark" className="size-4" />
 					</span>
 				</EmptyMedia>
 				<EmptyTitle>{copy.title}</EmptyTitle>
@@ -465,7 +465,7 @@ function AgentAvatar() {
 	return (
 		<MessageAvatar>
 			<span className="flex size-7 items-center justify-center bg-foreground text-background">
-				<Logo className="size-3.5" />
+				<Logo variant="mark" className="size-3.5" />
 			</span>
 		</MessageAvatar>
 	);

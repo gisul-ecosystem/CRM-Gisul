@@ -82,7 +82,7 @@ describe("builder delivery messages", () => {
 
 	it("routes a selected answer back to the parked Eve input request", () => {
 		expect(
-			builderDeliveryMessage("submission-1", {
+			builderDeliveryMessage({
 				text: "Use a CRM task instead",
 				inputResponse: {
 					requestId: "question-1",
@@ -96,7 +96,7 @@ describe("builder delivery messages", () => {
 
 	it("routes a written answer back to the parked Eve input request", () => {
 		expect(
-			builderDeliveryMessage("submission-1", {
+			builderDeliveryMessage({
 				text: "Use the private renewals channel",
 				inputResponse: {
 					requestId: "question-2",
@@ -116,7 +116,6 @@ describe("builder delivery messages", () => {
 	it("delivers persisted attachment bytes with model-visible metadata", () => {
 		const content = Buffer.from("quarterly plan");
 		const message = builderDeliveryMessage(
-			"submission-2",
 			{ text: "Summarize this file", resources: [], attachments: [] },
 			[
 				{
@@ -130,7 +129,7 @@ describe("builder delivery messages", () => {
 		expect(message).toEqual([
 			{
 				type: "text",
-				text: "Submission id: submission-2\n\nSummarize this file",
+				text: "Summarize this file",
 			},
 			{
 				type: "file",

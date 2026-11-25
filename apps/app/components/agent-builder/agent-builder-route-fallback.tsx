@@ -1,20 +1,18 @@
 import { Skeleton } from "@crm/ui/components/skeleton";
+import styles from "./chat-design.module.css";
 
 export function AgentBuilderHomeFallback() {
 	return (
-		<main
-			className="flex min-h-0 flex-1 items-center justify-center px-4"
-			aria-busy="true"
-		>
-			<div className="flex w-full max-w-2xl flex-col items-center gap-5">
-				<div
-					className="flex w-full flex-col items-center gap-2"
-					aria-hidden="true"
-				>
-					<Skeleton className="h-6 w-52 max-w-full" />
-					<Skeleton className="h-4 w-80 max-w-full" />
+		<main className={styles.home} aria-busy="true">
+			<div className={styles.homeInner}>
+				<div className={styles.hero} aria-hidden="true">
+					<Skeleton className="h-6 w-28 rounded-full" />
+					<Skeleton className="h-10 w-72 max-w-full" />
+					<Skeleton className="h-4 w-96 max-w-full" />
 				</div>
-				<Skeleton className="h-24 w-full rounded-lg" aria-hidden="true" />
+				<div className={styles.composerCard} aria-hidden="true">
+					<Skeleton className="h-24 w-full rounded-lg" />
+				</div>
 			</div>
 			<span role="status" className="sr-only">
 				Opening chat…
@@ -25,8 +23,8 @@ export function AgentBuilderHomeFallback() {
 
 export function AgentBuilderChatFallback() {
 	return (
-		<main className="flex min-h-0 flex-1 flex-col" aria-busy="true">
-			<header className="flex h-12 shrink-0 items-center px-4 sm:px-5">
+		<main className={styles.chatBody} aria-busy="true">
+			<header className={styles.chatHeader}>
 				<Skeleton className="h-4 w-40 max-w-full" aria-hidden="true" />
 			</header>
 			<div className="min-h-0 flex-1 overflow-hidden">

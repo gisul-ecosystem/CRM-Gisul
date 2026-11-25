@@ -10,11 +10,15 @@
 		"./agent-manifest": "./src/agent-manifest.ts",
 		"./builder-question": "./src/builder-question.ts",
 		"./enrichment-queue": "./src/enrichment-queue.ts",
+		"./campaign-draft": "./src/campaign-draft.ts",
+		"./email-draft": "./src/email-draft.ts",
 		"./eve-stream": "./src/eve-stream.ts",
 		"./eve-tool": "./src/eve-tool.ts",
 		"./field-backfill": "./src/field-backfill.ts",
 		"./field-templates": "./src/field-templates.ts",
-		"./saved-view": "./src/saved-view.ts"
+		"./lead-origin": "./src/lead-origin.ts",
+		"./saved-view": "./src/saved-view.ts",
+		"./unifers-send": "./src/unifers-send.ts"
 	},
 	"scripts": {
 		"check-types": "tsc --noEmit",

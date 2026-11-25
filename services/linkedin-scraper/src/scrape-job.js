@@ -1,0 +1,618 @@
+const fs = require('fs');
+const path = require('path');
+const { ACTION_DELAY_MS, AI_MESSAGES, HEADLESS, POST_SEARCH } = require('./config');
+const { launchBrowser } = require('./browser');
+const { displayFor } = require('./slots');
+const { ensureLinkedInLoggedIn } = require('./linkedin-auth');
+const { collectConnectionLinks } = require('./connections');
+const { scrapeProfile } = require('./profile');
+const { writeConnectionsExcel } = require('./export');
+const { resolveConnectionType, buildSearchUrl } = require('./search');
+const { generateOutreachMessage, assessPostIntent } = require('./ai-message');
+const { collectPosts } = require('./posts');
+const { collectCompanies, scrapeCompanies } = require('./companies');
+const { renderTemplate } = require('./message-template');
+const { sendMessageToProfile } = require('./messaging');
+const { getSendBudget, recordSuccessfulSend, maybeBatchPause } = require('./send-limits');
+const { userPaths } = require('./paths');
+const {
+  ensureDirs,
+  sleep,
+  sleepBetween,
+  slugFromProfileUrl,
+  nameFromSlug,
+  cleanPersonName,
+} = require('./utils');
+const db = require('./db');
+
+const activeJobs = new Map();
+
+function getJobStatus(userId) {
+  return activeJobs.get(userId) || { status: 'idle' };
+}
+
+function requestScrapeStop(userId) {
+  const job = activeJobs.get(userId);
+  if (job?.status !== 'running') return false;
+  if (!job.stopRequested) {
+    job.stopRequested = true;
+    job.logs.push({ at: new Date().toISOString(), msg: 'Stop requested — finishing the current profile, then saving' });
+    if (job.logs.length > 100) job.logs.shift();
+  }
+  return true;
+}
+
+async function runScrapeJob(userId, filters, onProgress) {
+  const existing = activeJobs.get(userId);
+  if (existing?.status === 'running') {
+    throw new Error('A scrape job is already running for this user');
+  }
+
+  const paths = userPaths(userId);
+  if (!fs.existsSync(paths.linkedinSession)) {
+    throw new Error('Connect LinkedIn first before scraping');
+  }
+
+  await db.connectMongo();
+  await db.users.upsertUser({ userId, linkedInConnected: true });
+
+  const jobId = `job-${Date.now()}`;
+  const job = {
+    id: jobId,
+    userId,
+    status: 'running',
+    filters: {
+      ...filters,
+      profileUrls: Array.isArray(filters.profileUrls) ? filters.profileUrls.length : undefined,
+    },
+    startedAt: new Date().toISOString(),
+    processed: 0,
+    total: 0,
+    current: null,
+    errors: [],
+    logs: [],
+    sent: 0,
+    sendFailed: 0,
+    skipped: 0,
+    queued: 0,
+    stopRequested: false,
+  };
+  activeJobs.set(userId, job);
+  await db.jobs.createScrapeJob(job);
+
+  const log = async (msg) => {
+    job.logs.push({ at: new Date().toISOString(), msg });
+    if (job.logs.length > 100) job.logs.shift();
+    if (onProgress) onProgress(job);
+    console.log(`[${userId}] ${msg}`);
+    try {
+      await db.jobs.appendJobLog(jobId, msg);
+    } catch {
+      /* ignore log persist errors */
+    }
+  };
+
+  ensureDirs(paths.outDir);
+  const { normalizeProfileUrl } = require('./utils');
+  const directProfileUrl = normalizeProfileUrl(filters.profileUrl || '');
+  const importedRows = Array.isArray(filters.profileUrls) ? filters.profileUrls : [];
+  const importedConns = [];
+  const importedSeen = new Set();
+  for (const row of importedRows) {
+    const raw = typeof row === 'string' ? row : (row?.profileUrl || row?.url || '');
+    const profileUrl = normalizeProfileUrl(raw);
+    const slug = slugFromProfileUrl(profileUrl);
+    if (!profileUrl || !slug || importedSeen.has(slug)) continue;
+    importedSeen.add(slug);
+    importedConns.push({
+      profileUrl,
+      listName:
+        (typeof row === 'object' && (row.listName || row.name)) || nameFromSlug(slug),
+      subtitle: (typeof row === 'object' && (row.subtitle || row.company)) || '',
+      headline: (typeof row === 'object' && (row.headline || row.position || row.jobTitle)) || '',
+    });
+  }
+  const usingImport = importedConns.length > 0;
+  const usingPosts = !usingImport && filters.connectionType === 'post_search';
+  filters = {
+    ...filters,
+    profileUrl: usingImport ? '' : directProfileUrl,
+    profileUrls: usingImport ? importedConns : [],
+    connectionType: usingImport
+      ? 'file_import'
+      : usingPosts
+        ? 'post_search'
+        : directProfileUrl
+        ? 'single_profile'
+        : resolveConnectionType(filters),
+    sendMessages: usingImport || usingPosts ? false : Boolean(filters.sendMessages),
+  };
+  job.filters = {
+    ...filters,
+    profileUrls: usingImport ? importedConns.length : undefined,
+  };
+
+  const useAi = filters.aiMessages ?? AI_MESSAGES;
+  const messageTemplate = String(filters.messageTemplate || '');
+  const autoSend = Boolean(filters.sendMessages);
+
+  const startIndex = Math.max(0, Number(filters.startIndex || 0));
+  const maxConnections = Number(filters.maxResults || 0);
+
+  const existingMap = await db.profiles.profilesMapBySlug(userId);
+
+  await log('Opening the browser and checking the LinkedIn session…');
+  const { browser, context, page } = await launchBrowser({
+    storageStatePath: paths.linkedinSession,
+    headless: HEADLESS,
+    display: displayFor(userId),
+  });
+  page.setDefaultTimeout(90000);
+
+  try {
+    await ensureLinkedInLoggedIn(page, context, paths.linkedinSession, {
+      log,
+      shouldStop: () => job.stopRequested,
+    });
+
+    if (filters.connectionType === 'company_search') {
+      return await runCompanySearch({ userId, jobId, job, filters, page, log, outDir: paths.outDir });
+    }
+
+    if (usingImport) {
+      await log(`Mode: file import | ${importedConns.length} URL(s) in spreadsheet`);
+    } else if (usingPosts) {
+      await log(`Mode: post search | "${filters.keywords}" | ${filters.datePosted} | up to ${filters.maxResults} post(s)`);
+    } else if (directProfileUrl) {
+      await log(`Mode: single profile | ${directProfileUrl}`);
+    } else {
+      await log(`Mode: ${filters.connectionType} | ${buildSearchUrl(filters)}`);
+    }
+    const allowedProducts = Array.isArray(filters.products) ? filters.products : [];
+    const productContext =
+      filters.productContext && typeof filters.productContext === 'object' ? filters.productContext : {};
+    const productFraming =
+      filters.productFraming && typeof filters.productFraming === 'object' ? filters.productFraming : {};
+    if (useAi) {
+      await log(
+        `AI product matching: ${allowedProducts.length ? allowedProducts.join(' + ') : 'racko + kanonkode + aaptor'} (RAG)`
+      );
+      for (const [id, brief] of Object.entries(productContext)) {
+        await log(`Targeting brief — ${id}: ${brief.slice(0, 160)}`);
+      }
+      for (const [id, framing] of Object.entries(productFraming)) {
+        await log(`Message framing — ${id}: ${framing.slice(0, 160)}`);
+      }
+    }
+    await log(
+      messageTemplate
+        ? `Message: your template for everyone${useAi ? ' the AI keeps' : ''} (${messageTemplate.length} characters)`
+        : 'Message: AI draft for each person'
+    );
+    if (usingImport || usingPosts) {
+      await log('Drafts go to queue only. Nothing is sent until Send to all.');
+    } else if (autoSend) {
+      await log('Auto-send ON — matched profiles will be messaged one-by-one after AI draft');
+    } else {
+      await log('Auto-send OFF — drafts go to queue for manual send');
+    }
+    await log(`MongoDB tracking enabled for owner=${userId}`);
+
+    let connections;
+    if (usingPosts) {
+      const posts = await collectPosts(page, {
+        keywords: filters.keywords,
+        datePosted: filters.datePosted,
+        maxPosts: filters.maxResults,
+        shouldStop: () => job.stopRequested,
+        log,
+        debugDir: paths.outDir,
+      });
+      connections = [];
+      let checked = 0;
+      let knownAuthors = 0;
+      for (const post of posts) {
+        if (job.stopRequested) break;
+        if (existingMap[post.slug]?.scrapedAt && !filters.rescrape) {
+          knownAuthors += 1;
+          continue;
+        }
+        checked += 1;
+        let intent;
+        try {
+          intent = await assessPostIntent(post);
+        } catch (err) {
+          await log(`Post check failed for ${post.authorName || post.slug}: ${err.message}`);
+          continue;
+        }
+        const outOfScope =
+          allowedProducts.length > 0 &&
+          intent.productIds.length > 0 &&
+          !intent.productIds.some((id) => allowedProducts.includes(id));
+        if (!intent.intent || outOfScope) {
+          await log(
+            `Post SKIP ${post.authorName || post.slug} score=${intent.score} — ${intent.reason.slice(0, 120)}`
+          );
+          continue;
+        }
+        await log(
+          `Post MATCH ${post.authorName || post.slug} score=${intent.score} → ${intent.productIds.join('+') || 'any'} — "${intent.signal.slice(0, 100)}"`
+        );
+        connections.push({
+          profileUrl: post.profileUrl,
+          listName: post.authorName,
+          subtitle: '',
+          headline: post.authorHeadline,
+          post: {
+            url: post.url,
+            text: post.text,
+            postedAgo: post.postedAgo,
+            keywords: filters.keywords,
+            intentScore: intent.score,
+            intentSignal: intent.signal,
+            intentReason: intent.reason,
+            productIds: intent.productIds,
+            foundAt: new Date().toISOString(),
+          },
+        });
+      }
+      await log(
+        `Post check: ${connections.length} of ${checked} new post author(s) show a need${knownAuthors ? ` | ${knownAuthors} author(s) skipped: already scraped (tick "Read profiles again that were already scraped" to include them)` : ''}`
+      );
+    } else if (usingImport) {
+      connections = importedConns;
+      await log(`File import targets: ${connections.length} unique profile URL(s)`);
+    } else if (directProfileUrl) {
+      const slug = slugFromProfileUrl(directProfileUrl);
+      connections = [
+        {
+          profileUrl: directProfileUrl,
+          listName: nameFromSlug(slug),
+          subtitle: '',
+          headline: '',
+        },
+      ];
+      await log(`Single profile target: ${slug}`);
+    } else {
+      connections = await collectConnectionLinks(page, filters);
+      await log(`Found ${connections.length} matching profiles`);
+    }
+
+    // Fast resume: drop already-scraped before visiting pages (no delay)
+    let skippedKnown = 0;
+    if (!directProfileUrl && !filters.rescrape) {
+      const pending = [];
+      for (const conn of connections) {
+        const slug = slugFromProfileUrl(conn.profileUrl);
+        if (existingMap[slug]?.scrapedAt) {
+          skippedKnown += 1;
+          continue;
+        }
+        pending.push(conn);
+      }
+      await log(
+        `Fast resume: skipped ${skippedKnown} already scraped · ${pending.length} new left to process`
+      );
+      connections = pending;
+    }
+
+    const applyWindow = usingImport || !directProfileUrl;
+    const offset = applyWindow ? startIndex : 0;
+    const sliced =
+      applyWindow && maxConnections > 0
+        ? connections.slice(offset, offset + maxConnections)
+        : connections.slice(offset);
+
+    job.total = sliced.length;
+    job.skippedKnown = skippedKnown;
+    await db.jobs.updateScrapeJob(jobId, {
+      total: job.total,
+      filters: job.filters,
+    });
+    await log(`This run will process ${sliced.length} profile(s)`);
+
+    let sendBudget = await getSendBudget(userId);
+    await log(
+      `Daily send budget: ${sendBudget.sent}/${sendBudget.limit} used · ${sendBudget.remaining} left (${sendBudget.date})`
+    );
+    if (autoSend && sendBudget.remaining <= 0) {
+      await log('Daily send limit already reached — stopping. Try again tomorrow for the next profiles.');
+      job.status = 'completed';
+      job.finishedAt = new Date().toISOString();
+      await db.jobs.updateScrapeJob(jobId, {
+        status: 'completed',
+        finishedAt: job.finishedAt,
+        processed: 0,
+        resultCount: 0,
+      });
+      return job;
+    }
+
+    for (let i = 0; i < sliced.length; i += 1) {
+      if (job.stopRequested) break;
+      const conn = sliced[i];
+      const slug = slugFromProfileUrl(conn.profileUrl);
+      const existingProfile = existingMap[slug] || {};
+
+      job.current = conn.listName || slug;
+      job.processed = i;
+      await db.jobs.updateScrapeJob(jobId, {
+        current: job.current,
+        processed: job.processed,
+      });
+
+      await log(`[${i + 1}/${sliced.length}] ${conn.listName || slug}`);
+      let profile;
+      try {
+        profile = await scrapeProfile(page, conn.profileUrl);
+        if (!profile.name && conn.listName) profile.name = conn.listName;
+        if (conn.headline && !profile.headline) profile.headline = conn.headline;
+        if (conn.subtitle && !profile.company) profile.company = conn.subtitle;
+      } catch (err) {
+        profile = {
+          profileUrl: conn.profileUrl,
+          name: conn.listName || '',
+          headline: conn.headline || conn.subtitle || '',
+          company: conn.subtitle || '',
+          location: '',
+          about: '',
+          scrapedAt: new Date().toISOString(),
+          scrapeError: err.message,
+        };
+        job.errors.push({ profile: conn.profileUrl, error: err.message });
+      }
+
+      const record = {
+        ...existingProfile,
+        ...profile,
+        ...(conn.post ? { sourcePost: conn.post } : {}),
+        listIndex: offset + i,
+        connectionType: filters.connectionType,
+        searchKeywords: filters.keywords || '',
+      };
+
+      // Always keep a display name — list card / page / slug fallback
+      record.name = cleanPersonName(record.name) || cleanPersonName(conn.listName) || nameFromSlug(slug);
+      if (!record.headline) {
+        record.headline = conn.headline || conn.subtitle || '';
+      }
+      if (!record.company && conn.subtitle) {
+        record.company = conn.subtitle;
+      }
+
+      if (useAi && !record.scrapeError) {
+        try {
+          await log(`[${i + 1}] scraped → name="${record.name}" | headline="${String(record.headline || '').slice(0, 100)}"`);
+          await log(
+            `[${i + 1}] fields → about=${(record.about || '').length}ch exp=${(record.experience || '').length}ch title="${record.jobTitle || ''}"`
+          );
+          await log(`[${i + 1}] RAG + AI matching…`);
+          const outreach = await generateOutreachMessage(record, {
+            allowedProducts,
+            productContext,
+            productFraming,
+          });
+          if (messageTemplate && outreach.relevant) {
+            outreach.message = renderTemplate(messageTemplate, record);
+          }
+          record.relevant = outreach.relevant;
+          record.relevanceScore = outreach.relevanceScore;
+          record.matchSignals = outreach.matchSignals || [];
+          record.recommendedProduct = outreach.productId;
+          record.productName = outreach.productName;
+          record.productUrl = outreach.productUrl;
+          record.aiMessage = outreach.message || '';
+          record.ragMeta = outreach.rag || null;
+          if (outreach.message) record.lastMessage = outreach.message.slice(0, 1200);
+          if (outreach.brands) record.aiReason = `[${outreach.brands}] ${outreach.reason || ''}`;
+          else record.aiReason = outreach.reason;
+
+          if (!outreach.relevant) {
+            record.queueStatus = 'skipped';
+            job.skipped = (job.skipped || 0) + 1;
+            await log(
+              `[${i + 1}] AI SKIP score=${outreach.relevanceScore || 0} — ${String(outreach.reason).slice(0, 120)}`
+            );
+          } else if (autoSend && outreach.message) {
+            sendBudget = await getSendBudget(userId);
+            if (sendBudget.remaining <= 0) {
+              record.queueStatus = 'queued';
+              await log(
+                `[${i + 1}] Daily limit reached — draft saved to queue. Stopping run so tomorrow picks the next new profiles.`
+              );
+              try {
+                const saved = await db.profiles.upsertProfile(userId, slug, record, jobId);
+                existingMap[slug] = saved;
+              } catch (err) {
+                job.errors.push({ slug, error: err.message });
+              }
+              job.processed = i + 1;
+              break;
+            }
+
+            record.queueStatus = 'sending';
+            await log(
+              `[${i + 1}] AI MATCH → ${outreach.productName} score=${outreach.relevanceScore} — sending now (${sendBudget.remaining} left today)…`
+            );
+            try {
+              const savedBeforeSend = await db.profiles.upsertProfile(userId, slug, record, jobId);
+              existingMap[slug] = savedBeforeSend;
+
+              const result = await sendMessageToProfile(page, record.profileUrl, outreach.message, {
+                forceSend: true,
+              });
+              if (result.ok && result.sent) {
+                await db.profiles.markMessageSent(userId, slug, { sentAt: result.sentAt });
+                await recordSuccessfulSend(userId);
+                record.messageSent = true;
+                record.messageSentAt = result.sentAt || new Date().toISOString();
+                record.queueStatus = 'sent';
+                job.sent = (job.sent || 0) + 1;
+                await log(`[${i + 1}] SENT → ${record.name || slug}`);
+                await maybeBatchPause(job.sent, log, () => job.stopRequested);
+              } else {
+                await db.profiles.markMessageSent(userId, slug, {
+                  error: result.error || 'send failed',
+                });
+                record.queueStatus = 'failed';
+                record.messageError = result.error || 'send failed';
+                job.sendFailed = (job.sendFailed || 0) + 1;
+                await log(`[${i + 1}] SEND FAILED → ${result.error || 'unknown'}`);
+              }
+            } catch (sendErr) {
+              await db.profiles.markMessageSent(userId, slug, { error: sendErr.message }).catch(() => {});
+              record.queueStatus = 'failed';
+              record.messageError = sendErr.message;
+              job.sendFailed = (job.sendFailed || 0) + 1;
+              await log(`[${i + 1}] SEND ERROR → ${sendErr.message}`);
+            }
+          } else {
+            record.queueStatus = 'queued';
+            job.queued = (job.queued || 0) + 1;
+            await log(
+              `[${i + 1}] AI QUEUE → ${outreach.productName} score=${outreach.relevanceScore} — ${String(outreach.reason).slice(0, 120)}`
+            );
+          }
+        } catch (err) {
+          record.aiError = err.message;
+          await log(`[${i + 1}] AI error: ${err.message}`);
+        }
+      } else if (messageTemplate && !record.scrapeError) {
+        record.aiMessage = renderTemplate(messageTemplate, record);
+        record.lastMessage = record.aiMessage.slice(0, 1200);
+        record.queueStatus = 'queued';
+        job.queued = (job.queued || 0) + 1;
+        await log(`[${i + 1}] TEMPLATE QUEUE → ${record.name || slug}`);
+      }
+
+      // Persist after AI (+ optional auto-send)
+
+      try {
+        const saved = await db.profiles.upsertProfile(userId, slug, record, jobId);
+        existingMap[slug] = saved;
+      } catch (err) {
+        job.errors.push({ slug, error: err.message });
+        await log(`[${i + 1}] Mongo save error: ${err.message}`);
+      }
+
+      job.processed = i + 1;
+      await db.jobs.updateScrapeJob(jobId, {
+        processed: job.processed,
+        errors: job.errors.slice(-50),
+      });
+      if (onProgress) onProgress(job);
+      if (!job.stopRequested) {
+        await (usingPosts ? sleepBetween(POST_SEARCH.profilePause) : sleep(ACTION_DELAY_MS));
+      }
+    }
+
+    const allProfiles = await db.profiles.listProfiles(userId, { limit: 5000 });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const xlsxPath = path.join(paths.outDir, `connections-${stamp}.xlsx`);
+    await writeConnectionsExcel(allProfiles, xlsxPath, {
+      scrapedAt: new Date().toISOString(),
+      searchFilters: JSON.stringify(filters),
+      processedThisRun: job.processed,
+      aiMessages: useAi,
+      sendMessages: autoSend,
+      storage: 'mongodb',
+      queueOnly: !autoSend,
+    });
+    try {
+      fs.copyFileSync(xlsxPath, paths.excel);
+    } catch {
+      /* ignore */
+    }
+
+    job.status = job.stopRequested ? 'stopped' : 'completed';
+    job.finishedAt = new Date().toISOString();
+    job.resultCount = allProfiles.length;
+    await db.jobs.updateScrapeJob(jobId, {
+      status: job.status,
+      finishedAt: job.finishedAt,
+      resultCount: job.resultCount,
+      processed: job.processed,
+    });
+    const sendSummary = autoSend
+      ? ` | sent ${job.sent || 0}, failed ${job.sendFailed || 0}, skipped ${job.skipped || 0}`
+      : '';
+    await log(
+      job.stopRequested
+        ? `Stopped — ${job.processed} profiles scraped and saved${sendSummary}`
+        : `Done — ${job.processed} profiles scraped${sendSummary}`
+    );
+    return job;
+  } catch (err) {
+    job.status = job.stopRequested ? 'stopped' : 'failed';
+    job.error = err.message;
+    job.finishedAt = new Date().toISOString();
+    await log(`${job.status === 'stopped' ? 'Stopped' : 'Failed'}: ${err.message}`);
+    await db.jobs.updateScrapeJob(jobId, {
+      status: job.status,
+      error: err.message,
+      finishedAt: job.finishedAt,
+    });
+    throw err;
+  } finally {
+    await browser.close();
+  }
+}
+
+async function runCompanySearch({ userId, jobId, job, filters, page, log, outDir }) {
+  const search = filters.companySearch;
+  const shouldStop = () => job.stopRequested;
+  const labels = (items) => items.map((item) => item.label);
+  await log(
+    `Mode: company search | keywords "${search.keywords || 'none'}" | industries: ${labels(search.industries).join(', ') || 'any'} | countries: ${labels(search.countries).join(', ') || 'any'} | up to ${search.maxCompanies}`
+  );
+  const known = filters.rescrape ? new Set() : await db.companies.knownCompanySlugs(userId);
+  const cards = await collectCompanies(page, {
+    keywords: search.keywords,
+    industries: search.industries,
+    countries: search.countries,
+    maxCompanies: search.maxCompanies,
+    known,
+    shouldStop,
+    log,
+    debugDir: outDir,
+  });
+  job.total = cards.length;
+  await db.jobs.updateScrapeJob(jobId, { total: job.total, filters: job.filters });
+  if (cards.length) await log(`Opening ${cards.length} company page(s), with a pause between each`);
+
+  const stored = {
+    keywords: search.keywords,
+    industries: labels(search.industries),
+    countries: labels(search.countries),
+  };
+  const { kept, outside } = await scrapeCompanies(page, cards, search, {
+    shouldStop,
+    log,
+    debugDir: outDir,
+    onCompany: async (record) => {
+      await db.companies.upsertCompany(userId, record, stored);
+      job.processed += 1;
+      job.current = record.name;
+    },
+  });
+
+  job.status = job.stopRequested ? 'stopped' : 'completed';
+  job.finishedAt = new Date().toISOString();
+  job.resultCount = kept;
+  await db.jobs.updateScrapeJob(jobId, {
+    status: job.status,
+    finishedAt: job.finishedAt,
+    resultCount: kept,
+    processed: job.processed,
+  });
+  await log(
+    `${job.stopRequested ? 'Stopped' : 'Done'} — ${kept} compan${kept === 1 ? 'y' : 'ies'} saved${outside ? `, ${outside} skipped (headquarters outside the chosen countries)` : ''}`
+  );
+  return job;
+}
+
+function runningUsers() {
+  return [...activeJobs].filter(([, job]) => job?.status === 'running').map(([userId]) => userId);
+}
+
+module.exports = { runningUsers, runScrapeJob, getJobStatus, requestScrapeStop };

@@ -8,9 +8,11 @@ import {
 	UseMiddlewares,
 } from "nestjs-trpc";
 import type { z } from "zod";
+import { EmailDraftService } from "../agent/email-draft.service";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { restMeta } from "../trpc/openapi";
+import { ContactEmailService } from "./contact-email.service";
 import {
 	bulkResultOutput,
 	contactBasicOutput,
@@ -19,11 +21,29 @@ import {
 	contactBulkOwnerInput,
 	contactByIdOutput,
 	contactCreateInput,
+	contactDraftCampaignInput,
+	contactDraftCampaignOutput,
+	contactDraftEmailInput,
+	contactDraftEmailOutput,
 	contactEnrichOutput,
+	contactExportInput,
+	contactExportOutput,
 	contactIdInput,
+	contactImportInput,
+	contactImportLeadsInput,
+	contactImportLeadsOutput,
+	contactImportOutput,
+	contactImportTemplateOutput,
 	contactListInput,
 	contactListOutput,
+	contactLogUnifersSendInput,
+	contactLogUnifersSendOutput,
+	contactMatchLeadsInput,
+	contactMatchLeadsOutput,
 	contactNameOutput,
+	contactUnifersRepliesInput,
+	contactUnifersRepliesOutput,
+	contactUnifersSendsOutput,
 	contactUpdateArgs,
 	decideFactOutput,
 	factDecisionInput,
@@ -35,6 +55,8 @@ import { ContactsService } from "./contacts.service";
 export class ContactsRouter {
 	constructor(
 		@Inject(ContactsService) private readonly contacts: ContactsService,
+		@Inject(EmailDraftService) private readonly drafts: EmailDraftService,
+		@Inject(ContactEmailService) private readonly emails: ContactEmailService,
 	) {}
 
 	@Query({
@@ -44,6 +66,53 @@ export class ContactsRouter {
 	})
 	async list(@Input() input: z.infer<typeof contactListInput>) {
 		return this.contacts.list(input);
+	}
+
+	@Query({
+		input: contactExportInput,
+		output: contactExportOutput,
+		meta: restMeta("POST", "/contacts/export", ["Contacts"]),
+	})
+	async exportCsv(@Input() input: z.infer<typeof contactExportInput>) {
+		return this.contacts.exportCsv(input);
+	}
+
+	@Query({
+		output: contactImportTemplateOutput,
+		meta: restMeta("GET", "/contacts/import-template", ["Contacts"]),
+	})
+	importTemplate() {
+		return this.contacts.importTemplate();
+	}
+
+	@Mutation({
+		input: contactImportInput,
+		output: contactImportOutput,
+		meta: restMeta("POST", "/contacts/import", ["Contacts"]),
+	})
+	async importCsv(@Input() input: z.infer<typeof contactImportInput>) {
+		return this.contacts.importCsv(input);
+	}
+
+	@Query({
+		input: contactMatchLeadsInput,
+		output: contactMatchLeadsOutput,
+		meta: restMeta("POST", "/contacts/match-leads", ["Contacts"]),
+	})
+	async matchLeads(@Input() input: z.infer<typeof contactMatchLeadsInput>) {
+		return this.contacts.matchLeads(input);
+	}
+
+	@Mutation({
+		input: contactImportLeadsInput,
+		output: contactImportLeadsOutput,
+		meta: restMeta("POST", "/contacts/import-leads", ["Contacts"]),
+	})
+	async importLeads(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof contactImportLeadsInput>,
+	) {
+		return this.contacts.importLeads(input, ctx.user.id);
 	}
 
 	@Query({
@@ -175,5 +244,67 @@ export class ContactsRouter {
 		@Input() input: z.infer<typeof factDecisionInput>,
 	) {
 		return this.contacts.decideFact(input, ctx.user.id);
+	}
+
+	@Mutation({
+		input: contactDraftEmailInput,
+		output: contactDraftEmailOutput,
+		meta: restMeta("POST", "/contacts/{id}/draft-email", ["Contacts"]),
+	})
+	async draftEmail(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof contactDraftEmailInput>,
+	) {
+		return this.drafts.draft({
+			contactId: input.id,
+			productId: input.productId,
+			category: input.category,
+			senderName: input.senderName ?? ctx.user.name?.trim() ?? null,
+			purpose: input.purpose || null,
+		});
+	}
+
+	@Mutation({
+		input: contactDraftCampaignInput,
+		output: contactDraftCampaignOutput,
+		meta: restMeta("POST", "/contacts/draft-campaign", ["Contacts"]),
+	})
+	async draftCampaign(
+		@Input() input: z.infer<typeof contactDraftCampaignInput>,
+	) {
+		return this.drafts.draftCampaign(input);
+	}
+
+	@Mutation({
+		input: contactLogUnifersSendInput,
+		output: contactLogUnifersSendOutput,
+		meta: restMeta("POST", "/contacts/{contactId}/unifers-sends", ["Contacts"]),
+	})
+	async logUnifersSend(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof contactLogUnifersSendInput>,
+	) {
+		return this.emails.logSend(input, ctx.user.id);
+	}
+
+	@Query({
+		input: contactIdInput,
+		output: contactUnifersSendsOutput,
+		meta: restMeta("GET", "/contacts/{id}/unifers-sends", ["Contacts"]),
+	})
+	async unifersSends(@Input("id") id: string) {
+		return this.emails.sends(id);
+	}
+
+	@Query({
+		input: contactUnifersRepliesInput,
+		output: contactUnifersRepliesOutput,
+		meta: restMeta("POST", "/contacts/unifers-replies", ["Contacts"]),
+	})
+	async unifersReplies(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof contactUnifersRepliesInput>,
+	) {
+		return this.emails.replies(input, ctx.user.id);
 	}
 }

@@ -1,0 +1,5 @@
+# Early-stage Indian game studios (websites verified 2026-10-13). Founding years where reported;
+# the scrape fills the rest from the company's CIN / website and drops anything not early-stage.
+company,domain,founded,signal,signal_url
+Felicity Games,felicitygames.com,2023,"Mobile game publishing; $3M seed led by 3one4 Capital",https://inc42.com/buzz/gaming-startup-felicity-bags-3-mn-to-scale-publishing-infra/
+Triple Tap Games,tripletapgames.com,,"Game studio; $1.2M pre-seed",https://startuptalky.com/indian-startups-funding-investors-data-2025/

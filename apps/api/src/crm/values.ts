@@ -1,8 +1,16 @@
 import type { Prisma } from "@crm/db";
 import { Prisma as PrismaNamespace } from "@crm/db";
 
-export function toCents(amount: Prisma.Decimal | null): number | null {
-	return amount === null ? null : amount.times(100).toNumber();
+export function toCents(
+	amount: Prisma.Decimal | number | string | null | undefined,
+): number | null {
+	if (amount === null || amount === undefined) return null;
+	if (typeof amount === "number") return Math.round(amount * 100);
+	if (typeof amount === "string") return Math.round(parseFloat(amount) * 100);
+	if (typeof (amount as any).times === "function") {
+		return (amount as Prisma.Decimal).times(100).toNumber();
+	}
+	return Math.round(Number(amount) * 100);
 }
 
 export function fromCents(cents: number | null | undefined): number | null {

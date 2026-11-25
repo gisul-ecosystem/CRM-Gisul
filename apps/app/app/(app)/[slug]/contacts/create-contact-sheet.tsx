@@ -1,6 +1,7 @@
 "use client";
 
 import Add from "@carbon/icons-react/es/Add";
+import { LeadStatus } from "@crm/db/enums";
 import { Button } from "@crm/ui/components/button";
 import { Field, FieldGroup, FieldLabel } from "@crm/ui/components/field";
 import { Icon } from "@crm/ui/components/icon";
@@ -29,30 +30,57 @@ import { type ComponentProps, Suspense, useId, useState } from "react";
 import { toast } from "sonner";
 import { CompanyPicker } from "@/components/crm/company-picker";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
+import {
+	LEAD_SOURCE_OPTIONS,
+	LEAD_STATUS_OPTIONS,
+} from "@/lib/lead-fields";
 import { SEARCH_PARAM } from "@/lib/search-param-keys";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 
 const NONE = "none";
 
-function AddButton(props: ComponentProps<typeof Button>) {
+function AddButton({
+	label = "New contact",
+	...props
+}: ComponentProps<typeof Button> & { label?: string }) {
 	return (
 		<Button {...props}>
 			<Icon icon={Add} data-icon="inline-start" />
-			New contact
+			{label}
 		</Button>
 	);
 }
 
-export function CreateContactSheet({ companyId }: { companyId?: string }) {
+export function CreateContactSheet({
+	companyId,
+	triggerLabel = "New contact",
+	triggerClassName,
+}: {
+	companyId?: string;
+	triggerLabel?: string;
+	triggerClassName?: string;
+}) {
 	return (
-		<Suspense fallback={<AddButton disabled />}>
-			<CreateContactForm companyId={companyId} />
+		<Suspense fallback={<AddButton label={triggerLabel} disabled />}>
+			<CreateContactForm
+				companyId={companyId}
+				triggerLabel={triggerLabel}
+				triggerClassName={triggerClassName}
+			/>
 		</Suspense>
 	);
 }
 
-function CreateContactForm({ companyId }: { companyId?: string }) {
+function CreateContactForm({
+	companyId,
+	triggerLabel,
+	triggerClassName,
+}: {
+	companyId?: string;
+	triggerLabel: string;
+	triggerClassName?: string;
+}) {
 	const openRecord = useOpenRecord();
 	const trpc = useTRPC();
 	const cache = useCrmCache();
@@ -67,13 +95,28 @@ function CreateContactForm({ companyId }: { companyId?: string }) {
 	const [title, setTitle] = useState("");
 	const [company, setCompany] = useState(companyId ?? NONE);
 	const [ownerId, setOwnerId] = useState(NONE);
+	const [productId, setProductId] = useState(NONE);
+	const [leadStatus, setLeadStatus] = useState<LeadStatus>(LeadStatus.NEW);
+	const [leadSource, setLeadSource] = useState(NONE);
+	const [nextFollowUpAt, setNextFollowUpAt] = useState("");
 
 	const firstNameId = useId();
 	const lastNameId = useId();
 	const emailId = useId();
 	const titleId = useId();
+	const followUpId = useId();
 
 	const users = useQuery(trpc.users.list.queryOptions());
+	const products = useQuery(trpc.products.options.queryOptions());
+	const showProduct = products.data?.showInLeadCreation ?? true;
+	const productOptions = products.data?.options ?? [];
+	const defaultProduct = products.data?.defaultProductId;
+	const resolvedProduct =
+		productId !== NONE
+			? productId
+			: defaultProduct && showProduct
+				? defaultProduct
+				: NONE;
 
 	const create = useMutation(
 		trpc.contacts.create.mutationOptions({
@@ -87,6 +130,10 @@ function CreateContactForm({ companyId }: { companyId?: string }) {
 				setLastName("");
 				setEmail("");
 				setTitle("");
+				setLeadStatus(LeadStatus.NEW);
+				setLeadSource(NONE);
+				setNextFollowUpAt("");
+				setProductId(NONE);
 				openRecord({ kind: "contact", id: contact.id });
 			},
 			onError: (error) => toast.error(error.message),
@@ -96,11 +143,18 @@ function CreateContactForm({ companyId }: { companyId?: string }) {
 	return (
 		<Sheet open={open} onOpenChange={(next) => setOpen(next || null)}>
 			<SheetTrigger asChild>
-				<AddButton />
+				{triggerClassName ? (
+					<button type="button" className={triggerClassName}>
+						<Icon icon={Add} />
+						{triggerLabel}
+					</button>
+				) : (
+					<AddButton label={triggerLabel} />
+				)}
 			</SheetTrigger>
 			<SheetContent side="right">
 				<SheetHeader>
-					<SheetTitle>New contact</SheetTitle>
+					<SheetTitle>{triggerLabel}</SheetTitle>
 					<SheetDescription>
 						Email addresses are unique, so importing the same person twice
 						updates them rather than duplicating them.
@@ -119,6 +173,16 @@ function CreateContactForm({ companyId }: { companyId?: string }) {
 							title: title || undefined,
 							companyId: company === NONE ? null : company,
 							ownerId: ownerId === NONE ? null : ownerId,
+							productId:
+								showProduct && resolvedProduct !== NONE
+									? resolvedProduct
+									: null,
+							leadStatus,
+							leadSource:
+								leadSource === NONE
+									? null
+									: (leadSource as (typeof LEAD_SOURCE_OPTIONS)[number]["value"]),
+							nextFollowUpAt: nextFollowUpAt || null,
 						});
 					}}
 				>
@@ -191,6 +255,78 @@ function CreateContactForm({ companyId }: { companyId?: string }) {
 									))}
 								</SelectContent>
 							</Select>
+						</Field>
+
+						{showProduct ? (
+							<Field>
+								<FieldLabel htmlFor="create-contact-product">
+									Product
+								</FieldLabel>
+								<Select
+									value={resolvedProduct}
+									onValueChange={setProductId}
+								>
+									<SelectTrigger id="create-contact-product">
+										<SelectValue placeholder="Select product" />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value={NONE}>No product</SelectItem>
+										{productOptions.map((product) => (
+											<SelectItem key={product.id} value={product.id}>
+												{product.name}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</Field>
+						) : null}
+
+						<Field>
+							<FieldLabel htmlFor="create-contact-status">Status</FieldLabel>
+							<Select
+								value={leadStatus}
+								onValueChange={(value) =>
+									setLeadStatus(value as LeadStatus)
+								}
+							>
+								<SelectTrigger id="create-contact-status">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{LEAD_STATUS_OPTIONS.map((option) => (
+										<SelectItem key={option.value} value={option.value}>
+											{option.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</Field>
+
+						<Field>
+							<FieldLabel htmlFor="create-contact-source">Source</FieldLabel>
+							<Select value={leadSource} onValueChange={setLeadSource}>
+								<SelectTrigger id="create-contact-source">
+									<SelectValue placeholder="Select source" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value={NONE}>No source</SelectItem>
+									{LEAD_SOURCE_OPTIONS.map((option) => (
+										<SelectItem key={option.value} value={option.value}>
+											{option.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</Field>
+
+						<Field>
+							<FieldLabel htmlFor={followUpId}>Next follow-up</FieldLabel>
+							<Input
+								id={followUpId}
+								type="date"
+								value={nextFollowUpAt}
+								onChange={(event) => setNextFollowUpAt(event.target.value)}
+							/>
 						</Field>
 					</FieldGroup>
 				</form>

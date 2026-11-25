@@ -1,290 +1,402 @@
 "use client";
 
-import Archive from "@carbon/icons-react/es/Archive";
-import { Button } from "@crm/ui/components/button";
+import Column from "@carbon/icons-react/es/Column";
+import Filter from "@carbon/icons-react/es/Filter";
+import OverflowMenuHorizontal from "@carbon/icons-react/es/OverflowMenuHorizontal";
+import Search from "@carbon/icons-react/es/Search";
+import { Checkbox } from "@crm/ui/components/checkbox";
 import {
-	DataTable,
-	type DataTableColumn,
-	type DataTableFacet,
-} from "@crm/ui/components/data-table";
-import { EmptyCellValue } from "@crm/ui/components/empty-cell";
+	DropdownMenu,
+	DropdownMenuCheckboxItem,
+	DropdownMenuContent,
+	DropdownMenuLabel,
+	DropdownMenuTrigger,
+} from "@crm/ui/components/dropdown-menu";
 import {
 	EntityLogo,
 	type EntityLogoTone,
 } from "@crm/ui/components/entity-logo";
+import { Icon } from "@crm/ui/components/icon";
+import { TablePagination } from "@crm/ui/components/table-pagination";
+import { useSearchInput } from "@crm/ui/hooks/use-search-input";
 import { useTableSelection } from "@crm/ui/hooks/use-table-selection";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
-import { EnrichmentIndicator } from "@/components/crm/enrichment-status";
-import { useFieldColumns } from "@/components/crm/fields/field-columns";
-import { useFieldFacets } from "@/components/crm/fields/field-facets";
-import { OwnerCell } from "@/components/crm/owner-cell";
+import { useQueryStates } from "nuqs";
+import { useMemo, useState } from "react";
+import { contactName } from "@/components/crm/contact-name";
+import { ProductMark } from "@/components/crm/product-mark";
 import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
-import { ListSearch } from "@/components/data-table/list-search";
-import { SavedViewsMenu } from "@/components/data-table/saved-views-menu";
+import { searchParsers } from "@/components/data-table/list-search-params";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { LocalRelativeTime } from "@/components/local-date-time";
-import { ACTIVITY_FACET_OPTIONS } from "@/lib/activity-recency";
-import {
-	ENRICHMENT_FACET_OPTIONS,
-	ENRICHMENT_POLL_MS,
-	isEnriching,
-} from "@/lib/enrichment-status";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { CompaniesBulkActions } from "./companies-bulk-actions";
+import { CompaniesFilters } from "./companies-filters";
 import { companiesSearchParams } from "./companies-search-params";
+import styles from "./customers-design.module.css";
+import { useColumnVisibility } from "./use-column-visibility";
 
 type CompanyRow = RouterOutputs["companies"]["list"]["rows"][number];
+type Scope = "all" | "mine";
+type ColumnId =
+	| "product"
+	| "primaryContact"
+	| "owner"
+	| "openDeals"
+	| "lastActivity";
 
-const COLUMNS: DataTableColumn<CompanyRow>[] = [
-	{
-		id: "name",
-		header: "Company",
-		sortable: true,
-		hideable: false,
-		width: "w-[26%]",
-		cell: (row) => (
-			<span className="flex min-w-0 items-center gap-2.5">
-				<EntityLogo
-					src={row.iconUrl ?? row.logoUrl}
-					darkSrc={row.iconDarkUrl}
-					tone={row.iconTone as EntityLogoTone | null | undefined}
-					name={row.name}
-					size="sm"
-				/>
-				<span className="truncate font-medium">{row.name}</span>
-			</span>
-		),
-	},
-	{
-		id: "domain",
-		header: "Domain",
-		sortable: true,
-		width: "w-[16%]",
-		hideBelow: "md",
-		cell: (row) =>
-			row.domain ? (
-				<span className="truncate text-muted-foreground">{row.domain}</span>
-			) : (
-				<EmptyCellValue />
-			),
-	},
-	{
-		id: "industry",
-		header: "Industry",
-		sortable: true,
-		width: "w-[16%]",
-		hideBelow: "lg",
-		cell: (row) =>
-			row.industry ? (
-				<span className="truncate">{row.industry}</span>
-			) : (
-				<EmptyCellValue />
-			),
-	},
-	{
-		id: "owner",
-		header: "Owner",
-		sortable: true,
-		width: "w-[16%]",
-		hideBelow: "md",
-		cell: (row) => <OwnerCell owner={row.owner} />,
-	},
-	{
-		id: "contacts",
-		header: "Contacts",
-		sortable: true,
-		align: "right",
-		width: "w-[9%]",
-		hideBelow: "lg",
-		cell: (row) => <span className="tabular-nums">{row.contactCount}</span>,
-	},
-	{
-		id: "deals",
-		header: "Open deals",
-		sortable: true,
-		align: "right",
-		width: "w-[9%]",
-		cell: (row) => <span className="tabular-nums">{row.openDealCount}</span>,
-	},
-	{
-		id: "createdAt",
-		header: "Created",
-		label: "Created date",
-		sortable: true,
-		align: "right",
-		width: "w-[10%]",
-		defaultHidden: true,
-		cell: (row) => (
-			<span className="text-muted-foreground">
-				<LocalRelativeTime date={row.createdAt} />
-			</span>
-		),
-	},
-	{
-		id: "lastActivity",
-		header: "Last activity",
-		sortable: true,
-		align: "right",
-		width: "w-[12%]",
-		hideBelow: "sm",
-		cell: (row) => (
-			<span className="text-muted-foreground">
-				{row.lastActivityAt ? (
-					<LocalRelativeTime date={row.lastActivityAt} />
-				) : (
-					<EmptyCellValue />
-				)}
-			</span>
-		),
-	},
-	{
-		id: "enrichment",
-		header: "Enrichment",
-		label: "Enrichment status",
-		defaultHidden: true,
-		width: "w-[14%]",
-		cell: (row) => (
-			<EnrichmentIndicator status={row.enrichmentStatus} queued={row.queued} />
-		),
-	},
-];
-
-const ARCHIVED_COLUMN: DataTableColumn<CompanyRow> = {
-	id: "archivedAt",
-	header: "Archived",
-	label: "Archived date",
-	sortable: true,
-	align: "right",
-	width: "w-[12%]",
-	cell: (row) => (
-		<span className="text-muted-foreground">
-			{row.archivedAt ? (
-				<LocalRelativeTime date={row.archivedAt} />
-			) : (
-				<EmptyCellValue />
-			)}
-		</span>
-	),
+const COLUMN_LABELS: Record<ColumnId, string> = {
+	product: "Product",
+	primaryContact: "Primary Contact",
+	owner: "Owner",
+	openDeals: "Open Deals",
+	lastActivity: "Last Activity",
 };
 
 export function CompaniesTable() {
 	const openRecord = useOpenRecord();
-	const trpc = useTRPC();
 	const prefetchRecord = usePrefetchRecord();
+	const trpc = useTRPC();
 	const table = useTableQuery(companiesSearchParams);
 	const { query, input, setArchived } = table;
+	const [{ q }, setSearch] = useQueryStates(searchParsers);
+	const [searchValue, setSearchValue] = useSearchInput(q, (next) =>
+		setSearch({ q: next, page: 1 }),
+	);
+	const [scope, setScope] = useState<Scope>("all");
+	const me = useQuery(trpc.users.me.queryOptions());
+	const columns = useColumnVisibility<ColumnId>("crm.companies.columns.v1", {
+		product: true,
+		primaryContact: true,
+		owner: true,
+		openDeals: true,
+		lastActivity: true,
+	});
+
+	const listInput =
+		scope === "mine" && me.data?.id ? { ...input, owner: [me.data.id] } : input;
 
 	const companies = useQuery({
-		...trpc.companies.list.queryOptions(input),
+		...trpc.companies.list.queryOptions(listInput),
 		placeholderData: (previous) => previous,
-		refetchInterval: (query) =>
-			query.state.data?.rows.some((row) =>
-				isEnriching(row.enrichmentStatus, row.queued),
-			)
-				? ENRICHMENT_POLL_MS
-				: false,
 	});
-	const users = useQuery(trpc.users.list.queryOptions());
 
 	const rows = companies.data?.rows ?? [];
+	const total = companies.data?.total ?? 0;
 	const selection = useTableSelection(
 		useMemo(() => rows.map((row) => row.id), [rows]),
 	);
+	const settledIds = useMemo(() => {
+		const matching = new Set(
+			rows
+				.filter((row) => Boolean(row.archivedAt) === input.archived)
+				.map((row) => row.id),
+		);
+		return selection.ids.filter((id) => matching.has(id));
+	}, [rows, input.archived, selection.ids]);
 
-	const facetCounts = companies.data?.facetCounts;
-	const fieldFacets = useFieldFacets("COMPANY", facetCounts);
-
-	const facets: DataTableFacet[] = [
-		{
-			id: "owner",
-			label: "Owner",
-			options: [
-				{ value: "unassigned", label: "Unassigned" },
-				...(users.data ?? []).map((user) => ({
-					value: user.id,
-					label: user.name,
-				})),
-			].filter((option) => (facetCounts?.owner?.[option.value] ?? 0) > 0),
-		},
-		{
-			id: "industry",
-			label: "Industry",
-			options: Object.keys(facetCounts?.industry ?? {})
-				.sort()
-				.map((value) => ({ value, label: value })),
-		},
-		{
-			id: "enrichment",
-			label: "Enrichment",
-			options: ENRICHMENT_FACET_OPTIONS.filter(
-				(option) => (facetCounts?.enrichment?.[option.value] ?? 0) > 0,
-			),
-		},
-		{
-			id: "activity",
-			label: "Activity",
-			options: ACTIVITY_FACET_OPTIONS.filter(
-				(option) => (facetCounts?.activity?.[option.value] ?? 0) > 0,
-			),
-		},
-		...fieldFacets,
-	];
-
-	const fieldColumns = useFieldColumns<CompanyRow>("COMPANY");
-	const columns = useMemo(
-		() =>
-			input.archived
-				? [...COLUMNS, ARCHIVED_COLUMN, ...fieldColumns]
-				: [...COLUMNS, ...fieldColumns],
-		[fieldColumns, input.archived],
-	);
+	const pageSize = query.pageSize;
+	const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
 	return (
-		<DataTable
-			query={query}
-			search={<ListSearch placeholder="Search companies by name or domain…" />}
-			actions={
-				<>
-					<SavedViewsMenu entity="COMPANY" table={table} />
-					<Button
-						variant={input.archived ? "contrast" : "outline"}
-						size="sm"
-						className="justify-start sm:justify-center"
-						onClick={() => setArchived(!input.archived)}
-					>
-						<Archive data-icon="inline-start" />
-						Archived
-					</Button>
-				</>
-			}
-			columns={columns}
-			rows={rows}
-			total={companies.data?.total ?? 0}
-			facetCounts={facetCounts}
-			facets={facets}
-			selection={{
-				state: selection,
-				actions: (
-					<CompaniesBulkActions
-						ids={selection.ids}
-						onDone={selection.clear}
-						archived={input.archived}
+		<div className={styles.wrap}>
+			<div className={styles.toolbar}>
+				<label className={styles.search}>
+					<Icon icon={Search} />
+					<input
+						value={searchValue}
+						onChange={(event) => setSearchValue(event.target.value)}
+						placeholder="Search companies…"
+						autoComplete="off"
 					/>
-				),
-				rowLabel: (row) => row.name,
-			}}
-			getRowId={(row) => row.id}
-			loading={companies.isFetching}
-			onRowHover={(row) => prefetchRecord({ kind: "company", id: row.id })}
-			onRowClick={(row) => openRecord({ kind: "company", id: row.id })}
-			empty={
-				input.archived
-					? "No archived companies."
-					: "No companies match this view."
-			}
-		/>
+				</label>
+				<div className={styles.scope}>
+					<button
+						type="button"
+						className={`${styles.scopeBtn} ${scope === "all" ? styles.scopeOn : ""}`}
+						onClick={() => setScope("all")}
+					>
+						All companies
+					</button>
+					<button
+						type="button"
+						className={`${styles.scopeBtn} ${scope === "mine" ? styles.scopeOn : ""}`}
+						onClick={() => setScope("mine")}
+					>
+						My companies
+					</button>
+				</div>
+				<div className={styles.filters}>
+					<CompaniesFilters
+						selected={{
+							product: input.product ?? [],
+							owner: scope === "mine" ? [] : (input.owner ?? []),
+						}}
+						onChange={(id, next) => {
+							if (id === "owner" && scope === "mine") setScope("all");
+							query.setFilter(id, next);
+						}}
+					/>
+					<button
+						type="button"
+						className={styles.filterChip}
+						onClick={() => {
+							const next = !input.archived;
+							selection.clear();
+							if (!next && query.sort === "archivedAt") query.setSort("");
+							setArchived(next);
+						}}
+					>
+						<Icon icon={Filter} />
+						{input.archived ? "Active" : "Archived"}
+					</button>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<button type="button" className={styles.filterChip}>
+								<Icon icon={Column} />
+								Columns
+							</button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" className="min-w-44">
+							<DropdownMenuLabel>Visible columns</DropdownMenuLabel>
+							{(Object.keys(COLUMN_LABELS) as ColumnId[]).map((id) => (
+								<DropdownMenuCheckboxItem
+									key={id}
+									checked={columns.visible[id]}
+									onCheckedChange={() => columns.toggle(id)}
+									onSelect={(event) => event.preventDefault()}
+								>
+									{COLUMN_LABELS[id]}
+								</DropdownMenuCheckboxItem>
+							))}
+						</DropdownMenuContent>
+					</DropdownMenu>
+				</div>
+			</div>
+
+			<section className={styles.card}>
+				{settledIds.length > 0 ? (
+					<div className={styles.bulkBar}>
+						<span>{settledIds.length} selected</span>
+						<CompaniesBulkActions
+							ids={settledIds}
+							onDone={selection.clear}
+							archived={input.archived}
+						/>
+					</div>
+				) : null}
+
+				{rows.length === 0 ? (
+					<div className={styles.empty}>
+						{input.archived
+							? "No archived companies."
+							: companies.isFetching
+								? "Loading companies…"
+								: "No companies match this view."}
+					</div>
+				) : (
+					<div className={styles.tableScroll}>
+						<table className={styles.table}>
+							<thead>
+								<tr>
+									<th>
+										<Checkbox
+											checked={selection.allSelected}
+											aria-label="Select every row on this page"
+											onCheckedChange={(checked) =>
+												selection.toggleAll(checked === true)
+											}
+										/>
+									</th>
+									<th>
+										<button
+											type="button"
+											onClick={() => query.toggleSort("name")}
+										>
+											Company
+										</button>
+									</th>
+									{columns.visible.product ? <th>Product</th> : null}
+									{columns.visible.primaryContact ? (
+										<th>Primary Contact</th>
+									) : null}
+									{columns.visible.owner ? (
+										<th>
+											<button
+												type="button"
+												onClick={() => query.toggleSort("owner")}
+											>
+												Owner
+											</button>
+										</th>
+									) : null}
+									{columns.visible.openDeals ? (
+										<th>
+											<button
+												type="button"
+												onClick={() => query.toggleSort("deals")}
+											>
+												Open Deals
+											</button>
+										</th>
+									) : null}
+									{columns.visible.lastActivity ? (
+										<th>
+											<button
+												type="button"
+												onClick={() => query.toggleSort("lastActivity")}
+											>
+												Last Activity
+											</button>
+										</th>
+									) : null}
+									<th>Actions</th>
+								</tr>
+							</thead>
+							<tbody>
+								{rows.map((row) => (
+									<tr
+										key={row.id}
+										onMouseEnter={() =>
+											prefetchRecord({ kind: "company", id: row.id })
+										}
+										onClick={() => openRecord({ kind: "company", id: row.id })}
+									>
+										<td onClick={(event) => event.stopPropagation()}>
+											<Checkbox
+												checked={selection.has(row.id)}
+												aria-label={`Select ${row.name}`}
+												onCheckedChange={(checked) =>
+													selection.toggle(row.id, checked === true)
+												}
+											/>
+										</td>
+										<td>
+											<div className={styles.entity}>
+												<EntityLogo
+													src={row.iconUrl ?? row.logoUrl}
+													darkSrc={row.iconDarkUrl}
+													tone={row.iconTone as EntityLogoTone | null}
+													name={row.name}
+													size="lg"
+												/>
+												<span className={styles.entityText}>
+													<b>{row.name}</b>
+													<small>{row.domain ?? "—"}</small>
+												</span>
+											</div>
+										</td>
+										{columns.visible.product ? (
+											<td>
+												{row.product ? (
+													<span className={styles.owner}>
+														<ProductMark
+															name={row.product.name}
+															color={row.product.color}
+															iconUrl={row.product.iconUrl}
+															className={`${styles.av} ${styles.avSm}`}
+														/>
+														{row.product.name}
+													</span>
+												) : (
+													<span className={styles.blank}>—</span>
+												)}
+											</td>
+										) : null}
+										{columns.visible.primaryContact ? (
+											<td>
+												{row.primaryContact ? (
+													<span className={styles.entityText}>
+														<b>{contactName(row.primaryContact)}</b>
+														<small>
+															{row.primaryContact.title ||
+																row.primaryContact.email ||
+																"—"}
+														</small>
+													</span>
+												) : (
+													<span className={styles.blank}>—</span>
+												)}
+											</td>
+										) : null}
+										{columns.visible.owner ? (
+											<td>
+												{row.owner ? (
+													<span className={styles.owner}>
+														{row.owner.image ? (
+															<img
+																src={row.owner.image}
+																alt=""
+																className={styles.ownerImg}
+															/>
+														) : (
+															<span className={`${styles.av} ${styles.avSm}`}>
+																{personInitials(row.owner.name)}
+															</span>
+														)}
+														{row.owner.name}
+													</span>
+												) : (
+													<span className={styles.blank}>—</span>
+												)}
+											</td>
+										) : null}
+										{columns.visible.openDeals ? (
+											<td>{row.openDealCount}</td>
+										) : null}
+										{columns.visible.lastActivity ? (
+											<td>
+												{row.lastActivityAt ? (
+													<LocalRelativeTime date={row.lastActivityAt} />
+												) : (
+													<span className={styles.blank}>—</span>
+												)}
+											</td>
+										) : null}
+										<td onClick={(event) => event.stopPropagation()}>
+											<button
+												type="button"
+												className={styles.more}
+												aria-label="More actions"
+												onClick={() =>
+													openRecord({ kind: "company", id: row.id })
+												}
+											>
+												<Icon icon={OverflowMenuHorizontal} />
+											</button>
+										</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				)}
+
+				<div className={styles.footer}>
+					<p className={styles.note}>
+						Product comes from the primary contact or an open deal.
+					</p>
+					<TablePagination
+						page={query.page}
+						totalPages={totalPages}
+						pageSize={pageSize}
+						total={total}
+						onPageChange={(page) => query.setPage(page)}
+						loading={companies.isFetching}
+					/>
+				</div>
+			</section>
+		</div>
 	);
+}
+
+function personInitials(name: string): string {
+	const parts = name.trim().split(/\s+/).filter(Boolean);
+	if (parts.length === 0) return "?";
+	if (parts.length === 1) return (parts[0] ?? "?").slice(0, 2).toUpperCase();
+	const first = parts[0]?.charAt(0) ?? "";
+	const last = parts[parts.length - 1]?.charAt(0) ?? "";
+	return `${first}${last}`.toUpperCase() || "?";
 }

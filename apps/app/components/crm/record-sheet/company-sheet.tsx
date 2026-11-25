@@ -31,6 +31,7 @@ import { FieldsCog, RecordFields } from "@/components/crm/fields/record-fields";
 import {
 	InlineField,
 	InlineSelectField,
+	InlineTextArea,
 	savingValue,
 } from "@/components/crm/inline-field";
 import { OwnerCell } from "@/components/crm/owner-cell";
@@ -44,7 +45,6 @@ import {
 	DetailSheetMain,
 	DetailSheetPending,
 	DetailSheetProperties,
-	DetailSheetProse,
 	DetailSheetRail,
 	DetailSheetSection,
 	DetailSheetSplit,
@@ -69,6 +69,7 @@ import {
 	MetaLine,
 	RecordSheetFrame,
 } from "./record-parts";
+import sheetStyles from "./record-sheet-design.module.css";
 import { useOpenRecord, useRecordSheetView } from "./record-stack";
 
 type Company = RouterOutputs["companies"]["byId"];
@@ -153,12 +154,14 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 
 	const location = company
 		? [company.city, company.stateCode, company.country]
-				.filter(Boolean)
-				.join(", ")
+			.filter(Boolean)
+			.join(", ")
 		: null;
 
 	const openDeals =
-		company?.deals.filter((deal) => OPEN_STAGES.includes(deal.stage)) ?? [];
+		company?.deals.filter((deal) =>
+			(OPEN_STAGES as readonly string[]).includes(deal.stage),
+		) ?? [];
 	const openValueCents = openDeals.reduce(
 		(total, deal) => total + (deal.baseAmountCents ?? 0),
 		0,
@@ -170,49 +173,49 @@ export function CompanySheet({ companyId }: { companyId: string }) {
 
 	const tabs: DetailSheetTab[] = company
 		? [
-				{
-					value: "overview",
-					label: "Overview",
-					content: <CompanyOverview company={company} />,
-				},
-				{
-					value: "contacts",
-					label: "Contacts",
-					count: company.contacts.length,
-					content: (
-						<CompanyContacts
-							company={company}
-							adding={adding === "contact"}
-							onAdd={() => setAdding("contact")}
-							onDone={() => setAdding(null)}
-						/>
-					),
-				},
-				{
-					value: "deals",
-					label: "Deals",
-					count: company.deals.length,
-					content: (
-						<CompanyDeals
-							company={company}
-							adding={adding === "deal"}
-							onAdd={() => setAdding("deal")}
-							onDone={() => setAdding(null)}
-						/>
-					),
-				},
-				{
-					value: "activity",
-					label: "Activity",
-					content: <Timeline anchor={{ companyId: company.id }} />,
-				},
-				{
-					value: "agent",
-					label: "Agent",
-					content: <AgentPanel record={{ kind: "company", id: company.id }} />,
-					keepMounted: true,
-				},
-			]
+			{
+				value: "overview",
+				label: "Overview",
+				content: <CompanyOverview company={company} />,
+			},
+			{
+				value: "contacts",
+				label: "Contacts",
+				count: company.contacts.length,
+				content: (
+					<CompanyContacts
+						company={company}
+						adding={adding === "contact"}
+						onAdd={() => setAdding("contact")}
+						onDone={() => setAdding(null)}
+					/>
+				),
+			},
+			{
+				value: "deals",
+				label: "Deals",
+				count: company.deals.length,
+				content: (
+					<CompanyDeals
+						company={company}
+						adding={adding === "deal"}
+						onAdd={() => setAdding("deal")}
+						onDone={() => setAdding(null)}
+					/>
+				),
+			},
+			{
+				value: "activity",
+				label: "Activity",
+				content: <Timeline anchor={{ companyId: company.id }} />,
+			},
+			{
+				value: "agent",
+				label: "Agent",
+				content: <AgentPanel record={{ kind: "company", id: company.id }} />,
+				keepMounted: true,
+			},
+		]
 		: [];
 
 	return (
@@ -323,11 +326,17 @@ function CompanyOverview({ company }: { company: Company }) {
 		<DetailSheetBody>
 			<DetailSheetSplit>
 				<DetailSheetMain>
-					{company.description ? (
-						<DetailSheetSection title="About">
-							<DetailSheetProse>{company.description}</DetailSheetProse>
-						</DetailSheetSection>
-					) : null}
+					<DetailSheetSection title="About">
+						<div className={sheetStyles.prose}>
+							<InlineTextArea
+								label="About"
+								value={company.description}
+								placeholder={`What ${company.name} does, who it sells to, and why it matters to us.`}
+								saving={isSaving("description")}
+								onSave={(description) => save({ description })}
+							/>
+						</div>
+					</DetailSheetSection>
 
 					<WebsiteActivity companyId={company.id} />
 				</DetailSheetMain>
@@ -375,10 +384,31 @@ function CompanyOverview({ company }: { company: Company }) {
 								onSave={(email) => save({ email })}
 							/>
 							<InlineField
+								label="Industry"
+								value={company.industry}
+								placeholder="Software"
+								saving={isSaving("industry")}
+								onSave={(industry) => save({ industry })}
+							/>
+							<InlineField
+								label="LinkedIn"
+								value={company.linkedinUrl}
+								type="url"
+								placeholder="https://linkedin.com/company/stripe"
+								saving={isSaving("linkedinUrl")}
+								onSave={(linkedinUrl) => save({ linkedinUrl })}
+							/>
+							<InlineField
 								label="City"
 								value={company.city}
 								saving={isSaving("city")}
 								onSave={(city) => save({ city })}
+							/>
+							<InlineField
+								label="State"
+								value={company.stateCode}
+								saving={isSaving("stateCode")}
+								onSave={(stateCode) => save({ stateCode })}
 							/>
 							<InlineField
 								label="Country"
@@ -494,23 +524,27 @@ function CompanyContacts({
 											variant="ghost"
 											size="icon-xs"
 											aria-pressed={isPrimary}
-											disabled={isPrimary || setPrimary.isPending}
+											disabled={setPrimary.isPending}
 											onClick={(event) => {
 												event.stopPropagation();
 												setPrimary.mutate({
 													companyId: company.id,
-													contactId: contact.id,
+													contactId: isPrimary ? null : contact.id,
 												});
 											}}
 										>
 											<Icon icon={isPrimary ? StarFilled : Star} />
 											<span className="sr-only">
-												{isPrimary ? "Primary contact" : "Make primary"}
+												{isPrimary
+													? "Remove as Primary Contact"
+													: "Make Primary Contact"}
 											</span>
 										</Button>
 									</TooltipTrigger>
 									<TooltipContent>
-										{isPrimary ? "Primary contact" : "Make primary"}
+										{isPrimary
+											? "Remove as Primary Contact"
+											: "Make Primary Contact"}
 									</TooltipContent>
 								</Tooltip>
 							</TableCell>

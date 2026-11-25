@@ -35,17 +35,13 @@ import {
 	SheetHeader,
 	SheetTitle,
 } from "@/components/responsive-sheet";
+import styles from "@/components/crm/record-sheet/record-sheet-design.module.css";
 
-const GUTTER = "px-5";
+export const SECTION_TITLE = styles.sectionTitle;
 
-export const SECTION_TITLE =
-	"font-medium text-muted-foreground text-xs uppercase tracking-wider";
+export const PROPERTY_ROW = styles.property;
 
-export const PROPERTY_ROW = "grid grid-cols-[6.5rem_minmax(0,1fr)] gap-2";
-
-export const PROPERTY_LABEL = "truncate text-muted-foreground text-xs";
-
-const PROPERTY_CELL = "border border-transparent py-1";
+export const PROPERTY_LABEL = styles.propertyLabel;
 
 export function DetailSheet({
 	open,
@@ -73,7 +69,7 @@ export function DetailSheet({
 					event.preventDefault();
 					content.current?.focus();
 				}}
-				className={cn("flex flex-col gap-0 p-0", className)}
+				className={cn("flex flex-col gap-0 p-0", styles.shell, className)}
 			>
 				{children}
 			</SheetContent>
@@ -99,8 +95,8 @@ export function DetailSheetHeader({
 	onClose: () => void;
 }) {
 	return (
-		<SheetHeader className={cn("gap-0 border-b py-3", GUTTER)}>
-			<div className="flex items-start gap-3">
+		<SheetHeader className={styles.header}>
+			<div className={styles.headerRow}>
 				{onBack ? (
 					<Tooltip>
 						<TooltipTrigger asChild>
@@ -115,26 +111,20 @@ export function DetailSheetHeader({
 
 				{media}
 
-				<div className="min-w-0 flex-1 space-y-0.5 pt-0.5">
-					<SheetTitle size="lg" className="wrap-anywhere">
-						{title}
-					</SheetTitle>
+				<div className={styles.headerText}>
+					<SheetTitle className={styles.title}>{title}</SheetTitle>
 					{description ? (
-						<SheetDescription className="wrap-anywhere">
+						<SheetDescription className={styles.description}>
 							{description}
 						</SheetDescription>
 					) : null}
-					{note ? (
-						<div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-xs">
-							{note}
-						</div>
-					) : null}
+					{note ? <div className={styles.note}>{note}</div> : null}
 				</div>
 
-				<div className="flex shrink-0 items-center gap-1">
+				<div className={styles.actions}>
 					{actions}
 					{actions ? (
-						<Separator orientation="vertical" className="mx-1 h-5" />
+						<Separator orientation="vertical" className="mx-0.5 h-5" />
 					) : null}
 					<Button variant="ghost" size="icon-sm" onClick={onClose}>
 						<Icon icon={Close} />
@@ -147,9 +137,7 @@ export function DetailSheetHeader({
 }
 
 export function DetailSheetStats({ children }: { children: ReactNode }) {
-	return (
-		<dl className="flex shrink-0 divide-x border-b bg-muted/40">{children}</dl>
-	);
+	return <dl className={styles.stats}>{children}</dl>;
 }
 
 export function DetailSheetStat({
@@ -160,11 +148,9 @@ export function DetailSheetStat({
 	children: ReactNode;
 }) {
 	return (
-		<div className={cn("flex min-w-0 flex-1 flex-col gap-1 py-2.5", GUTTER)}>
-			<dt className="truncate text-muted-foreground text-xs/5">{label}</dt>
-			<dd className="min-w-0 truncate font-medium text-foreground text-sm/5">
-				{children}
-			</dd>
+		<div className={styles.stat}>
+			<dt className={styles.statLabel}>{label}</dt>
+			<dd className={styles.statValue}>{children}</dd>
 		</div>
 	);
 }
@@ -195,17 +181,12 @@ export function DetailSheetTabs({
 			onValueChange={onValueChange}
 			className="flex min-h-0 flex-1 flex-col gap-0"
 		>
-			<TabsList
-				variant="line"
-				className={cn("w-full shrink-0 justify-start gap-6 border-b", GUTTER)}
-			>
+			<TabsList variant="line" className={styles.tabs}>
 				{tabs.map((tab) => (
-					<TabsTrigger key={tab.value} value={tab.value}>
+					<TabsTrigger key={tab.value} value={tab.value} className={styles.tab}>
 						{tab.label}
-						{tab.count ? (
-							<span className="text-muted-foreground tabular-nums">
-								{tab.count}
-							</span>
+						{tab.count != null && tab.count > 0 ? (
+							<span className={styles.tabCount}>{tab.count}</span>
 						) : null}
 					</TabsTrigger>
 				))}
@@ -247,16 +228,10 @@ export function DetailSheetSection({
 	children: ReactNode;
 }) {
 	return (
-		<section
-			className={cn(
-				"space-y-2 border-b py-3 last:border-b-0",
-				GUTTER,
-				className,
-			)}
-		>
+		<section className={cn(styles.section, className)}>
 			{title || action ? (
-				<div className="flex h-5 items-center justify-between gap-3">
-					{title ? <h3 className={SECTION_TITLE}>{title}</h3> : <span />}
+				<div className={styles.sectionHead}>
+					{title ? <h3 className={styles.sectionTitle}>{title}</h3> : <span />}
 					{action}
 				</div>
 			) : null}
@@ -293,7 +268,9 @@ export function DetailSheetProperties({
 	columns?: 1 | 2;
 }) {
 	return (
-		<div className={cn("grid gap-x-8", columns === 2 && "sm:grid-cols-2")}>
+		<div
+			className={cn(styles.properties, columns === 2 && styles.propertiesTwo)}
+		>
 			{children}
 		</div>
 	);
@@ -309,20 +286,20 @@ export function DetailSheetPending({
 	if (fields.length === 0) return null;
 
 	return (
-		<div className="flex flex-col gap-1.5 rounded-md bg-muted/40 p-3">
+		<div className="flex flex-col gap-1.5 rounded-md bg-[var(--brand-soft)] p-3">
 			<div className="flex items-center gap-2">
 				<span
 					aria-hidden
 					className={cn(
 						"size-1.5 shrink-0 rounded-full",
-						running ? "bg-primary" : "bg-muted-foreground",
+						running ? "bg-[var(--brand)]" : "bg-[var(--text-muted)]",
 					)}
 				/>
-				<span className="font-medium text-xs">
+				<span className="font-medium text-xs text-[var(--ink)]">
 					{running ? "Agent is researching" : "Not known yet"}
 				</span>
 			</div>
-			<p className="text-pretty text-muted-foreground text-xs/5">
+			<p className="text-pretty text-[color:var(--text-muted)] text-xs/5">
 				{fields.join(", ")}
 			</p>
 		</div>
@@ -339,21 +316,15 @@ export function DetailSheetProperty({
 	children: ReactNode;
 }) {
 	return (
-		<div className={cn(PROPERTY_ROW, "items-start", wide && "sm:col-span-2")}>
-			<span className={cn(PROPERTY_LABEL, PROPERTY_CELL, "text-xs/5")}>
-				{label}
-			</span>
-			<div className={cn(PROPERTY_CELL, "min-w-0 px-2 text-xs/5")}>
-				{children}
-			</div>
+		<div className={cn(styles.property, wide && styles.propertyWide)}>
+			<span className={styles.propertyLabel}>{label}</span>
+			<div className={styles.propertyValue}>{children}</div>
 		</div>
 	);
 }
 
 export function DetailSheetProse({ children }: { children: ReactNode }) {
-	return (
-		<p className="text-pretty text-muted-foreground text-xs/5">{children}</p>
-	);
+	return <p className={styles.prose}>{children}</p>;
 }
 
 export function DetailSheetEmpty({
@@ -368,7 +339,7 @@ export function DetailSheetEmpty({
 	action?: ReactNode;
 }) {
 	return (
-		<Empty className="flex-1">
+		<Empty className={styles.empty}>
 			<EmptyHeader>
 				<EmptyMedia variant="icon">
 					<Icon icon={icon} />

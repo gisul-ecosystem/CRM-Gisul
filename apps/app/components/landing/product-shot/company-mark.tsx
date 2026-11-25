@@ -24,6 +24,7 @@ export function CompanyMark({
 				style={{ width: size, height: size }}
 			>
 				<Logo
+					variant="mark"
 					className="shrink-0 text-background"
 					style={{ width: glyph, height: glyph }}
 				/>

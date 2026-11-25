@@ -1,20 +1,25 @@
+import { isWorkspaceAdmin, workspaceRoleOf } from "@crm/auth";
 import {
 	ActivityType,
 	type Db,
-	type DealStage,
+	DealStage,
 	type Prisma,
 	Prisma as PrismaNamespace,
 } from "@crm/db";
-import { normalizeCurrency } from "@crm/db/currency";
+import { isCurrencyCode, normalizeCurrency } from "@crm/db/currency";
 import {
 	CLOSED_DEAL_STAGES,
+	DEAL_STAGE_CATALOG,
+	dealStageDefinition,
 	isClosedStage,
 	LOSING_DEAL_STAGES,
 	OPEN_DEAL_STAGES,
 } from "@crm/db/deal-stage";
 import type { FieldDefinitionWithOptions } from "@crm/db/fields";
+import { SETTINGS_ID } from "@crm/db/settings";
 import {
 	BadRequestException,
+	ForbiddenException,
 	Injectable,
 	Logger,
 	NotFoundException,
@@ -30,6 +35,7 @@ import {
 	blankToNull,
 	decimalFromCents,
 	fromCents,
+	normalizeEmail,
 	toCents,
 } from "../crm/values";
 import { ConversionService } from "../currency/conversion.service";
@@ -44,6 +50,7 @@ import {
 	ownerFilter,
 	paginate,
 	resolveOrderBy,
+	splitSentinel,
 } from "../trpc/list-input";
 import type {
 	ClosingWindow,
@@ -53,11 +60,49 @@ import type {
 	DealContactRoleInput,
 	DealCreateInput,
 	DealDetachContactInput,
+	DealExportInput,
+	DealImportInput,
 	DealListInput,
+	DealPipelineByProductOutput,
+	DealStageCatalogOutput,
+	DealTrendOutput,
 	DealUpdateInput,
+	PipelineOverviewOutput,
+	PipelineSettingsOutput,
+	PipelineStageItemOutput,
 	SetStageInput,
+	UpdatePipelineSettingsInput,
+	UpdatePipelineStageInput,
 } from "./deals.contracts";
 import { CLOSING_WINDOWS } from "./deals.contracts";
+import { DEALS } from "./deals-config";
+import {
+	dealCsvTemplate,
+	formatAmount,
+	formatDealStage,
+	parseAmountCents,
+	parseDealCsv,
+	parseDealStage,
+	serializeDealCsv,
+} from "./deals-csv";
+import { DEAL_IO } from "./deals-io-config";
+
+const NO_PRODUCT_COLOR = "#9aa0b4";
+
+const MONTH_LABEL = new Intl.DateTimeFormat("en-US", { month: "short" });
+
+function monthStart(from: Date, offset: number): Date {
+	return new Date(from.getFullYear(), from.getMonth() + offset, 1);
+}
+
+function yearMonthKey(date: Date): string {
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	return `${date.getFullYear()}-${month}`;
+}
+
+function monthIndex(date: Date): number {
+	return date.getFullYear() * 12 + date.getMonth();
+}
 
 const OWNER_SELECT = {
 	id: true,
@@ -87,6 +132,15 @@ const CONTACT_SELECT = {
 
 const LOSING = new Set<DealStage>(LOSING_DEAL_STAGES);
 
+const PRODUCT_SELECT = {
+	id: true,
+	name: true,
+	color: true,
+	iconUrl: true,
+} as const;
+
+const NO_PRODUCT = "none";
+
 const SORTABLE: OrderByColumns<Prisma.DealOrderByWithRelationInput[]> = {
 	name: (dir) => [{ name: dir }],
 	company: (dir) => [{ company: { name: dir } }, { name: "asc" }],
@@ -95,6 +149,7 @@ const SORTABLE: OrderByColumns<Prisma.DealOrderByWithRelationInput[]> = {
 	expectedCloseDate: (dir) => [{ expectedCloseDate: dir }],
 	createdAt: (dir) => [{ createdAt: dir }],
 	owner: (dir) => [{ owner: { name: dir } }, { name: "asc" }],
+	product: (dir) => [{ product: { name: dir } }, { name: "asc" }],
 	lastActivity: (dir) => [{ lastActivityAt: { sort: dir, nulls: "last" } }],
 	archivedAt: (dir) => [{ archivedAt: { sort: dir, nulls: "last" } }],
 };
@@ -110,6 +165,306 @@ export class DealsService {
 		private readonly conversion: ConversionService,
 		private readonly fields: FieldsService,
 	) {}
+
+	async pipelineOverview(userId: string): Promise<PipelineOverviewOutput> {
+		const [currency, stages, settings, role] = await Promise.all([
+			this.conversion.reportingCurrency(),
+			this.pipelineStages(),
+			this.readPipelineSettings(),
+			workspaceRoleOf(userId, this.db),
+		]);
+
+		const activeStages = stages.filter(
+			(stage) => stage.kind === "open" && stage.status === "active",
+		).length;
+
+		return {
+			stages,
+			stats: {
+				totalStages: stages.length,
+				activeStages,
+				closedWon: stages.filter((stage) => stage.kind === "won").length,
+				closedLost: stages.filter((stage) => stage.kind === "lost").length,
+			},
+			currency,
+			settings,
+			canManage: isWorkspaceAdmin(role),
+		};
+	}
+
+	async updatePipelineSettings(
+		userId: string,
+		input: UpdatePipelineSettingsInput,
+	): Promise<PipelineSettingsOutput> {
+		await this.requirePipelineManager(userId);
+
+		const data = {
+			pipelineProbabilityTracking: input.enableProbabilityTracking,
+			pipelineRequireStageNotes: input.requireStageUpdateNotes,
+			pipelineAutoAssignDeals: input.autoAssignDeals,
+			pipelineDefaultStage: input.defaultStage,
+			pipelineApplyToAllProducts: input.applyToAllProducts,
+			pipelineAllowSkippingStages: input.allowSkippingStages,
+		};
+
+		await this.db.appSetting.upsert({
+			where: { id: SETTINGS_ID },
+			create: { id: SETTINGS_ID, ...data },
+			update: data,
+		});
+
+		this.logger.log({ message: "Pipeline settings updated", userId });
+
+		return this.readPipelineSettings();
+	}
+
+	async updatePipelineStage(
+		userId: string,
+		input: UpdatePipelineStageInput,
+	): Promise<PipelineStageItemOutput> {
+		await this.requirePipelineManager(userId);
+
+		const definition = dealStageDefinition(input.id);
+		const position =
+			DEAL_STAGE_CATALOG.findIndex((entry) => entry.stage === input.id) + 1;
+
+		await this.db.pipelineStage.upsert({
+			where: { stage: input.id },
+			create: {
+				stage: input.id,
+				name: input.name ?? definition.label,
+				probability: input.probability ?? 0,
+				color: input.color ?? NO_PRODUCT_COLOR,
+				position,
+				active: input.active ?? true,
+			},
+			update: {
+				name: input.name,
+				probability: input.probability,
+				color: input.color,
+				active: input.active,
+			},
+		});
+
+		this.logger.log({
+			message: "Pipeline stage updated",
+			userId,
+			stage: input.id,
+		});
+
+		const stages = await this.pipelineStages();
+		const updated = stages.find((stage) => stage.stage === input.id);
+
+		if (!updated) throw new NotFoundException("Stage not found");
+
+		return updated;
+	}
+
+	private async pipelineStages(): Promise<PipelineStageItemOutput[]> {
+		const [rows, totals] = await Promise.all([
+			this.db.pipelineStage.findMany(),
+			this.db.deal.groupBy({
+				by: ["stage"],
+				where: { archivedAt: null },
+				_count: { _all: true },
+				_sum: { baseAmount: true },
+			}),
+		]);
+
+		const stored = new Map(rows.map((row) => [row.stage, row]));
+		const byStage = new Map(totals.map((row) => [row.stage, row]));
+
+		return DEAL_STAGE_CATALOG.map((entry, index): PipelineStageItemOutput => {
+			const row = stored.get(entry.stage);
+			const total = byStage.get(entry.stage);
+			const active = row?.active ?? true;
+
+			return {
+				id: entry.stage,
+				stage: entry.stage,
+				name: row?.name ?? entry.label,
+				probability: row?.probability ?? 0,
+				color: row?.color ?? NO_PRODUCT_COLOR,
+				kind: entry.kind,
+				status:
+					entry.kind === "open" ? (active ? "active" : "inactive") : entry.kind,
+				position: row?.position ?? index + 1,
+				dealCount: total?._count._all ?? 0,
+				totalValueCents: toCents(total?._sum.baseAmount ?? null) ?? 0,
+			};
+		}).sort((a, b) => a.position - b.position);
+	}
+
+	private async readPipelineSettings(): Promise<PipelineSettingsOutput> {
+		const row = await this.db.appSetting.findUnique({
+			where: { id: SETTINGS_ID },
+			select: {
+				pipelineProbabilityTracking: true,
+				pipelineRequireStageNotes: true,
+				pipelineAutoAssignDeals: true,
+				pipelineDefaultStage: true,
+				pipelineApplyToAllProducts: true,
+				pipelineAllowSkippingStages: true,
+			},
+		});
+
+		return {
+			enableProbabilityTracking: row?.pipelineProbabilityTracking ?? true,
+			requireStageUpdateNotes: row?.pipelineRequireStageNotes ?? true,
+			autoAssignDeals: row?.pipelineAutoAssignDeals ?? false,
+			defaultStage: row?.pipelineDefaultStage ?? DealStage.DEMO_BOOKED,
+			applyToAllProducts: row?.pipelineApplyToAllProducts ?? true,
+			allowSkippingStages: row?.pipelineAllowSkippingStages ?? false,
+		};
+	}
+
+	private async requirePipelineManager(userId: string): Promise<void> {
+		const role = await workspaceRoleOf(userId, this.db);
+
+		if (!isWorkspaceAdmin(role)) {
+			throw new ForbiddenException(
+				"Only an owner or an admin can change the pipeline.",
+			);
+		}
+	}
+
+	stages(): DealStageCatalogOutput {
+		return {
+			stages: DEAL_STAGE_CATALOG.map((entry) => ({
+				stage: entry.stage,
+				label: entry.label,
+				kind: entry.kind,
+			})),
+		};
+	}
+
+	async trend(): Promise<DealTrendOutput> {
+		const now = new Date();
+		const months = DEALS.trend.months;
+		const start = monthStart(now, -(months - 1));
+		const firstIndex = monthIndex(start);
+
+		const points = Array.from({ length: months }, (_, offset) => {
+			const date = monthStart(start, offset);
+			return {
+				month: MONTH_LABEL.format(date),
+				yearMonth: yearMonthKey(date),
+				created: 0,
+				won: 0,
+			};
+		});
+
+		const deals = await this.db.deal.findMany({
+			where: {
+				archivedAt: null,
+				OR: [
+					{ createdAt: { gte: start } },
+					{
+						closedAt: { gte: start },
+						stage: DealStage.CLOSED_WON,
+					},
+				],
+			},
+			select: {
+				createdAt: true,
+				closedAt: true,
+				stage: true,
+			},
+		});
+
+		for (const deal of deals) {
+			const createdBucket = points[monthIndex(deal.createdAt) - firstIndex];
+			if (createdBucket) createdBucket.created += 1;
+
+			if (
+				deal.closedAt &&
+				deal.stage === DealStage.CLOSED_WON &&
+				deal.closedAt >= start
+			) {
+				const wonBucket = points[monthIndex(deal.closedAt) - firstIndex];
+				if (wonBucket) wonBucket.won += 1;
+			}
+		}
+
+		return { points };
+	}
+
+	async pipelineByProduct(): Promise<DealPipelineByProductOutput> {
+		const base = await this.conversion.reportingCurrency();
+		const counted = this.conversion.countedWhere(base);
+		const openStage = {
+			stage: { in: [...OPEN_DEAL_STAGES] },
+			archivedAt: null,
+		};
+
+		const [products, openCounts, openValues] = await Promise.all([
+			this.db.product.findMany({
+				where: { archivedAt: null },
+				orderBy: [{ position: "asc" }, { name: "asc" }],
+				select: { id: true, name: true, color: true, iconUrl: true },
+			}),
+			this.db.deal.groupBy({
+				by: ["productId"],
+				where: openStage,
+				_count: { _all: true },
+			}),
+			this.db.deal.groupBy({
+				by: ["productId"],
+				where: { AND: [openStage, counted] },
+				_sum: { baseAmount: true },
+			}),
+		]);
+
+		const countByProduct = new Map(
+			openCounts.map((row) => [row.productId, row._count._all] as const),
+		);
+		const valueByProduct = new Map(
+			openValues.map(
+				(row) =>
+					[row.productId, toCents(row._sum.baseAmount ?? null) ?? 0] as const,
+			),
+		);
+
+		const rows: Array<{
+			id: string | null;
+			name: string;
+			color: string;
+			iconUrl: string | null;
+			deals: number;
+			pipelineCents: number;
+		}> = products.map((product) => ({
+			id: product.id,
+			name: product.name,
+			color: product.color,
+			iconUrl: product.iconUrl,
+			deals: countByProduct.get(product.id) ?? 0,
+			pipelineCents: valueByProduct.get(product.id) ?? 0,
+		}));
+
+		const unassignedDeals = countByProduct.get(null) ?? 0;
+		const unassignedCents = valueByProduct.get(null) ?? 0;
+		if (unassignedDeals > 0 || unassignedCents > 0) {
+			rows.push({
+				id: null,
+				name: "No product",
+				color: NO_PRODUCT_COLOR,
+				iconUrl: null,
+				deals: unassignedDeals,
+				pipelineCents: unassignedCents,
+			});
+		}
+
+		rows.sort((a, b) => b.pipelineCents - a.pipelineCents || b.deals - a.deals);
+
+		const withPipeline = rows.filter(
+			(row) => row.deals > 0 || row.pipelineCents > 0,
+		);
+
+		return {
+			reportingCurrency: base,
+			products: withPipeline.length > 0 ? withPipeline : rows,
+		};
+	}
 
 	async list(input: DealListInput) {
 		const filterableFields = await this.fields.filterableFieldsFor("DEAL");
@@ -137,6 +492,7 @@ export class DealsService {
 						closedAt: true,
 						company: { select: COMPANY_SELECT },
 						owner: { select: OWNER_SELECT },
+						product: { select: PRODUCT_SELECT },
 						lastActivityAt: true,
 						createdAt: true,
 						archivedAt: true,
@@ -188,6 +544,187 @@ export class DealsService {
 			openValueCents: number | null;
 			reportingCurrency: string;
 			unconverted: { count: number; currencies: string[] };
+		};
+	}
+
+	async exportCsv(input: DealExportInput) {
+		const filterableFields = await this.fields.filterableFieldsFor("DEAL");
+		const where = this.buildWhere(input, filterableFields);
+
+		const total = await this.db.deal.count({ where });
+		if (total > DEAL_IO.export.maxRows) {
+			throw new BadRequestException(
+				`Export is capped at ${DEAL_IO.export.maxRows} deals. Narrow the filters first.`,
+			);
+		}
+
+		const rows = await this.db.deal.findMany({
+			where,
+			orderBy: resolveOrderBy(input, SORTABLE, [{ createdAt: "desc" }]),
+			take: DEAL_IO.export.maxRows,
+			select: {
+				name: true,
+				stage: true,
+				amount: true,
+				currency: true,
+				expectedCloseDate: true,
+				closedReason: true,
+				company: { select: { name: true } },
+				owner: { select: { email: true } },
+				product: { select: { name: true } },
+			},
+		});
+
+		const csv = serializeDealCsv(
+			rows.map((row) => ({
+				name: row.name,
+				company: row.company?.name ?? "",
+				ownerEmail: row.owner?.email ?? "",
+				product: row.product?.name ?? "",
+				stage: formatDealStage(row.stage),
+				amount: formatAmount(row.amount),
+				currency: row.currency,
+				expectedCloseDate: row.expectedCloseDate
+					? row.expectedCloseDate.toISOString().slice(0, 10)
+					: "",
+				closedReason: row.closedReason ?? "",
+			})),
+		);
+
+		const day = new Date().toISOString().slice(0, 10);
+		return {
+			csv,
+			filename: `deals-${day}.csv`,
+			rowCount: rows.length,
+		};
+	}
+
+	importTemplate() {
+		return {
+			csv: dealCsvTemplate(),
+			filename: "deals-import-template.csv",
+		};
+	}
+
+	async importCsv(input: DealImportInput, actingUserId: string) {
+		const parsed = parseDealCsv(input.csv);
+		let created = 0;
+		let updated = 0;
+		const errors: { line: number; message: string }[] = [];
+
+		for (const [index, row] of parsed.entries()) {
+			const line = index + 2;
+			try {
+				const name = row.name.trim();
+				if (!name) {
+					throw new BadRequestException("name is required.");
+				}
+
+				const stage = parseDealStage(row.stage);
+				if (row.stage.trim() && stage === undefined) {
+					throw new BadRequestException(`Unknown stage "${row.stage}".`);
+				}
+
+				const amountCents = parseAmountCents(row.amount);
+				const companyId = row.company.trim()
+					? await this.resolveCompanyId(row.company)
+					: undefined;
+				const ownerId = row.ownerEmail.trim()
+					? await this.resolveOwnerId(row.ownerEmail)
+					: undefined;
+				const productId = row.product.trim()
+					? await this.resolveProductId(row.product)
+					: undefined;
+
+				let currency: string | undefined;
+				if (row.currency.trim()) {
+					const code = normalizeCurrency(row.currency);
+					if (!isCurrencyCode(code)) {
+						throw new BadRequestException(
+							`Unknown currency "${row.currency}".`,
+						);
+					}
+					currency = code;
+				}
+
+				const existing =
+					companyId !== undefined
+						? await this.db.deal.findFirst({
+								where: {
+									name: { equals: name, mode: "insensitive" },
+									companyId,
+									archivedAt: null,
+								},
+								select: { id: true, stage: true },
+							})
+						: null;
+
+				if (existing) {
+					await this.update(existing.id, {
+						name,
+						...(companyId !== undefined ? { companyId } : {}),
+						...(ownerId !== undefined ? { ownerId } : {}),
+						...(productId !== undefined ? { productId } : {}),
+						...(amountCents !== undefined ? { amountCents } : {}),
+						...(currency !== undefined ? { currency } : {}),
+						...(row.expectedCloseDate.trim()
+							? { expectedCloseDate: row.expectedCloseDate }
+							: {}),
+					});
+					if (stage !== undefined && stage !== existing.stage) {
+						await this.setStage(
+							{
+								id: existing.id,
+								stage,
+								closedReason: row.closedReason.trim() || "Imported via CSV",
+							},
+							actingUserId,
+						);
+					}
+					updated += 1;
+					continue;
+				}
+
+				if (!companyId) {
+					throw new BadRequestException("company is required for new deals.");
+				}
+				if (!ownerId) {
+					throw new BadRequestException(
+						"ownerEmail is required for new deals.",
+					);
+				}
+
+				await this.create({
+					name,
+					companyId,
+					ownerId,
+					productId: productId ?? null,
+					stage,
+					amountCents,
+					currency,
+					expectedCloseDate: row.expectedCloseDate || null,
+				});
+				created += 1;
+			} catch (error) {
+				errors.push({
+					line,
+					message: error instanceof Error ? error.message : "Import failed.",
+				});
+			}
+		}
+
+		this.logger.log({
+			message: "Deals imported",
+			created,
+			updated,
+			failed: errors.length,
+		});
+
+		return {
+			created,
+			updated,
+			failed: errors.length,
+			errors: errors.slice(0, 50),
 		};
 	}
 
@@ -270,6 +807,7 @@ export class DealsService {
 						name: input.name.trim(),
 						companyId: input.companyId,
 						ownerId: input.ownerId,
+						productId: input.productId ?? null,
 						stage,
 						stageChangedAt: now,
 						closedAt: closed ? now : null,
@@ -320,6 +858,11 @@ export class DealsService {
 		}
 		if (input.ownerId !== undefined) {
 			data.owner = { connect: { id: input.ownerId } };
+		}
+		if (input.productId !== undefined) {
+			data.product = input.productId
+				? { connect: { id: input.productId } }
+				: { disconnect: true };
 		}
 		if (input.amountCents !== undefined) {
 			data.amount = fromCents(input.amountCents);
@@ -760,6 +1303,10 @@ export class DealsService {
 		const owner = ownerFilter<Prisma.DealWhereInput>(input.owner);
 		if (owner) and.push(owner);
 
+		if (input.company.length > 0) {
+			and.push({ companyId: { in: input.company } });
+		}
+
 		if (input.status === "open") {
 			and.push({ stage: { in: [...OPEN_DEAL_STAGES] } });
 		} else if (input.status === "closed") {
@@ -768,6 +1315,22 @@ export class DealsService {
 
 		if (input.stage.length > 0) {
 			and.push({ stage: { in: input.stage as DealStage[] } });
+		}
+
+		if (input.product.length > 0) {
+			const { ids, includesSentinel } = splitSentinel(
+				input.product,
+				NO_PRODUCT,
+			);
+			if (includesSentinel && ids.length === 0) {
+				and.push({ productId: null });
+			} else if (!includesSentinel) {
+				and.push({ productId: { in: ids } });
+			} else {
+				and.push({
+					OR: [{ productId: { in: ids } }, { productId: null }],
+				});
+			}
 		}
 
 		if (input.closing.length > 0) {
@@ -789,14 +1352,31 @@ export class DealsService {
 			AND: [this.searchFilter(input.q), archivedFilter(input.archived)],
 		};
 
-		const [owners, stages, fieldFacets, ...closingCounts] = await Promise.all([
-			this.db.deal.groupBy({ by: ["ownerId"], where, _count: { _all: true } }),
-			this.db.deal.groupBy({ by: ["stage"], where, _count: { _all: true } }),
-			this.fields.filterFacetCounts("DEAL", where, filterableFields),
-			...CLOSING_WINDOWS.map((window) =>
-				this.db.deal.count({ where: { AND: [where, closingFilter(window)] } }),
-			),
-		]);
+		const [owners, companies, stages, products, fieldFacets, ...closingCounts] =
+			await Promise.all([
+				this.db.deal.groupBy({
+					by: ["ownerId"],
+					where,
+					_count: { _all: true },
+				}),
+				this.db.deal.groupBy({
+					by: ["companyId"],
+					where,
+					_count: { _all: true },
+				}),
+				this.db.deal.groupBy({ by: ["stage"], where, _count: { _all: true } }),
+				this.db.deal.groupBy({
+					by: ["productId"],
+					where,
+					_count: { _all: true },
+				}),
+				this.fields.filterFacetCounts("DEAL", where, filterableFields),
+				...CLOSING_WINDOWS.map((window) =>
+					this.db.deal.count({
+						where: { AND: [where, closingFilter(window)] },
+					}),
+				),
+			]);
 
 		const stageCounts = countsByKey(stages, "stage");
 		const openCount = OPEN_DEAL_STAGES.reduce(
@@ -811,7 +1391,9 @@ export class DealsService {
 		return {
 			status: { open: openCount, closed: closedCount },
 			owner: countsByKey(owners, "ownerId", FACET_UNASSIGNED),
+			company: countsByKey(companies, "companyId"),
 			stage: stageCounts,
+			product: countsByKey(products, "productId", NO_PRODUCT),
 			closing: Object.fromEntries(
 				CLOSING_WINDOWS.map((window, index) => [
 					window,
@@ -825,6 +1407,51 @@ export class DealsService {
 				]),
 			),
 		};
+	}
+
+	private async resolveCompanyId(name: string): Promise<string> {
+		const trimmed = name.trim();
+		const company = await this.db.company.findFirst({
+			where: {
+				name: { equals: trimmed, mode: "insensitive" },
+				archivedAt: null,
+			},
+			select: { id: true },
+		});
+		if (!company) {
+			throw new BadRequestException(`No company named "${trimmed}".`);
+		}
+		return company.id;
+	}
+
+	private async resolveOwnerId(email: string): Promise<string> {
+		const normalized = normalizeEmail(email);
+		if (!normalized) {
+			throw new BadRequestException("ownerEmail is required.");
+		}
+		const user = await this.db.user.findFirst({
+			where: { email: { equals: normalized, mode: "insensitive" } },
+			select: { id: true },
+		});
+		if (!user) {
+			throw new BadRequestException(`No owner with email ${normalized}.`);
+		}
+		return user.id;
+	}
+
+	private async resolveProductId(name: string): Promise<string> {
+		const trimmed = name.trim();
+		const product = await this.db.product.findFirst({
+			where: {
+				name: { equals: trimmed, mode: "insensitive" },
+				archivedAt: null,
+			},
+			select: { id: true },
+		});
+		if (!product) {
+			throw new BadRequestException(`No product named "${trimmed}".`);
+		}
+		return product.id;
 	}
 
 	private translate(cause: unknown, id: string): never {

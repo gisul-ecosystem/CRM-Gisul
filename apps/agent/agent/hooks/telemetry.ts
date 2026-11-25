@@ -27,6 +27,7 @@ async function configuredModel(): Promise<string | null> {
 const MODEL_CODES = [
 	"model",
 	"gateway",
+	"azure",
 	"provider",
 	"rate_limit",
 	"context_length",

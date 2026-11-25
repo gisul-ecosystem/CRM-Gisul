@@ -12,6 +12,8 @@ import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { restMeta } from "../trpc/openapi";
 import {
+	activitiesListInput,
+	activitiesListOutput,
 	activityCreateInput,
 	activityCreateOutput,
 	completeInput,
@@ -33,12 +35,27 @@ export class ActivitiesRouter {
 	) {}
 
 	@Query({
+		input: activitiesListInput,
+		output: activitiesListOutput,
+		meta: restMeta("GET", "/activities/list", ["Activities"]),
+	})
+	async list(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof activitiesListInput>,
+	) {
+		return this.activities.list(input, ctx?.user?.id);
+	}
+
+	@Query({
 		input: timelineInput,
 		output: timelineOutput,
 		meta: restMeta("GET", "/activities", ["Activities"]),
 	})
-	async timeline(@Input() input: z.infer<typeof timelineInput>) {
-		return this.activities.timeline(input);
+	async timeline(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof timelineInput>,
+	) {
+		return this.activities.timeline(input, ctx.user.id);
 	}
 
 	@Query({
@@ -46,8 +63,11 @@ export class ActivitiesRouter {
 		output: timelineCountsOutput,
 		meta: restMeta("GET", "/activities/counts", ["Activities"]),
 	})
-	async timelineCounts(@Input() input: z.infer<typeof timelineCountsInput>) {
-		return this.activities.timelineCounts(input);
+	async timelineCounts(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof timelineCountsInput>,
+	) {
+		return this.activities.timelineCounts(input, ctx.user.id);
 	}
 
 	@Query({

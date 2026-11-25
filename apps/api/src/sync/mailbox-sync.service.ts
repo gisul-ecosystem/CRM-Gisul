@@ -1,5 +1,10 @@
 import { syncError } from "@crm/telemetry";
-import { Injectable, Logger } from "@nestjs/common";
+import {
+	Injectable,
+	Logger,
+	type OnModuleDestroy,
+	type OnModuleInit,
+} from "@nestjs/common";
 import { GoogleConnectionService } from "../google/google-connection.service";
 import { GoogleSyncService } from "../google/google-sync.service";
 import {
@@ -11,6 +16,7 @@ import { MicrosoftConnectionService } from "../microsoft/microsoft-connection.se
 import { MicrosoftSyncService } from "../microsoft/microsoft-sync.service";
 
 const TICK_BUDGET_MS = 60_000;
+const BACKGROUND_SYNC_INTERVAL_MS = 20_000;
 
 export type TickSummary = {
 	attempted: number;
@@ -22,8 +28,9 @@ export type TickSummary = {
 };
 
 @Injectable()
-export class MailboxSyncService {
+export class MailboxSyncService implements OnModuleInit, OnModuleDestroy {
 	private readonly logger = new Logger(MailboxSyncService.name);
+	private timer: ReturnType<typeof setInterval> | null = null;
 
 	constructor(
 		private readonly state: SyncStateService,
@@ -32,6 +39,29 @@ export class MailboxSyncService {
 		private readonly googleConnections: GoogleConnectionService,
 		private readonly microsoftConnections: MicrosoftConnectionService,
 	) {}
+
+	onModuleInit() {
+		// Run auto-sync in the background every 20 seconds so incoming emails appear without manual sync
+		this.timer = setInterval(() => {
+			this.runDue().catch((err) => {
+				this.logger.error(
+					"Auto background sync encountered error",
+					err instanceof Error ? err.stack : String(err),
+				);
+			});
+		}, BACKGROUND_SYNC_INTERVAL_MS);
+
+		setTimeout(() => {
+			this.runDue().catch(() => {});
+		}, 3000);
+	}
+
+	onModuleDestroy() {
+		if (this.timer) {
+			clearInterval(this.timer);
+			this.timer = null;
+		}
+	}
 
 	async runDue(): Promise<TickSummary> {
 		const startedAt = Date.now();

@@ -3,17 +3,36 @@ import {
 	EnrichmentStatus,
 	FactBand,
 	FactStatus,
+	LeadSource,
+	LeadStatus,
 	RecordSource,
 } from "@crm/db";
 import { FIELD_ENTITIES, FIELD_TYPES } from "@crm/db/fields";
+import {
+	campaignDraft,
+	campaignDraftRequest,
+} from "@crm/validation/campaign-draft";
+import { EMAIL_DRAFT_LIMITS, emailDraft } from "@crm/validation/email-draft";
+import { leadCategory, leadOriginDetails } from "@crm/validation/lead-origin";
+import {
+	unifersReplies,
+	unifersRepliesInput,
+	unifersSend,
+	unifersSendInput,
+} from "@crm/validation/unifers-send";
 import { z } from "zod";
 import { bulkIdsInput } from "../crm/bulk";
 import { recordFieldValues } from "../fields/fields.contracts";
+import { leadSourceEnum, leadStatusEnum } from "../products/products.contracts";
 import { activityFacetInput, listInput } from "../trpc/list-input";
+import { CONTACT_IO } from "./contacts-io-config";
 
 export const contactListInput = listInput.extend({
 	owner: z.array(z.string()).default([]),
 	company: z.array(z.string()).default([]),
+	product: z.array(z.string()).default([]),
+	leadStatus: z.array(z.string()).default([]),
+	leadSource: z.array(z.string()).default([]),
 	source: z.array(z.string()).default([]),
 	title: z.array(z.string()).default([]),
 	seniority: z.array(z.string()).default([]),
@@ -31,8 +50,13 @@ export const contactCreateInput = z.object({
 	email: z.email("That is not an email address.").optional().or(z.literal("")),
 	phone: z.string().trim().optional(),
 	title: z.string().trim().optional(),
+	linkedinUrl: z.string().trim().optional(),
 	companyId: z.string().nullable().optional(),
 	ownerId: z.string().nullable().optional(),
+	productId: z.string().nullable().optional(),
+	leadStatus: leadStatusEnum.optional(),
+	leadSource: leadSourceEnum.nullable().optional(),
+	nextFollowUpAt: z.string().nullable().optional(),
 });
 
 export type ContactCreateInput = z.infer<typeof contactCreateInput>;
@@ -48,6 +72,10 @@ const contactUpdateInput = z.object({
 	githubUrl: z.string().optional(),
 	companyId: z.string().nullable().optional(),
 	ownerId: z.string().nullable().optional(),
+	productId: z.string().nullable().optional(),
+	leadStatus: leadStatusEnum.optional(),
+	leadSource: leadSourceEnum.nullable().optional(),
+	nextFollowUpAt: z.string().nullable().optional(),
 	fields: recordFieldValues.optional(),
 });
 
@@ -130,6 +158,13 @@ const contactOwnerOutput = z.object({
 	image: z.string().nullable(),
 });
 
+const contactProductOutput = z.object({
+	id: z.string(),
+	name: z.string(),
+	color: z.string(),
+	iconUrl: z.string().nullable(),
+});
+
 export const contactRowOutput = z.object({
 	id: z.string(),
 	firstName: z.string(),
@@ -140,8 +175,18 @@ export const contactRowOutput = z.object({
 	source: z.enum(
 		Object.values(RecordSource) as [RecordSource, ...RecordSource[]],
 	),
+	leadStatus: z.enum(
+		Object.values(LeadStatus) as [LeadStatus, ...LeadStatus[]],
+	),
+	leadSource: z
+		.enum(Object.values(LeadSource) as [LeadSource, ...LeadSource[]])
+		.nullable(),
+	leadCategory: leadCategory.nullable(),
+	nextFollowUpAt: z.string().nullable(),
+	product: contactProductOutput.nullable(),
 	company: contactCompanyOutput.nullable(),
 	owner: contactOwnerOutput.nullable(),
+	isPrimaryContact: z.boolean(),
 	lastActivityAt: z.string().nullable(),
 	createdAt: z.string(),
 	archivedAt: z.string().nullable(),
@@ -234,6 +279,11 @@ export const contactByIdOutput = z.object({
 	twitterUrl: z.string().nullable(),
 	githubUrl: z.string().nullable(),
 	imageUrl: z.string().nullable(),
+	leadStatus: leadStatusEnum,
+	leadSource: leadSourceEnum.nullable(),
+	leadCategory: leadCategory.nullable(),
+	nextFollowUpAt: z.string().nullable(),
+	product: contactProductOutput.nullable(),
 	enrichmentStatus: z.enum(
 		Object.values(EnrichmentStatus) as [
 			EnrichmentStatus,
@@ -287,3 +337,122 @@ export const decideFactOutput = z.object({
 	field: z.string(),
 	applied: z.boolean(),
 });
+
+export const contactExportInput = contactListInput;
+
+export type ContactExportInput = z.infer<typeof contactExportInput>;
+
+export const contactExportOutput = z.object({
+	csv: z.string(),
+	filename: z.string(),
+	rowCount: z.number(),
+});
+
+export const contactImportInput = z.object({
+	csv: z.string().min(1, "Paste or upload a CSV."),
+});
+
+export type ContactImportInput = z.infer<typeof contactImportInput>;
+
+export const contactImportOutput = z.object({
+	created: z.number(),
+	updated: z.number(),
+	failed: z.number(),
+	errors: z.array(
+		z.object({
+			line: z.number(),
+			message: z.string(),
+		}),
+	),
+});
+
+export const contactImportLeadsInput = z.object({
+	leadSource: leadSourceEnum.default("COLD_OUTREACH"),
+	category: leadCategory.nullable().default(null),
+	leads: z
+		.array(
+			z.object({
+				fullName: z.string().trim().min(1, "A lead needs a name."),
+				email: z.string().trim().default(""),
+				phone: z.string().trim().default(""),
+				title: z.string().trim().default(""),
+				company: z.string().trim().default(""),
+				domain: z.string().trim().default(""),
+				linkedinUrl: z.string().trim().default(""),
+				origin: leadOriginDetails.nullable().default(null),
+			}),
+		)
+		.min(1, "Select at least one lead.")
+		.max(
+			CONTACT_IO.leads.maxRows,
+			`Add at most ${CONTACT_IO.leads.maxRows} leads at a time.`,
+		),
+});
+
+export type ContactImportLeadsInput = z.infer<typeof contactImportLeadsInput>;
+
+export const contactMatchLeadsInput = z.object({
+	leads: z
+		.array(
+			z.object({
+				key: z.string().min(1),
+				fullName: z.string().trim().default(""),
+				email: z.string().trim().default(""),
+				domain: z.string().trim().default(""),
+				linkedinUrl: z.string().trim().default(""),
+			}),
+		)
+		.max(CONTACT_IO.leads.maxRows),
+});
+
+export type ContactMatchLeadsInput = z.infer<typeof contactMatchLeadsInput>;
+
+export const contactMatchLeadsOutput = z.object({
+	matches: z.array(z.object({ key: z.string(), contactId: z.string() })),
+});
+
+export const contactImportLeadsOutput = z.object({
+	created: z.number(),
+	existing: z.number(),
+	failed: z.number(),
+	errors: z.array(
+		z.object({
+			name: z.string(),
+			message: z.string(),
+		}),
+	),
+});
+
+export const contactImportTemplateOutput = z.object({
+	csv: z.string(),
+	filename: z.string(),
+});
+
+export const contactDraftEmailInput = z.object({
+	id: z.string().trim().min(1),
+	productId: z.string().trim().min(1).nullable(),
+	category: leadCategory.nullable(),
+	senderName: z
+		.string()
+		.trim()
+		.max(EMAIL_DRAFT_LIMITS.senderName)
+		.nullable()
+		.optional(),
+	purpose: z.string().trim().max(EMAIL_DRAFT_LIMITS.purpose).nullable(),
+});
+
+export const contactDraftEmailOutput = emailDraft;
+
+export const contactDraftCampaignInput = campaignDraftRequest;
+
+export const contactDraftCampaignOutput = campaignDraft;
+
+export const contactLogUnifersSendInput = unifersSendInput;
+
+export const contactLogUnifersSendOutput = z.object({ id: z.string() });
+
+export const contactUnifersSendsOutput = z.array(unifersSend);
+
+export const contactUnifersRepliesInput = unifersRepliesInput;
+
+export const contactUnifersRepliesOutput = unifersReplies;

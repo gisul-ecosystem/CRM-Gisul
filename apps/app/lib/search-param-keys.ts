@@ -26,6 +26,10 @@ export const SEARCH_PARAM = {
 	},
 	overview: {
 		scope: "scope",
+		month: "month",
+	},
+	customers: {
+		view: "view",
 	},
 } as const;
 

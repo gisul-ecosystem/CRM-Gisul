@@ -1,14 +1,25 @@
 import {
+	ActivityType,
 	type ContactBriefSections,
 	type Db,
 	type FactEvidence,
 	FactStatus,
+	type LeadSource,
+	type LeadStatus,
 	type Prisma,
 	Prisma as PrismaNamespace,
 	type RecordSource,
 } from "@crm/db";
 import type { FieldDefinitionWithOptions } from "@crm/db/fields";
 import {
+	LEAD_CATEGORY_LABEL,
+	LEAD_ORIGIN_KIND,
+	type LeadCategory,
+	leadCategoryOf,
+	leadOriginMeta,
+} from "@crm/validation/lead-origin";
+import {
+	BadRequestException,
 	ConflictException,
 	Injectable,
 	Logger,
@@ -18,6 +29,7 @@ import { AgentQueueService } from "../agent/agent-queue.service";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { ARCHIVE } from "../archive/archive-config";
 import { CompanyDirectoryService } from "../companies/company-directory.service";
+import { domainFromEmail, normalizeDomain } from "../companies/domain";
 import {
 	ActivityStampService,
 	type StampTargets,
@@ -39,11 +51,23 @@ import {
 	resolveOrderBy,
 	splitSentinel,
 } from "../trpc/list-input";
+import {
+	contactCsvTemplate,
+	parseContactCsv,
+	parseLeadSource,
+	parseLeadStatus,
+	serializeContactCsv,
+} from "./contacts-csv";
+import { CONTACT_IO } from "./contacts-io-config";
 import type {
 	ContactBulkCompanyInput,
 	ContactBulkOwnerInput,
 	ContactCreateInput,
+	ContactExportInput,
+	ContactImportInput,
+	ContactImportLeadsInput,
 	ContactListInput,
+	ContactMatchLeadsInput,
 	ContactRow,
 	ContactUpdateInput,
 	FactDecisionInput,
@@ -66,7 +90,29 @@ const COMPANY_SELECT = {
 	logoUrl: true,
 } as const;
 
+const PRODUCT_SELECT = {
+	id: true,
+	name: true,
+	color: true,
+	iconUrl: true,
+} as const;
+
 const NO_COMPANY = "none";
+const NO_PRODUCT = "none";
+const NO_LEAD_SOURCE = "none";
+const LINKEDIN_PROFILE = /linkedin\.com\/in\/([^/?#]+)/i;
+
+function linkedinSlug(url: string): string | null {
+	const match = LINKEDIN_PROFILE.exec(url);
+	if (!match?.[1]) return null;
+	try {
+		return decodeURIComponent(match[1]).toLowerCase();
+	} catch {
+		return match[1].toLowerCase();
+	}
+}
+const LINKEDIN_ON_FILE_REASON =
+	"Added from Lead generation with a LinkedIn profile on file. Read that profile, then fill the missing work email and mobile with reveal_contact_details";
 
 type FactColumns = Record<string, string | undefined>;
 
@@ -86,6 +132,9 @@ const SORTABLE: OrderByColumns<Prisma.ContactOrderByWithRelationInput[]> = {
 	company: (dir) => [{ company: { name: dir } }, { lastName: "asc" }],
 	createdAt: (dir) => [{ createdAt: dir }],
 	owner: (dir) => [{ owner: { name: dir } }, { lastName: "asc" }],
+	product: (dir) => [{ product: { name: dir } }, { lastName: "asc" }],
+	leadStatus: (dir) => [{ leadStatus: dir }, { lastName: "asc" }],
+	nextFollowUp: (dir) => [{ nextFollowUpAt: { sort: dir, nulls: "last" } }],
 	lastActivity: (dir) => [{ lastActivityAt: { sort: dir, nulls: "last" } }],
 	archivedAt: (dir) => [{ archivedAt: { sort: dir, nulls: "last" } }],
 };
@@ -122,8 +171,13 @@ export class ContactsService {
 					title: true,
 					imageUrl: true,
 					source: true,
+					leadStatus: true,
+					leadSource: true,
+					nextFollowUpAt: true,
+					product: { select: PRODUCT_SELECT },
 					company: { select: COMPANY_SELECT },
 					owner: { select: OWNER_SELECT },
+					primaryOf: { select: { id: true } },
 					lastActivityAt: true,
 					createdAt: true,
 					archivedAt: true,
@@ -133,14 +187,18 @@ export class ContactsService {
 			this.facetCounts(input, filterableFields),
 		]);
 
-		const tableFields = await this.fields.tableValuesFor(
-			"CONTACT",
-			rows.map((row) => row.id),
-		);
+		const ids = rows.map((row) => row.id);
+		const [tableFields, categories] = await Promise.all([
+			this.fields.tableValuesFor("CONTACT", ids),
+			this.leadCategories(ids),
+		]);
 
 		return {
-			rows: rows.map((row) => ({
+			rows: rows.map(({ primaryOf, ...row }) => ({
 				...row,
+				leadCategory: categories.get(row.id) ?? null,
+				isPrimaryContact: primaryOf !== null,
+				nextFollowUpAt: row.nextFollowUpAt?.toISOString() ?? null,
 				lastActivityAt: row.lastActivityAt?.toISOString() ?? null,
 				createdAt: row.createdAt.toISOString(),
 				archivedAt: row.archivedAt?.toISOString() ?? null,
@@ -148,6 +206,479 @@ export class ContactsService {
 			})),
 			total,
 			facetCounts,
+		};
+	}
+
+	private async leadCategories(
+		contactIds: string[],
+	): Promise<Map<string, LeadCategory>> {
+		if (contactIds.length === 0) return new Map();
+		const origins = await this.db.activity.findMany({
+			where: {
+				contactId: { in: contactIds },
+				meta: { path: ["kind"], equals: LEAD_ORIGIN_KIND },
+			},
+			orderBy: { occurredAt: "asc" },
+			select: { contactId: true, meta: true },
+		});
+		const categories = new Map<string, LeadCategory>();
+		for (const origin of origins) {
+			if (!origin.contactId || categories.has(origin.contactId)) continue;
+			const category = leadCategoryOf(origin.meta);
+			if (category) categories.set(origin.contactId, category);
+		}
+		return categories;
+	}
+
+	async exportCsv(input: ContactExportInput) {
+		const filterableFields = await this.fields.filterableFieldsFor("CONTACT");
+		const where = this.buildWhere(input, filterableFields);
+
+		const total = await this.db.contact.count({ where });
+		if (total > CONTACT_IO.export.maxRows) {
+			throw new BadRequestException(
+				`Export is capped at ${CONTACT_IO.export.maxRows} leads. Narrow the filters first.`,
+			);
+		}
+
+		const rows = await this.db.contact.findMany({
+			where,
+			orderBy: resolveOrderBy(input, SORTABLE, [{ createdAt: "desc" }]),
+			take: CONTACT_IO.export.maxRows,
+			select: {
+				firstName: true,
+				lastName: true,
+				email: true,
+				phone: true,
+				title: true,
+				leadStatus: true,
+				leadSource: true,
+				nextFollowUpAt: true,
+				company: { select: { name: true } },
+				owner: { select: { email: true } },
+				product: { select: { name: true } },
+			},
+		});
+
+		const csv = serializeContactCsv(
+			rows.map((row) => ({
+				firstName: row.firstName,
+				lastName: row.lastName ?? "",
+				email: row.email ?? "",
+				phone: row.phone ?? "",
+				title: row.title ?? "",
+				company: row.company?.name ?? "",
+				ownerEmail: row.owner?.email ?? "",
+				product: row.product?.name ?? "",
+				leadStatus: row.leadStatus,
+				leadSource: row.leadSource ?? "",
+				nextFollowUpAt: row.nextFollowUpAt
+					? row.nextFollowUpAt.toISOString().slice(0, 10)
+					: "",
+			})),
+		);
+
+		const day = new Date().toISOString().slice(0, 10);
+		return {
+			csv,
+			filename: `leads-${day}.csv`,
+			rowCount: rows.length,
+		};
+	}
+
+	importTemplate() {
+		return {
+			csv: contactCsvTemplate(),
+			filename: "leads-import-template.csv",
+		};
+	}
+
+	async matchLeads(input: ContactMatchLeadsInput) {
+		const leads = input.leads.map((lead) => {
+			const [firstName = "", ...rest] = lead.fullName.split(/\s+/);
+			return {
+				key: lead.key,
+				firstName: firstName.toLowerCase(),
+				lastName: rest.join(" ").toLowerCase(),
+				email: normalizeEmail(lead.email),
+				domain: lead.domain
+					? domainFromEmail(`lead@${normalizeDomain(lead.domain) ?? ""}`)
+					: null,
+				linkedin: linkedinSlug(lead.linkedinUrl),
+			};
+		});
+
+		const emails = [
+			...new Set(leads.flatMap((lead) => (lead.email ? [lead.email] : []))),
+		];
+		const domains = [
+			...new Set(leads.flatMap((lead) => (lead.domain ? [lead.domain] : []))),
+		];
+
+		const slugs = [
+			...new Set(
+				leads.flatMap((lead) => (lead.linkedin ? [lead.linkedin] : [])),
+			),
+		];
+
+		const [byEmail, companies, byLinkedin] = await Promise.all([
+			emails.length > 0
+				? this.db.contact.findMany({
+						where: {
+							archivedAt: null,
+							OR: emails.map((email) => ({
+								email: { equals: email, mode: "insensitive" as const },
+							})),
+						},
+						select: { id: true, email: true },
+					})
+				: [],
+			domains.length > 0
+				? this.db.company.findMany({
+						where: { archivedAt: null, domain: { in: domains } },
+						select: { id: true, domain: true },
+					})
+				: [],
+			slugs.length > 0
+				? this.db.contact.findMany({
+						where: {
+							archivedAt: null,
+							OR: slugs.map((slug) => ({
+								linkedinUrl: {
+									contains: `/in/${slug}`,
+									mode: "insensitive" as const,
+								},
+							})),
+						},
+						select: { id: true, linkedinUrl: true },
+					})
+				: [],
+		]);
+
+		const contactByLinkedin = new Map(
+			byLinkedin.flatMap((row) => {
+				const slug = linkedinSlug(row.linkedinUrl ?? "");
+				return slug ? [[slug, row.id] as const] : [];
+			}),
+		);
+
+		const contactByEmail = new Map(
+			byEmail.map((row) => [row.email?.toLowerCase() ?? "", row.id]),
+		);
+		const companyByDomain = new Map(
+			companies.map((row) => [row.domain ?? "", row.id]),
+		);
+
+		const named = leads.flatMap(
+			(lead): ((typeof leads)[number] & { companyId: string | null })[] => {
+				if (lead.email || !lead.firstName) return [];
+				if (!lead.domain) return [{ ...lead, companyId: null }];
+				const companyId = companyByDomain.get(lead.domain);
+				return companyId ? [{ ...lead, companyId }] : [];
+			},
+		);
+
+		const byName =
+			named.length > 0
+				? await this.db.contact.findMany({
+						where: {
+							archivedAt: null,
+							OR: named.map((lead) => ({
+								firstName: {
+									equals: lead.firstName,
+									mode: "insensitive" as const,
+								},
+								lastName: lead.lastName
+									? { equals: lead.lastName, mode: "insensitive" as const }
+									: null,
+								companyId: lead.companyId,
+							})),
+						},
+						select: {
+							id: true,
+							firstName: true,
+							lastName: true,
+							companyId: true,
+						},
+					})
+				: [];
+
+		const contactByName = new Map(
+			byName.map((row) => [
+				`${row.firstName.toLowerCase()}|${row.lastName?.toLowerCase() ?? ""}|${row.companyId ?? ""}`,
+				row.id,
+			]),
+		);
+
+		const found = [
+			...leads.flatMap((lead) => {
+				const contactId = lead.linkedin && contactByLinkedin.get(lead.linkedin);
+				return contactId ? [{ key: lead.key, contactId }] : [];
+			}),
+			...leads.flatMap((lead) => {
+				const contactId = lead.email && contactByEmail.get(lead.email);
+				return contactId ? [{ key: lead.key, contactId }] : [];
+			}),
+			...named.flatMap((lead) => {
+				const contactId = contactByName.get(
+					`${lead.firstName}|${lead.lastName}|${lead.companyId ?? ""}`,
+				);
+				return contactId ? [{ key: lead.key, contactId }] : [];
+			}),
+		];
+		const matches = [
+			...new Map(found.map((match) => [match.key, match])).values(),
+		];
+
+		return { matches };
+	}
+
+	async importLeads(input: ContactImportLeadsInput, actingUserId: string) {
+		let created = 0;
+		let existing = 0;
+		const errors: { name: string; message: string }[] = [];
+
+		for (const lead of input.leads) {
+			try {
+				const [firstName = "", ...rest] = lead.fullName.split(/\s+/);
+				const lastName = rest.join(" ");
+				const email = normalizeEmail(lead.email);
+				const companyId = lead.domain
+					? await this.companies.companyForDomain(lead.domain, lead.company)
+					: null;
+
+				const match = await this.db.contact.findFirst({
+					where: email
+						? {
+								email: { equals: email, mode: "insensitive" },
+								archivedAt: null,
+							}
+						: {
+								firstName: { equals: firstName, mode: "insensitive" },
+								lastName: lastName
+									? { equals: lastName, mode: "insensitive" }
+									: null,
+								companyId,
+								archivedAt: null,
+							},
+					select: { id: true },
+				});
+				if (match) {
+					existing += 1;
+					if (lead.linkedinUrl) {
+						const filled = await this.db.contact.updateMany({
+							where: { id: match.id, linkedinUrl: null },
+							data: { linkedinUrl: lead.linkedinUrl },
+						});
+						if (filled.count > 0) {
+							await this.agent.contactCreated(
+								match.id,
+								LINKEDIN_ON_FILE_REASON,
+							);
+						}
+					}
+					await this.recordLeadOrigin(
+						match.id,
+						companyId,
+						input,
+						lead,
+						actingUserId,
+					);
+					continue;
+				}
+
+				const contact = await this.create({
+					firstName,
+					lastName: lastName || undefined,
+					email: email ?? undefined,
+					phone: lead.phone || undefined,
+					title: lead.title || undefined,
+					linkedinUrl: lead.linkedinUrl || undefined,
+					companyId,
+					leadStatus: "NEW",
+					leadSource: input.leadSource,
+				});
+				await this.recordLeadOrigin(
+					contact.id,
+					companyId,
+					input,
+					lead,
+					actingUserId,
+				);
+				created += 1;
+			} catch (error) {
+				errors.push({
+					name: lead.fullName,
+					message: error instanceof Error ? error.message : "Import failed.",
+				});
+			}
+		}
+
+		this.logger.log({
+			message: "Leads added as contacts",
+			created,
+			existing,
+			failed: errors.length,
+		});
+
+		return { created, existing, failed: errors.length, errors };
+	}
+
+	private async recordLeadOrigin(
+		contactId: string,
+		companyId: string | null,
+		input: ContactImportLeadsInput,
+		lead: ContactImportLeadsInput["leads"][number],
+		actingUserId: string,
+	) {
+		if (!input.category) return;
+		const recorded = await this.db.activity.findFirst({
+			where: { contactId, meta: { path: ["kind"], equals: LEAD_ORIGIN_KIND } },
+			select: { id: true },
+		});
+		if (recorded) return;
+		const meta = leadOriginMeta.parse({
+			kind: LEAD_ORIGIN_KIND,
+			category: input.category,
+			...(lead.origin ?? {}),
+		});
+		await this.db.activity.create({
+			data: {
+				type: ActivityType.NOTE,
+				subject: `Added from Lead generation · ${LEAD_CATEGORY_LABEL[meta.category]}`,
+				body:
+					[
+						[meta.segment, meta.country, meta.companySize, meta.signal]
+							.filter(Boolean)
+							.join(" · "),
+						...meta.evidence.map((item) =>
+							[
+								item.title,
+								[item.agency, item.value, item.date]
+									.filter(Boolean)
+									.join(" · "),
+								item.url,
+							]
+								.filter(Boolean)
+								.join(" — "),
+						),
+						meta.opener ? `Opening line: ${meta.opener}` : "",
+					]
+						.filter(Boolean)
+						.join("\n") || null,
+				occurredAt: new Date(),
+				contactId,
+				companyId,
+				createdById: actingUserId,
+				meta,
+			},
+			select: { id: true },
+		});
+	}
+
+	async importCsv(input: ContactImportInput) {
+		const parsed = parseContactCsv(input.csv);
+		let created = 0;
+		let updated = 0;
+		const errors: { line: number; message: string }[] = [];
+
+		for (const [index, row] of parsed.entries()) {
+			const line = index + 2;
+			try {
+				const firstName = row.firstName.trim();
+				if (!firstName) {
+					throw new BadRequestException("firstName is required.");
+				}
+
+				const leadStatus = parseLeadStatus(row.leadStatus);
+				if (row.leadStatus.trim() && leadStatus === undefined) {
+					throw new BadRequestException(
+						`Unknown leadStatus "${row.leadStatus}".`,
+					);
+				}
+
+				const leadSource = parseLeadSource(row.leadSource);
+				if (row.leadSource.trim() && leadSource === undefined) {
+					throw new BadRequestException(
+						`Unknown leadSource "${row.leadSource}".`,
+					);
+				}
+
+				const email = normalizeEmail(row.email);
+				const companyId = row.company.trim()
+					? await this.resolveCompanyId(row.company)
+					: undefined;
+				const ownerId = row.ownerEmail.trim()
+					? await this.resolveOwnerId(row.ownerEmail)
+					: undefined;
+				const productId = row.product.trim()
+					? await this.resolveProductId(row.product)
+					: undefined;
+
+				const existing = email
+					? await this.db.contact.findFirst({
+							where: {
+								email: { equals: email, mode: "insensitive" },
+								archivedAt: null,
+							},
+							select: { id: true },
+						})
+					: null;
+
+				if (existing) {
+					await this.update(existing.id, {
+						firstName,
+						...(row.lastName.trim() ? { lastName: row.lastName } : {}),
+						...(email ? { email } : {}),
+						...(row.phone.trim() ? { phone: row.phone } : {}),
+						...(row.title.trim() ? { title: row.title } : {}),
+						...(companyId !== undefined ? { companyId } : {}),
+						...(ownerId !== undefined ? { ownerId } : {}),
+						...(productId !== undefined ? { productId } : {}),
+						...(leadStatus !== undefined ? { leadStatus } : {}),
+						...(leadSource !== undefined ? { leadSource } : {}),
+						...(row.nextFollowUpAt.trim()
+							? { nextFollowUpAt: row.nextFollowUpAt }
+							: {}),
+					});
+					updated += 1;
+					continue;
+				}
+
+				await this.create({
+					firstName,
+					lastName: row.lastName || undefined,
+					email: email ?? undefined,
+					phone: row.phone || undefined,
+					title: row.title || undefined,
+					companyId: companyId ?? null,
+					ownerId: ownerId ?? null,
+					productId: productId ?? null,
+					leadStatus,
+					leadSource,
+					nextFollowUpAt: row.nextFollowUpAt || null,
+				});
+				created += 1;
+			} catch (error) {
+				errors.push({
+					line,
+					message: error instanceof Error ? error.message : "Import failed.",
+				});
+			}
+		}
+
+		this.logger.log({
+			message: "Contacts imported",
+			created,
+			updated,
+			failed: errors.length,
+		});
+
+		return {
+			created,
+			updated,
+			failed: errors.length,
+			errors: errors.slice(0, 50),
 		};
 	}
 
@@ -165,6 +696,9 @@ export class ContactsService {
 				twitterUrl: true,
 				githubUrl: true,
 				imageUrl: true,
+				leadStatus: true,
+				leadSource: true,
+				nextFollowUpAt: true,
 				enrichmentStatus: true,
 				enrichmentError: true,
 				createdAt: true,
@@ -194,6 +728,7 @@ export class ContactsService {
 						observedAt: true,
 					},
 				},
+				product: { select: PRODUCT_SELECT },
 				company: {
 					select: { ...COMPANY_SELECT, industry: true, primaryContactId: true },
 				},
@@ -221,17 +756,31 @@ export class ContactsService {
 			throw new NotFoundException(`No contact with id ${id}.`);
 		}
 
-		const relationship = await this.relationship(
-			id,
-			contact.company?.id ?? null,
-		);
+		const [relationship, origin] = await Promise.all([
+			this.relationship(id, contact.company?.id ?? null),
+			this.db.activity.findFirst({
+				where: { contactId: id, meta: { path: ["kind"], equals: LEAD_ORIGIN_KIND } },
+				orderBy: { occurredAt: "asc" },
+				select: { meta: true },
+			}),
+		]);
 
-		const { deals, createdAt, archivedAt, brief, facts, company, ...rest } =
-			contact;
+		const {
+			deals,
+			createdAt,
+			archivedAt,
+			brief,
+			facts,
+			company,
+			nextFollowUpAt,
+			...rest
+		} = contact;
 
 		return {
 			...rest,
 			company,
+			leadCategory: origin ? leadCategoryOf(origin.meta) : null,
+			nextFollowUpAt: nextFollowUpAt?.toISOString() ?? null,
 			fields: await this.fields.valuesFor("CONTACT", id),
 			queued: await this.queue.isQueued({ contactId: id }),
 			createdAt: createdAt.toISOString(),
@@ -296,8 +845,13 @@ export class ContactsService {
 					email,
 					phone: blankToNull(input.phone ?? ""),
 					title: blankToNull(input.title ?? ""),
+					linkedinUrl: blankToNull(input.linkedinUrl ?? ""),
 					companyId,
 					ownerId: input.ownerId ?? null,
+					productId: input.productId ?? null,
+					leadStatus: input.leadStatus,
+					leadSource: input.leadSource ?? null,
+					nextFollowUpAt: parseOptionalDate(input.nextFollowUpAt),
 				},
 				select: {
 					id: true,
@@ -326,7 +880,9 @@ export class ContactsService {
 
 		await this.agent.contactCreated(
 			contact.id,
-			"Added by a rep, with nothing on the record yet",
+			input.linkedinUrl?.trim()
+				? LINKEDIN_ON_FILE_REASON
+				: "Added by a rep, with nothing on the record yet",
 		);
 		this.fields
 			.queueBackfillForNewRecord("CONTACT", contact.id)
@@ -497,11 +1053,31 @@ export class ContactsService {
 				? { connect: { id: input.ownerId } }
 				: { disconnect: true };
 		}
+		if (input.productId !== undefined) {
+			data.product = input.productId
+				? { connect: { id: input.productId } }
+				: { disconnect: true };
+		}
+		if (input.leadStatus !== undefined) data.leadStatus = input.leadStatus;
+		if (input.leadSource !== undefined) data.leadSource = input.leadSource;
+		if (input.nextFollowUpAt !== undefined) {
+			data.nextFollowUpAt = parseOptionalDate(input.nextFollowUpAt);
+		}
 
 		try {
 			return await this.db.$transaction(async (tx) => {
 				if (input.fields) {
 					await this.fields.applyValues(tx, "CONTACT", id, input.fields);
+				}
+
+				if (input.companyId !== undefined) {
+					await tx.company.updateMany({
+						where: {
+							primaryContactId: id,
+							...(input.companyId ? { id: { not: input.companyId } } : {}),
+						},
+						data: { primaryContactId: null },
+					});
 				}
 
 				const updated = await tx.contact.update({
@@ -561,10 +1137,19 @@ export class ContactsService {
 		}
 
 		const ids = [...new Set(input.ids)];
-		const { count } = await this.db.contact.updateMany({
-			where: { id: { in: ids } },
-			data: { companyId },
-		});
+		const [, { count }] = await this.db.$transaction([
+			this.db.company.updateMany({
+				where: {
+					primaryContactId: { in: ids },
+					...(companyId ? { id: { not: companyId } } : {}),
+				},
+				data: { primaryContactId: null },
+			}),
+			this.db.contact.updateMany({
+				where: { id: { in: ids } },
+				data: { companyId },
+			}),
+		]);
 
 		this.logger.log({
 			message: "Contacts moved",
@@ -779,6 +1364,51 @@ export class ContactsService {
 		return { contactId: fact.contactId, field: fact.field, applied: accepted };
 	}
 
+	private async resolveCompanyId(name: string): Promise<string | null> {
+		const trimmed = name.trim();
+		if (!trimmed) return null;
+		const company = await this.db.company.findFirst({
+			where: {
+				name: { equals: trimmed, mode: "insensitive" },
+				archivedAt: null,
+			},
+			select: { id: true },
+		});
+		if (!company) {
+			throw new BadRequestException(`No company named "${trimmed}".`);
+		}
+		return company.id;
+	}
+
+	private async resolveOwnerId(email: string): Promise<string | null> {
+		const normalized = normalizeEmail(email);
+		if (!normalized) return null;
+		const user = await this.db.user.findFirst({
+			where: { email: { equals: normalized, mode: "insensitive" } },
+			select: { id: true },
+		});
+		if (!user) {
+			throw new BadRequestException(`No owner with email ${normalized}.`);
+		}
+		return user.id;
+	}
+
+	private async resolveProductId(name: string): Promise<string | null> {
+		const trimmed = name.trim();
+		if (!trimmed) return null;
+		const product = await this.db.product.findFirst({
+			where: {
+				name: { equals: trimmed, mode: "insensitive" },
+				archivedAt: null,
+			},
+			select: { id: true },
+		});
+		if (!product) {
+			throw new BadRequestException(`No product named "${trimmed}".`);
+		}
+		return product.id;
+	}
+
 	private searchFilter(q: string): Prisma.ContactWhereInput {
 		const term = q.trim();
 		if (!term) return {};
@@ -820,6 +1450,15 @@ export class ContactsService {
 		const company = this.companyFilter(input.company);
 		if (company) and.push(company);
 
+		const product = this.productFilter(input.product);
+		if (product) and.push(product);
+
+		if (input.leadStatus.length > 0) {
+			and.push({ leadStatus: { in: input.leadStatus as LeadStatus[] } });
+		}
+		if (input.leadSource.length > 0) {
+			and.push({ leadSource: { in: input.leadSource as LeadSource[] } });
+		}
 		if (input.source.length > 0) {
 			and.push({ source: { in: input.source as RecordSource[] } });
 		}
@@ -835,6 +1474,17 @@ export class ContactsService {
 		return { AND: and };
 	}
 
+	private productFilter(
+		values: string[],
+	): Prisma.ContactWhereInput | undefined {
+		if (values.length === 0) return undefined;
+
+		const { ids, includesSentinel } = splitSentinel(values, NO_PRODUCT);
+		if (includesSentinel && ids.length === 0) return { productId: null };
+		if (!includesSentinel) return { productId: { in: ids } };
+		return { OR: [{ productId: { in: ids } }, { productId: null }] };
+	}
+
 	private async facetCounts(
 		input: ContactListInput,
 		filterableFields: FieldDefinitionWithOptions[],
@@ -846,6 +1496,9 @@ export class ContactsService {
 		const [
 			owners,
 			companies,
+			products,
+			leadStatuses,
+			leadSources,
 			sources,
 			titles,
 			seniorities,
@@ -860,6 +1513,21 @@ export class ContactsService {
 			}),
 			this.db.contact.groupBy({
 				by: ["companyId"],
+				where,
+				_count: { _all: true },
+			}),
+			this.db.contact.groupBy({
+				by: ["productId"],
+				where,
+				_count: { _all: true },
+			}),
+			this.db.contact.groupBy({
+				by: ["leadStatus"],
+				where,
+				_count: { _all: true },
+			}),
+			this.db.contact.groupBy({
+				by: ["leadSource"],
 				where,
 				_count: { _all: true },
 			}),
@@ -892,6 +1560,9 @@ export class ContactsService {
 		return {
 			owner: countsByKey(owners, "ownerId", FACET_UNASSIGNED),
 			company: countsByKey(companies, "companyId", NO_COMPANY),
+			product: countsByKey(products, "productId", NO_PRODUCT),
+			leadStatus: countsByKey(leadStatuses, "leadStatus"),
+			leadSource: countsByKey(leadSources, "leadSource", NO_LEAD_SOURCE),
 			source: countsByKey(sources, "source"),
 			title: countsByKey(titles, "title"),
 			seniority: countsByKey(seniorities, "seniority"),
@@ -926,4 +1597,33 @@ function nameOf(contact: {
 	lastName: string | null;
 }): string {
 	return [contact.firstName, contact.lastName].filter(Boolean).join(" ");
+}
+
+function parseOptionalDate(value: string | null | undefined): Date | null {
+	if (value === undefined || value === null || value.trim() === "") return null;
+	const trimmed = value.trim();
+
+	const isoDay = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+	if (isoDay) {
+		const date = new Date(
+			Number(isoDay[1]),
+			Number(isoDay[2]) - 1,
+			Number(isoDay[3]),
+		);
+		return Number.isNaN(date.getTime()) ? null : date;
+	}
+
+	const dmy = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(trimmed);
+	if (dmy) {
+		const date = new Date(
+			Number(dmy[3]),
+			Number(dmy[2]) - 1,
+			Number(dmy[1]),
+		);
+		return Number.isNaN(date.getTime()) ? null : date;
+	}
+
+	const date = new Date(trimmed);
+	if (Number.isNaN(date.getTime())) return null;
+	return date;
 }

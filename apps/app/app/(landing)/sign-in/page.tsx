@@ -1,3 +1,4 @@
+import { PRODUCT_BRAND } from "@crm/brand";
 import type { MailboxProviderId } from "@crm/auth/scopes";
 import type { Metadata } from "next";
 import { redirect, unstable_rethrow } from "next/navigation";
@@ -47,7 +48,7 @@ export default function SignInPage({ searchParams }: PageProps<"/sign-in">) {
 				fallback={
 					<AuthHeading
 						title="Welcome back"
-						description="Sign in with your account to continue."
+						description={`Log in to your ${PRODUCT_BRAND.productName} account.`}
 					/>
 				}
 			>
@@ -107,7 +108,7 @@ async function SignIn({
 		<>
 			<AuthHeading
 				title="Welcome back"
-				description="Sign in with your account to continue."
+				description={`Log in to your ${PRODUCT_BRAND.productName} account.`}
 			/>
 
 			{showSso ? <SsoSignIn providers={providers} /> : null}

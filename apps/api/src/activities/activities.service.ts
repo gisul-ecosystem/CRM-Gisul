@@ -1,3 +1,4 @@
+import { isWorkspaceAdmin, workspaceRoleOf } from "@crm/auth";
 import { ActivityType, type Db, type Prisma } from "@crm/db";
 import { activityMeta } from "@crm/validation/activity-meta";
 import {
@@ -10,6 +11,7 @@ import { ActivityStampService } from "../crm/activity-stamp.service";
 import { blankToNull } from "../crm/values";
 import { InjectDatabase } from "../database/database.constants";
 import type {
+	ActivitiesListInput,
 	ActivityCreateInput,
 	ActivityEntry,
 	MyTasksInput,
@@ -61,6 +63,15 @@ const ENTRY_SELECT = {
 	},
 } as const;
 
+const LINKED_OR_LOGGED: Prisma.ActivityWhereInput = {
+	OR: [
+		{ emailThreadId: null, calendarEventId: null },
+		{ companyId: { not: null } },
+		{ contactId: { not: null } },
+		{ dealId: { not: null } },
+	],
+};
+
 const NOTE_TYPES = [
 	ActivityType.NOTE,
 	ActivityType.CALL,
@@ -77,8 +88,11 @@ export class ActivitiesService {
 		private readonly stamp: ActivityStampService,
 	) {}
 
-	async timeline(input: TimelineInput): Promise<TimelineResult> {
-		const where = this.anchor(input);
+	async timeline(
+		input: TimelineInput,
+		actingUserId: string,
+	): Promise<TimelineResult> {
+		const where = await this.visibleAnchor(input, actingUserId);
 		Object.assign(where, filterClause(input.filter));
 
 		const rows = await this.db.activity.findMany({
@@ -104,8 +118,9 @@ export class ActivitiesService {
 
 	async timelineCounts(
 		input: Pick<TimelineInput, "companyId" | "contactId" | "dealId">,
+		actingUserId: string,
 	): Promise<TimelineCounts> {
-		const anchor = this.anchor(input);
+		const anchor = await this.visibleAnchor(input, actingUserId);
 
 		const [all, notes, upcoming, done, email, meetings] = await Promise.all([
 			this.db.activity.count({ where: anchor }),
@@ -212,6 +227,106 @@ export class ActivitiesService {
 		});
 
 		return tasks.map(serializeEntry);
+	}
+
+	async list(
+		input: ActivitiesListInput,
+		actingUserId?: string,
+	): Promise<ActivityEntry[]> {
+		const now = new Date();
+		const where: Prisma.ActivityWhereInput = {};
+		const and: Prisma.ActivityWhereInput[] = [LINKED_OR_LOGGED];
+
+		if (actingUserId) {
+			const role = await workspaceRoleOf(actingUserId, this.db);
+			if (!isWorkspaceAdmin(role)) where.createdById = actingUserId;
+		}
+
+		if (input.type && input.type !== "all") {
+			switch (input.type) {
+				case "call":
+					where.type = ActivityType.CALL;
+					break;
+				case "meeting":
+					where.type = ActivityType.MEETING;
+					break;
+				case "email":
+					where.type = ActivityType.EMAIL;
+					break;
+				case "task":
+					where.type = ActivityType.TASK;
+					break;
+			}
+		}
+
+		if (input.status) {
+			if (input.status === "completed") {
+				where.completedAt = { not: null };
+			} else if (input.status === "overdue") {
+				where.completedAt = null;
+				where.dueAt = { lt: now };
+			} else if (input.status === "pending") {
+				where.completedAt = null;
+			}
+		}
+
+		if (input.startDate || input.endDate) {
+			const start = input.startDate ? new Date(input.startDate) : undefined;
+			const end = input.endDate ? new Date(input.endDate) : undefined;
+
+			where.OR = [
+				{
+					occurredAt: {
+						gte: start,
+						lte: end,
+					},
+				},
+				{
+					dueAt: {
+						gte: start,
+						lte: end,
+					},
+				},
+			];
+		}
+
+		if (input.search?.trim()) {
+			const query = input.search.trim();
+			and.push({
+				OR: [
+					{ subject: { contains: query, mode: "insensitive" } },
+					{ body: { contains: query, mode: "insensitive" } },
+					{ company: { name: { contains: query, mode: "insensitive" } } },
+					{ contact: { firstName: { contains: query, mode: "insensitive" } } },
+					{ contact: { lastName: { contains: query, mode: "insensitive" } } },
+				],
+			});
+		}
+
+		where.AND = and;
+
+		const rows = await this.db.activity.findMany({
+			where,
+			take: input.limit,
+			orderBy: [
+				{ occurredAt: { sort: "desc", nulls: "last" } },
+				{ createdAt: "desc" },
+			],
+			select: ENTRY_SELECT,
+		});
+
+		return rows.map(serializeEntry);
+	}
+
+	private async visibleAnchor(
+		input: Pick<TimelineInput, "companyId" | "contactId" | "dealId">,
+		actingUserId: string,
+	): Promise<Prisma.ActivityWhereInput> {
+		const anchor = this.anchor(input);
+		const role = await workspaceRoleOf(actingUserId, this.db);
+		return isWorkspaceAdmin(role)
+			? anchor
+			: { ...anchor, createdById: actingUserId };
 	}
 
 	private anchor(

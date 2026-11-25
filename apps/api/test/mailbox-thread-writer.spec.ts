@@ -18,6 +18,7 @@ const mailbox = `rep-${suffix}@example.test`;
 const person = `buyer@${domain}`;
 const rootId = `<root-${suffix}@mail.test>`;
 const movedRoot = `outlook-conversation:${suffix}`;
+const strangerRoot = `<stranger-${suffix}@mail.test>`;
 
 const agent = {
 	contactCreated: async () => true,
@@ -51,7 +52,7 @@ function message(id: string, sentAt: Date, root = rootId): IncomingMessage {
 
 async function clean() {
 	await db.emailThread.deleteMany({
-		where: { rootMessageId: { in: [rootId, movedRoot] } },
+		where: { rootMessageId: { in: [rootId, movedRoot, strangerRoot] } },
 	});
 	await db.contact.deleteMany({ where: { email: person } });
 	await db.company.deleteMany({ where: { domain } });
@@ -107,6 +108,29 @@ describe("storing a synced email", () => {
 
 		expect(thread?.messageCount).toBe(1);
 		expect(thread?.activity).not.toBeNull();
+	});
+
+	it("skips a thread with nobody from the CRM on it", async () => {
+		const stored = await threads.store(
+			row,
+			{ mailbox, origin: "gmail" },
+			{
+				...message(
+					`<stranger-${suffix}@mail.test>`,
+					new Date("2026-01-01T11:00:00Z"),
+					strangerRoot,
+				),
+				recipients: [
+					{ email: `someone@unknown-${suffix}.test`, name: null, kind: "to" },
+				],
+			},
+			await threads.context(),
+		);
+
+		expect(stored).toBe(false);
+		expect(
+			await db.emailThread.count({ where: { rootMessageId: strangerRoot } }),
+		).toBe(0);
 	});
 
 	it("repairs a thread whose projection was lost rather than skipping it forever", async () => {

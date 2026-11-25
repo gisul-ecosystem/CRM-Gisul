@@ -11,14 +11,31 @@ are in `docs/setup.md`.
 
 ## Model
 
-Default `zai/glm-5.2-fast`; `DEFAULT_AGENT_MODEL` in `@crm/db/settings` because the
-agent and the API both need it.
+**Claude when `ANTHROPIC_API_KEY` is set.** `lib/agent-model.ts` picks the model for
+the agent and both subagents: `claude-haiku-5-5`, or `ANTHROPIC_AGENT_MODEL`
+(`lib/agent-model-config.ts`). The startup log prints which model is in use.
+Haiku costs 1/40 of Opus per token; set `ANTHROPIC_AGENT_MODEL` to
+`claude-sonnet-5-5` only where research quality drops.
+**Effort is `low`** to spend the fewest tokens; raise it in the config only where
+quality drops. **The context window is set to 100K**, not the model's 1M. eve
+compacts at 90% of it, so a long research session never resends more than about
+90K tokens per step, and Haiku input stays in its cheaper under-100K price tier. **Prompt caching is eve's**: it marks the tools, the system prompt
+and the latest turns whenever the provider is Anthropic. Do not add a top-level
+`cacheControl` — a request allows four breakpoints and eve already uses them. While
+Claude is active, the Settings model chooser does not apply. A team agent whose
+saved version names an Azure deployment still runs on that deployment.
 
-- **A row (`AppSetting`), not an env var**, via `defineDynamic` on `session.started`.
-  Open conversations keep their model — prompt caches are per model.
+**Azure OpenAI when the key is unset.** Default Azure deployment `gpt-4o`;
+`DEFAULT_AGENT_MODEL` in `@crm/db/settings` because the agent and the API both need
+it. Override the default name with `AZURE_OPENAI_DEPLOYMENT`. The rules below are
+for the Azure path.
+
+- **A row (`AppSetting`), not an env var**, via `defineDynamic` on `step.started`.
+  The handler returns an Azure `LanguageModel`. A string id would still route
+  through the Vercel AI Gateway.
 - **`lib/model.ts` always sends `modelContextWindowTokens`**; eve never inherits it.
 - **A failed read logs and keeps the compiled fallback.** Never throws.
-- **The chooser offers only `tool-use` models** (`ModelCatalogService`).
+- **The chooser lists Azure chat deployments** (`ModelCatalogService`).
 - **Not a frontier model, deliberately** — refusing wrong answers is enforced by the
   tools and evidence model, not model strength.
 
@@ -219,6 +236,30 @@ missing key removes a place to look. **Never an error, never throws.**
 `capabilitiesFrom()`/`markdownFor()` are the pure halves. `contextDevKey()` is the only
 resolver, and `lib/context-dev.ts` memoises its client on the key string.
 
+### Unifers
+
+`UNIFERS_API_KEY` turns on two things in the agent. Both spend Unifers credits.
+
+- **LinkedIn profile fallback.** `get_linkedin_profile` and
+  `get_contact_work_history` call `profileByUrl` (`lib/people.ts`). It asks
+  Context.dev first. When Context.dev has no key or no match, it asks Unifers
+  `POST /client-apis/people/enrich/linkedin`. Unifers returns the name,
+  headline, current title and employer. It returns no photo and no usable work
+  history, so the portrait path still uses Context.dev only.
+- **`reveal_contact_details`.** It asks Unifers
+  `POST /client-apis/people/reveal/linkedin` for the email and phone of the
+  LinkedIn URL on the contact. It asks only for the empty fields, so Unifers
+  charges only for those. It writes a work email and a mobile into empty fields
+  only, with a conditional update, so a value a person typed always stays. It
+  skips an email that another contact already holds. Every charged call leaves a
+  timeline note with the values, the credits charged and the Unifers `logId`.
+  The note is also the lock: the tool refuses a second call for the same
+  contact for `UNIFERS.reveal.repeatAfterMs`.
+- **The client is `lib/unifers.ts`.** It parses every response with Zod at the
+  boundary. A body it cannot read is an error with the failing paths, never an
+  empty result. A 404 is "no data", not a failure. Tunables are in
+  `lib/unifers-config.ts`.
+
 ## Budget and scheduling
 
 - `lib/focus.ts` — per-session budget in `defineState`; running out is a normal ending.
@@ -376,6 +417,31 @@ HTTP channel. It creates an isolated private conversation, dispatches the builde
 asserts the declared subagent path, verifies a READY side-effect-free manifest, and
 cleans up its rows. It skips visibly when the database, bridge secret or model
 credential is unavailable.
+
+## One email, drafted by Claude
+
+The contact sheet has a **Send email** button. It sends one email to that one
+person. The draft comes from `POST /internal/crm/draft-email` in
+`agent/channels/crm.ts`, which calls `agent/lib/email-draft.ts`.
+
+- The API relays only. `contacts.draftEmail` sends `{contactId, senderName, purpose}`
+  through the bridge and returns `{subject, body}`.
+- The agent reads the contact, the company, the brief and the product from the
+  database. It calls Claude with structured output and server-side fallbacks.
+- The shape lives in `@crm/validation/email-draft`.
+- `ANTHROPIC_API_KEY` is optional. Without it the answer is `not_configured`.
+- Model, effort and limits are in `agent/lib/email-draft-config.ts`.
+
+**Lead type sets the pitch.** Leads added from Lead generation get a NOTE activity
+whose `meta` is a lead origin (`@crm/validation/lead-origin`): category (`gpu`,
+`training`, `competitors`), segment, country, signal and source. The draft reads the
+latest one, or the category picked in the dialog, and adds that category's brief from
+`agent/lib/email-knowledge.ts`, with Gisul's products and the client references by
+country. The facts there are copied from `services/linkedin-scraper/knowledge/*.md`;
+change both together.
+
+Unifers sends the email. The app creates a one-lead Unifers campaign with
+`startAt: "now"` and an all-day window. See `docs/outreach.md`.
 
 ## The bridge
 

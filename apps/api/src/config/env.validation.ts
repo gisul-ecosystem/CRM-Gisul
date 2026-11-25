@@ -8,6 +8,7 @@ import {
 	Max,
 	Min,
 	MinLength,
+	ValidateIf,
 	validateSync,
 } from "class-validator";
 
@@ -126,6 +127,29 @@ export class EnvironmentVariables {
 	@IsOptional()
 	@IsString()
 	CRM_TELEMETRY_DISABLED?: string;
+
+	@IsOptional()
+	@ValidateIf((_, value) => typeof value === "string" && value.trim() !== "")
+	@IsUrl(
+		{ require_protocol: true },
+		{
+			message:
+				"AZURE_OPENAI_ENDPOINT must be the Azure OpenAI resource URL, like https://your-resource.openai.azure.com.",
+		},
+	)
+	AZURE_OPENAI_ENDPOINT?: string;
+
+	@IsOptional()
+	@IsString()
+	AZURE_OPENAI_API_KEY?: string;
+
+	@IsOptional()
+	@IsString()
+	AZURE_OPENAI_API_VERSION?: string;
+
+	@IsOptional()
+	@IsString()
+	AZURE_OPENAI_DEPLOYMENT?: string;
 }
 
 export type RawEnvironment = Record<string, string | undefined>;

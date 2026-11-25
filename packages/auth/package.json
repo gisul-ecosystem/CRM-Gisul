@@ -20,6 +20,7 @@
 	"dependencies": {
 		"@better-auth/api-key": "1.6.25",
 		"@better-auth/sso": "1.6.25",
+		"@crm/brand": "workspace:*",
 		"@crm/db": "workspace:*",
 		"@crm/env": "workspace:*",
 		"@crm/validation": "workspace:*",

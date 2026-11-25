@@ -1,241 +1,201 @@
 "use client";
 
-import {
-	Card,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@crm/ui/components/card";
-import type { ChartConfig } from "@crm/ui/components/chart";
-import { DashboardRow, StatGroup } from "@crm/ui/components/dashboard";
-import { StatCard, type StatDelta } from "@crm/ui/components/stat-card";
+import ChartRadial from "@carbon/icons-react/es/ChartRadial";
+import Folder from "@carbon/icons-react/es/Folder";
+import Trophy from "@carbon/icons-react/es/Trophy";
+import UserMultiple from "@carbon/icons-react/es/UserMultiple";
+import ArrowRight from "@carbon/icons-react/es/ArrowRight";
+import { Icon } from "@crm/ui/components/icon";
 import {
 	formatCount,
-	formatMoney,
 	formatMoneyCompact,
 	formatPercent,
 } from "@crm/ui/lib/format";
 import Link from "next/link";
-import type { ReactNode } from "react";
-import { AreaTrend, DonutStat } from "@/components/dashboard-charts";
-import { dealStageColor, dealStageLabel } from "@/lib/deal-stage";
+import { DealStage } from "@crm/db/enums";
+import { dealStageLabel } from "@/lib/deal-stage";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
+import styles from "./dashboard-design.module.css";
 
 type Summary = RouterOutputs["dashboard"]["summary"];
 
-const TREND_CONFIG: ChartConfig = {
-	won: { label: "Closed won", color: "var(--success)" },
-	created: { label: "New pipeline", color: "var(--chart-1)" },
-};
-
-function changeDelta(
-	current: number,
-	previous: number,
-	label: string,
-): StatDelta | undefined {
-	if (previous === 0) return undefined;
-	const change = Math.round(((current - previous) / previous) * 100);
-	return {
-		value: `${change >= 0 ? "+" : ""}${change}%`,
-		direction: change > 0 ? "up" : change < 0 ? "down" : "neutral",
-		label,
-	};
-}
+const STAGE_CLASS = [styles.s1, styles.s2, styles.s3, styles.s4] as const;
 
 export function SalesDashboard({ summary }: { summary: Summary }) {
 	const workspaceUrl = useWorkspaceUrl();
-
 	const {
+		leads,
 		pipeline,
 		wonThisMonth,
 		wonPrevMonth,
 		performance,
-		trend,
-		closingThisMonthTotal,
 		reportingCurrency,
-		unconverted,
 	} = summary;
-
 	const money = (cents: number) => formatMoneyCompact(cents, reportingCurrency);
-	const exact = (value: number | string) =>
-		formatMoney(Number(value), reportingCurrency);
-
-	const hasTrend = trend.some((point) => point.won > 0 || point.created > 0);
-
-	const stageSlices = pipeline.stages.flatMap((stage) =>
-		stage.valueCents > 0
-			? [
-					{
-						key: stage.stage,
-						label: dealStageLabel(stage.stage),
-						value: stage.valueCents,
-						color: dealStageColor(stage.stage),
-						count: stage.count,
-					},
-				]
-			: [],
-	);
 
 	return (
-		<div className="flex flex-col gap-6">
-			<StatGroup>
-				<StatCard
-					label="Closed won this month"
-					value={money(wonThisMonth.valueCents)}
-					delta={changeDelta(
-						wonThisMonth.valueCents,
-						wonPrevMonth.valueCents,
-						"vs. last month",
-					)}
-					description={`${formatCount(wonThisMonth.count, "deal")} · ${money(wonPrevMonth.valueCents)} last month`}
-				/>
-				<StatCard
-					label="Open pipeline"
-					value={money(pipeline.totalCents)}
-					description={`${formatCount(pipeline.totalDeals, "deal")} in progress · ${money(closingThisMonthTotal.valueCents)} due this month`}
-				/>
-				<StatCard
-					label={`Win rate (${performance.windowDays}d)`}
-					value={
-						performance.winRate === null
-							? "—"
-							: formatPercent(performance.winRate)
-					}
-					description={
-						performance.wins + performance.losses === 0
-							? "Nothing has closed yet"
-							: `${performance.wins} won · ${performance.losses} lost`
-					}
-				/>
-				<StatCard
-					label={`Average deal (${performance.windowDays}d)`}
-					value={
-						performance.avgDealCents === null
-							? "—"
-							: money(performance.avgDealCents)
-					}
-					description={
-						performance.avgCycleDays === null
-							? "No wins to measure"
-							: `${performance.avgCycleDays}-day average cycle`
-					}
-				/>
-			</StatGroup>
+		<>
+			<section className={styles.kpis}>
+				<div className={`${styles.card} ${styles.kpi}`}>
+					<div className={styles.kpiRow}>
+						<span className={styles.kpiIcon}>
+							<Icon icon={UserMultiple} />
+						</span>
+					</div>
+					<div className={styles.kpiLabel} style={{ marginTop: 2 }}>
+						Total Leads
+					</div>
+					<div className={styles.kpiNum}>{leads.total}</div>
+					<div className={styles.kpiSub}>
+						<CountDelta
+							current={leads.createdThisMonth}
+							previous={leads.createdPrevMonth}
+						/>{" "}
+						vs last month
+					</div>
+				</div>
 
-			{unconverted.count > 0 ? (
-				<p className="text-muted-foreground text-xs">
-					Every figure above is in {reportingCurrency}.{" "}
-					{formatCount(unconverted.count, "deal")} in{" "}
-					{unconverted.currencies.join(", ")}{" "}
-					{unconverted.count === 1 ? "is" : "are"} not included — there is no
-					rate to convert {unconverted.currencies.length === 1 ? "it" : "them"}{" "}
-					with.{" "}
-					<Link
-						href={workspaceUrl("/settings/currencies")}
-						className="underline hover:no-underline"
-					>
-						Set one
+				<div className={`${styles.card} ${styles.kpi}`}>
+					<div className={styles.kpiRow}>
+						<span className={styles.kpiIcon}>
+							<Icon icon={Folder} />
+						</span>
+						<span className={styles.kpiLabel}>Open Deals</span>
+					</div>
+					<div className={styles.kpiNum}>{pipeline.totalDeals}</div>
+					<div className={styles.kpiSub}>
+						<span className={styles.kpiSubBold}>{money(pipeline.totalCents)}</span>{" "}
+						pipeline value
+					</div>
+				</div>
+
+				<div className={`${styles.card} ${styles.kpi}`}>
+					<div className={styles.kpiRow}>
+						<span className={styles.kpiIcon}>
+							<Icon icon={Trophy} />
+						</span>
+						<span className={styles.kpiLabel}>Deals Won</span>
+					</div>
+					<div className={styles.kpiNum}>{wonThisMonth.count}</div>
+					<div className={styles.kpiSub}>
+						<CountDelta
+							current={wonThisMonth.count}
+							previous={wonPrevMonth.count}
+						/>{" "}
+						vs last month
+					</div>
+				</div>
+
+				<div className={`${styles.card} ${styles.kpi}`}>
+					<div className={styles.kpiRow}>
+						<span className={styles.kpiIcon}>
+							<Icon icon={ChartRadial} />
+						</span>
+						<span className={styles.kpiLabel}>Conversion Rate</span>
+					</div>
+					<div className={styles.kpiNum}>
+						{performance.winRateThisMonth === null
+							? "—"
+							: formatPercent(performance.winRateThisMonth)}
+					</div>
+					<div className={styles.kpiSub}>
+						<RateDelta
+							current={performance.winRateThisMonth}
+							previous={performance.winRatePrevMonth}
+						/>{" "}
+						vs last month
+					</div>
+				</div>
+			</section>
+
+			<section className={`${styles.card} ${styles.pipe}`}>
+				<div className={styles.head}>
+					<div>
+						<h2 className={styles.headTitle}>Sales Pipeline</h2>
+						<p className={styles.headSub}>
+							{money(pipeline.totalCents)} total pipeline across{" "}
+							{formatCount(pipeline.totalDeals, "deal")}
+						</p>
+					</div>
+					<Link href={workspaceUrl("/deals")} className={styles.link}>
+						View Deals <Icon icon={ArrowRight} />
 					</Link>
-					.
-				</p>
-			) : null}
-
-			<DashboardRow split="hero">
-				<ChartPanel
-					title="Closed won vs. new pipeline"
-					description="Last six months, by the month a deal closed or was created"
-				>
-					{hasTrend ? (
-						<div className="flex flex-1 flex-col justify-center py-4">
-							<AreaTrend
-								data={trend}
-								config={TREND_CONFIG}
-								xKey="month"
-								height={196}
-								variant="gradient"
-								bloom="high"
-								showLegend
-								formatValue={exact}
-							/>
-						</div>
-					) : (
-						<EmptyChart label="No deals closed or created yet" />
-					)}
-				</ChartPanel>
-
-				<ChartPanel
-					title="Open pipeline by stage"
-					description="Where the value sits right now"
-				>
-					{stageSlices.length > 0 ? (
-						<div className="flex flex-1 flex-col justify-between gap-1 pt-4">
-							<DonutStat
-								data={stageSlices}
-								height={168}
-								centerValue={money(pipeline.totalCents)}
-								centerLabel="open"
-								formatValue={exact}
-							/>
-							<ul className="flex flex-col px-5 pb-1 md:px-6">
-								{stageSlices.map((slice) => (
-									<li key={slice.key} className="border-t first:border-t-0">
-										<Link
-											href={`${workspaceUrl("/deals")}?stage=${slice.key}`}
-											className="flex items-center gap-2.5 py-2 text-xs hover:underline"
-										>
-											<span
-												aria-hidden
-												className="size-1.5 shrink-0"
-												style={{ backgroundColor: slice.color }}
-											/>
-											<span className="min-w-0 flex-1 truncate">
-												{slice.label}
-											</span>
-											<span className="shrink-0 text-muted-foreground tabular-nums">
-												{slice.count}
-											</span>
-											<span className="w-14 shrink-0 text-right font-medium tabular-nums">
-												{money(slice.value)}
-											</span>
-										</Link>
-									</li>
-								))}
-							</ul>
-						</div>
-					) : (
-						<EmptyChart label="Nothing open" />
-					)}
-				</ChartPanel>
-			</DashboardRow>
-		</div>
+				</div>
+				<div className={styles.stages}>
+					{pipeline.stages.map((stage, index) => (
+						<Link
+							key={stage.stage}
+							href={`${workspaceUrl("/deals")}?stage=${stage.stage}`}
+							className={`${styles.stage} ${STAGE_CLASS[index] ?? styles.s1}`}
+						>
+							<span className={styles.stageName}>
+								{dealStageLabel(stage.stage)}
+							</span>
+							<span className={styles.stageCount}>
+								{formatCount(stage.count, "deal")}
+							</span>
+							<span className={styles.stageValue}>
+								{money(stage.valueCents)}
+							</span>
+						</Link>
+					))}
+					<div className={`${styles.stage} ${styles.s5}`}>
+						<span className={styles.stageName}>
+							{dealStageLabel(DealStage.CLOSED_WON)}
+						</span>
+						<span className={styles.stageCount}>
+							{formatCount(wonThisMonth.count, "deal")}
+						</span>
+						<span className={styles.stageValue}>
+							{money(wonThisMonth.valueCents)}
+						</span>
+					</div>
+				</div>
+			</section>
+		</>
 	);
 }
 
-function ChartPanel({
-	title,
-	description,
-	children,
+function CountDelta({
+	current,
+	previous,
 }: {
-	title: string;
-	description?: string;
-	children: ReactNode;
+	current: number;
+	previous: number;
 }) {
-	return (
-		<Card className="min-w-0">
-			<CardHeader>
-				<CardTitle>{title}</CardTitle>
-				{description ? <CardDescription>{description}</CardDescription> : null}
-			</CardHeader>
-			<div className="flex flex-1 flex-col border">{children}</div>
-		</Card>
-	);
+	if (previous === 0 && current === 0) {
+		return <span className={styles.kpiFlat}>—</span>;
+	}
+	if (previous === 0) {
+		return <span className={styles.up}>↑ +{current}</span>;
+	}
+	const change = Math.round(((current - previous) / previous) * 100);
+	if (change === 0) {
+		return <span className={styles.kpiFlat}>→ 0%</span>;
+	}
+	if (change > 0) {
+		return <span className={styles.up}>↑ +{change}%</span>;
+	}
+	return <span className={styles.down}>↓ {Math.abs(change)}%</span>;
 }
 
-function EmptyChart({ label }: { label: string }) {
-	return (
-		<div className="flex flex-1 items-center justify-center px-5 py-10 text-muted-foreground text-sm md:px-6">
-			{label}
-		</div>
-	);
+function RateDelta({
+	current,
+	previous,
+}: {
+	current: number | null;
+	previous: number | null;
+}) {
+	if (current === null || previous === null) {
+		return <span className={styles.kpiFlat}>—</span>;
+	}
+	const delta = current - previous;
+	if (Math.abs(delta) < 0.0005) {
+		return <span className={styles.kpiFlat}>→ 0%</span>;
+	}
+	if (delta > 0) {
+		return <span className={styles.up}>↑ +{formatPercent(delta)}</span>;
+	}
+	return <span className={styles.down}>↓ {formatPercent(Math.abs(delta))}</span>;
 }

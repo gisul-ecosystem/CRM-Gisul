@@ -10,7 +10,6 @@ import {
 	useFileTree,
 	useFileTreeSelection,
 } from "@pierre/trees/react";
-import { useTheme } from "next-themes";
 import { useState } from "react";
 import { latestBuilderArtifacts } from "@/lib/agent-builder-state";
 import { useHydrated } from "@/lib/use-hydrated";
@@ -63,7 +62,6 @@ function AgentCodeWorkspaceSurface({
 }) {
 	const [mode, setMode] = useState<"code" | "changes">("code");
 	const hydrated = useHydrated();
-	const { resolvedTheme } = useTheme();
 	const { model } = useFileTree({
 		paths,
 		initialExpansion: "open",
@@ -81,7 +79,7 @@ function AgentCodeWorkspaceSurface({
 	const showChanges = mode === "changes" && previous !== null;
 
 	if (!artifact) return null;
-	if (!hydrated || (resolvedTheme !== "light" && resolvedTheme !== "dark")) {
+	if (!hydrated) {
 		return (
 			<section
 				aria-label="Generated agent files"
@@ -94,7 +92,7 @@ function AgentCodeWorkspaceSurface({
 			</section>
 		);
 	}
-	const themeType = resolvedTheme;
+	const themeType = "light" as const;
 
 	const file = {
 		name: artifact.path,

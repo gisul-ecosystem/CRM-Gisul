@@ -47,6 +47,13 @@ here, what do we sell.
   `databaseHooks.session.create.before` and **degrades, never throws** — a throw fails
   the session create and locks everyone out. The plugin's `invitation` table is unused.
 - **First account is owner**, and the hook enrols pre-existing users, oldest first.
+- **Only an owner removes a member** (`workspace.removeMember`, `canRemoveMembers`).
+  It sets `user.removedAt`, deletes their sessions and their member row in one
+  transaction, and refuses yourself and the last owner. Their records keep them
+  as owner. `session.create.before` refuses a removed user and
+  `ensureWorkspaceMembership` never re-enrols one, so `ALLOWED_SIGN_IN` alone
+  cannot bring them back; `workspace.allowMemberAgain` clears `removedAt`, and
+  they rejoin as a member on their next sign-in.
 - **Permissions come from `@crm/auth`** — `canRenameWorkspace`, `canChangeRole`,
   `canConfigureSso`, `canManageCurrency` — enforced by the service *and* used to
   disable the UI control, so the button and the 403 cannot disagree.
@@ -191,6 +198,12 @@ Two rules follow for the serverless build:
   mailbox-wide delta, so the Outlook cursor is the last `receivedDateTime` seen,
   re-read with a one-second overlap; `rfcMessageId` is unique, so the overlap costs a
   duplicate fetch and never a duplicate row.
+- **Only threads and meetings that touch the CRM are stored.** After matching, a
+  thread or event with neither a `companyId` nor a `contactId` is dropped —
+  `ThreadWriterService.store` returns `false`, both calendar `apply`s return
+  `"ignored"`. A match is a known contact address or a known company domain; with
+  `autoCreate` on, a replied thread or a meeting can still create the record first.
+  Outlook To-Do lists are not read: a task has no participants, so it can never match.
 - **Microsoft has no token-revocation endpoint.** `revoke` clears the columns and the
   UI says the consent itself is removed in the user's Microsoft account. Google's still
   posts to `oauth2.googleapis.com/revoke` and refuses to clear if that fails.

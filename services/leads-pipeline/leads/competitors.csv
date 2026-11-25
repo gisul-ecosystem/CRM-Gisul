@@ -1,0 +1,35 @@
+# Cloud & compute providers (competitors to Racko) whose customer testimonials and case studies
+# list clients renting cloud GPUs, virtual machines, or AI infrastructure.
+# Checked allowed by robots.txt. Pages that build customer lists with JavaScript are read with
+# headless browser rendering (RENDER_JS=1).
+# Columns:
+#   provider: name of the cloud compute provider
+#   url: homepage or company domain
+#   testimonials_url: case studies, customer stories, or testimonials page
+#   india: yes = Indian cloud provider (startups default to India); check = site decides via geo check
+#   follow: path prefix when individual case studies have dedicated subpages to recursively fetch
+provider,url,testimonials_url,india,follow
+# --- Specialized Domestic Neoclouds (Direct Competitors in India) ---
+E2E Networks,https://www.e2enetworks.com,https://www.e2enetworks.com/case-studies,yes,/case-studies
+Neysa,https://neysa.ai,https://neysa.ai/,yes,
+Jarvis Labs,https://jarvislabs.ai,https://jarvislabs.ai/in,yes,
+AIC Cloud,https://aiccloud.in,https://aiccloud.in/,yes,
+Cruso,https://cruso.ai,https://cruso.ai/case-studies,yes,
+Cyfuture Cloud,https://cyfuture.cloud,https://cyfuture.cloud/case-studies/,yes,/case-studies
+Krutrim Cloud,https://cloud.olakrutrim.com,https://cloud.olakrutrim.com/,yes,
+Spheron Network,https://www.spheron.network,https://www.spheron.network/,yes,
+# --- Domestic Enterprise Cloud & HPC Datacenters (India) ---
+Yotta Data Services,https://yotta.com,https://yotta.com/case-studies/,yes,/case-studies
+Netweb Technologies,https://netwebindia.com,https://netwebindia.com/case-studies/,yes,/case-studies
+Pi DATACENTERS,https://pidatacenters.com,https://pidatacenters.com/case-studies/,yes,/case-studies
+CtrlS Datacenters,https://www.ctrls.in,https://www.ctrls.in/case-studies.html,yes,/case-studies
+Tata Communications Cloud,https://www.tatacommunications.com,https://www.tatacommunications.com/resource-centre/case-studies/,check,/resource-centre/case-studies
+# --- Global GPU & AI Neoclouds (Widely used by Indian Startups) ---
+RunPod,https://www.runpod.io,https://www.runpod.io/customers,check,/customers
+Lambda Labs,https://lambdalabs.com,https://lambdalabs.com/case-studies,check,/case-studies
+CoreWeave,https://www.coreweave.com,https://www.coreweave.com/case-studies,check,/case-studies
+Hyperstack,https://www.hyperstack.cloud,https://www.hyperstack.cloud/case-studies,check,/case-studies
+Nebius,https://nebius.com,https://nebius.com/customers,check,/customers
+Together AI,https://www.together.ai,https://www.together.ai/customers,check,/customers
+TensorDock,https://tensordock.com,https://tensordock.com/case-studies,check,/case-studies
+Vast.ai,https://vast.ai,https://vast.ai/,check,

@@ -37,6 +37,8 @@ export type CrmCache = {
 	settings(options?: Options): Promise<void>;
 	currency(options?: Options): Promise<void>;
 	workspace(options?: Options): Promise<void>;
+	dataManagement(options?: Options): Promise<void>;
+	pipeline(options?: Options): Promise<void>;
 	slack(options?: Options): Promise<void>;
 	sso(options?: Options): Promise<void>;
 	apiKeys(options?: Options): Promise<void>;
@@ -74,6 +76,7 @@ export function useCrmCache(): CrmCache {
 	const listKeys = () => [
 		trpc.companies.list.queryKey(),
 		trpc.contacts.list.queryKey(),
+		trpc.contacts.matchLeads.queryKey(),
 		trpc.deals.list.queryKey(),
 		trpc.search.quick.queryKey(),
 	];
@@ -296,10 +299,26 @@ export function useCrmCache(): CrmCache {
 
 		workspace: (options) =>
 			run(
-				[trpc.workspace.get.queryKey(), trpc.workspace.members.queryKey()],
+				[
+					trpc.workspace.get.queryKey(),
+					trpc.workspace.members.queryKey(),
+					trpc.workspace.teams.queryKey(),
+					trpc.workspace.roles.queryKey(),
+					trpc.workspace.removedMembers.queryKey(),
+				],
 				[],
 				options,
 			),
+
+		dataManagement: (options) =>
+			run(
+				[trpc.workspace.dataManagement.queryKey()],
+				[...listKeys(), trpc.dashboard.summary.queryKey()],
+				options,
+			),
+
+		pipeline: (options) =>
+			run([trpc.deals.pipelineOverview.queryKey()], [], options),
 
 		slack: (options) =>
 			run(

@@ -3,5 +3,5 @@ import { createListSearchParams } from "@/components/data-table/list-search-para
 export const membersSearchParams = createListSearchParams({
 	defaultSort: "joinedAt",
 	defaultDir: "asc",
-	facetIds: ["role"] as const,
+	facetIds: ["role", "team", "status"] as const,
 });

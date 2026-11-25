@@ -1,6 +1,7 @@
 "use client";
 
 import OverflowMenuHorizontal from "@carbon/icons-react/es/OverflowMenuHorizontal";
+import { Badge } from "@crm/ui/components/badge";
 import { Button } from "@crm/ui/components/button";
 import {
 	DataTable,
@@ -11,42 +12,52 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@crm/ui/components/dropdown-menu";
 import { Icon } from "@crm/ui/components/icon";
 import { PersonAvatar } from "@crm/ui/components/person-avatar";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 import { ListSearch } from "@/components/data-table/list-search";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { LocalRelativeTime } from "@/components/local-date-time";
+import { ConfirmDialog } from "@/components/outreach/confirm-dialog";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { membersSearchParams } from "./members-search-params";
-
-const ROLE_LABEL = {
-	owner: "Owner",
-	admin: "Admin",
-	member: "Member",
-} as const;
-
-type Role = keyof typeof ROLE_LABEL;
+import { ROLE_LABEL, type Role, WORKSPACE_ROLE_ORDER } from "./roles";
 
 type MemberRow = RouterOutputs["workspace"]["members"]["rows"][number];
 
-function columns(
-	canChangeRoles: boolean,
-	onChangeRole: (member: MemberRow, role: Role) => void,
-	pending: boolean,
-): DataTableColumn<MemberRow>[] {
+type Team = RouterOutputs["workspace"]["teams"][number];
+
+const STATUS_LABEL = {
+	active: "Active",
+	inactive: "Inactive",
+} as const satisfies Record<MemberRow["status"], string>;
+
+type MemberActions = {
+	canManage: boolean;
+	canRemove: boolean;
+	onRemove: (member: MemberRow) => void;
+	teams: Team[];
+	pending: boolean;
+	onChangeRole: (member: MemberRow, role: Role) => void;
+	onChangeTeam: (member: MemberRow, teamId: string | null) => void;
+};
+
+function columns(actions: MemberActions): DataTableColumn<MemberRow>[] {
 	return [
 		{
 			id: "name",
 			header: "Name",
 			sortable: true,
 			hideable: false,
-			width: "w-[34%]",
+			width: "w-[30%]",
 			cell: (row) => (
 				<span className="flex min-w-0 items-center gap-2">
 					<PersonAvatar
@@ -55,30 +66,62 @@ function columns(
 						name={row.name}
 						email={row.email}
 					/>
-					<span className="truncate font-medium">{row.name}</span>
-					{row.isViewer ? (
-						<span className="text-muted-foreground text-xs">You</span>
-					) : null}
+					<span className="flex min-w-0 flex-col">
+						<span className="truncate font-medium">
+							{row.name}
+							{row.isViewer ? (
+								<span className="text-muted-foreground"> (you)</span>
+							) : null}
+						</span>
+						<span className="truncate text-muted-foreground text-xs">
+							{row.email}
+						</span>
+					</span>
 				</span>
-			),
-		},
-		{
-			id: "email",
-			header: "Email",
-			sortable: true,
-			width: "w-[32%]",
-			hideBelow: "md",
-			cell: (row) => (
-				<span className="truncate text-muted-foreground">{row.email}</span>
 			),
 		},
 		{
 			id: "role",
 			header: "Role",
 			sortable: true,
-			width: "w-[14%]",
+			width: "w-[12%]",
 			cell: (row) => (
 				<span className="text-muted-foreground">{ROLE_LABEL[row.role]}</span>
+			),
+		},
+		{
+			id: "team",
+			header: "Team",
+			width: "w-[16%]",
+			hideBelow: "md",
+			cell: (row) => (
+				<span className="text-muted-foreground">{row.team ?? "—"}</span>
+			),
+		},
+		{
+			id: "status",
+			header: "Status",
+			width: "w-[12%]",
+			hideBelow: "sm",
+			cell: (row) => (
+				<Badge variant={row.status === "active" ? "secondary" : "outline"}>
+					{STATUS_LABEL[row.status]}
+				</Badge>
+			),
+		},
+		{
+			id: "lastActive",
+			header: "Last active",
+			width: "w-[12%]",
+			hideBelow: "lg",
+			cell: (row) => (
+				<span className="text-muted-foreground">
+					{row.lastActive ? (
+						<LocalRelativeTime date={row.lastActive} />
+					) : (
+						"Never"
+					)}
+				</span>
 			),
 		},
 		{
@@ -87,7 +130,7 @@ function columns(
 			label: "Joined date",
 			sortable: true,
 			align: "right",
-			width: "w-[14%]",
+			width: "w-[12%]",
 			hideBelow: "sm",
 			cell: (row) => (
 				<span className="text-muted-foreground">
@@ -103,28 +146,65 @@ function columns(
 			align: "right",
 			width: "w-[6%]",
 			cell: (row) =>
-				canChangeRoles ? (
+				actions.canManage || (actions.canRemove && !row.isViewer) ? (
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
-							<Button variant="ghost" size="icon" disabled={pending}>
+							<Button variant="ghost" size="icon" disabled={actions.pending}>
 								<Icon icon={OverflowMenuHorizontal} />
-								<span className="sr-only">Change {row.name}'s role</span>
+								<span className="sr-only">Manage {row.name}</span>
 							</Button>
 						</DropdownMenuTrigger>
 
 						<DropdownMenuContent align="end">
-							{(Object.keys(ROLE_LABEL) as Role[]).map((role) => (
-								<DropdownMenuItem
-									key={role}
-									data-checked={row.role === role}
-									onSelect={() => {
-										if (row.role === role) return;
-										onChangeRole(row, role);
-									}}
-								>
-									{ROLE_LABEL[role]}
-								</DropdownMenuItem>
-							))}
+							{actions.canManage ? (
+								<>
+									<DropdownMenuLabel>Role</DropdownMenuLabel>
+									{WORKSPACE_ROLE_ORDER.map((role) => (
+										<DropdownMenuItem
+											key={role}
+											data-checked={row.role === role}
+											onSelect={() => {
+												if (row.role === role) return;
+												actions.onChangeRole(row, role);
+											}}
+										>
+											Make {ROLE_LABEL[role].toLowerCase()}
+										</DropdownMenuItem>
+									))}
+
+									<DropdownMenuSeparator />
+									<DropdownMenuLabel>Team</DropdownMenuLabel>
+									{actions.teams.map((team) => (
+										<DropdownMenuItem
+											key={team.id}
+											data-checked={row.teamId === team.id}
+											onSelect={() => {
+												if (row.teamId === team.id) return;
+												actions.onChangeTeam(row, team.id);
+											}}
+										>
+											{team.name}
+										</DropdownMenuItem>
+									))}
+									<DropdownMenuItem
+										disabled={row.teamId === null}
+										onSelect={() => actions.onChangeTeam(row, null)}
+									>
+										No team
+									</DropdownMenuItem>
+								</>
+							) : null}
+							{actions.canRemove && !row.isViewer ? (
+								<>
+									{actions.canManage ? <DropdownMenuSeparator /> : null}
+									<DropdownMenuItem
+										variant="destructive"
+										onSelect={() => actions.onRemove(row)}
+									>
+										Remove from CRM
+									</DropdownMenuItem>
+								</>
+							) : null}
 						</DropdownMenuContent>
 					</DropdownMenu>
 				) : null,
@@ -138,6 +218,7 @@ export function MembersTable() {
 	const { query, input } = useTableQuery(membersSearchParams);
 
 	const workspace = useQuery(trpc.workspace.get.queryOptions());
+	const teams = useQuery(trpc.workspace.teams.queryOptions());
 	const members = useQuery({
 		...trpc.workspace.members.queryOptions(input),
 		placeholderData: (previous) => previous,
@@ -153,36 +234,93 @@ export function MembersTable() {
 		}),
 	);
 
+	const setTeam = useMutation(
+		trpc.workspace.updateMemberTeam.mutationOptions({
+			onSuccess: async () => {
+				await cache.workspace();
+				toast.success("Team changed.");
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
+	const [removing, setRemoving] = useState<MemberRow | null>(null);
+
+	const remove = useMutation(
+		trpc.workspace.removeMember.mutationOptions({
+			onSuccess: async () => {
+				await cache.workspace();
+				toast.success(
+					`${removing?.name ?? "That person"} was removed and signed out.`,
+				);
+				setRemoving(null);
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+
 	const facetCounts = members.data?.facetCounts;
+	const teamList = teams.data ?? [];
 
 	const facets: DataTableFacet[] = [
 		{
 			id: "role",
 			label: "Role",
-			options: (Object.keys(ROLE_LABEL) as Role[]).flatMap((role) =>
+			options: WORKSPACE_ROLE_ORDER.flatMap((role) =>
 				(facetCounts?.role?.[role] ?? 0) > 0
 					? [{ value: role, label: ROLE_LABEL[role] }]
 					: [],
 			),
 		},
+		{
+			id: "team",
+			label: "Team",
+			options: teamList.map((team) => ({ value: team.id, label: team.name })),
+		},
+		{
+			id: "status",
+			label: "Status",
+			options: (Object.keys(STATUS_LABEL) as MemberRow["status"][]).map(
+				(status) => ({ value: status, label: STATUS_LABEL[status] }),
+			),
+		},
 	];
 
 	return (
-		<DataTable
-			query={query}
-			search={<ListSearch placeholder="Search by name or email…" />}
-			columns={columns(
-				workspace.data?.canChangeRoles ?? false,
-				(member, role) => setRole.mutate({ memberId: member.id, role }),
-				setRole.isPending,
-			)}
-			rows={members.data?.rows ?? []}
-			total={members.data?.total ?? 0}
-			facetCounts={facetCounts}
-			facets={facets}
-			getRowId={(row) => row.id}
-			loading={members.isFetching}
-			empty="Nobody matches this view."
-		/>
+		<>
+			<DataTable
+				query={query}
+				search={<ListSearch placeholder="Search by name or email…" />}
+				columns={columns({
+					canManage: workspace.data?.canChangeRoles ?? false,
+					canRemove: workspace.data?.canRemoveMembers ?? false,
+					onRemove: setRemoving,
+					teams: teamList,
+					pending: setRole.isPending || setTeam.isPending || remove.isPending,
+					onChangeRole: (member, role) =>
+						setRole.mutate({ memberId: member.id, role }),
+					onChangeTeam: (member, teamId) =>
+						setTeam.mutate({ memberId: member.id, teamId }),
+				})}
+				rows={members.data?.rows ?? []}
+				total={members.data?.total ?? 0}
+				facetCounts={facetCounts}
+				facets={facets}
+				getRowId={(row) => row.id}
+				loading={members.isFetching}
+				empty="Nobody matches this view."
+			/>
+			<ConfirmDialog
+				open={removing !== null}
+				title={`Remove ${removing?.name ?? "this person"}?`}
+				description={`${removing?.email ?? "They"} is signed out at once and cannot sign in again until an owner allows them back. Their contacts, deals and activities stay in the CRM.`}
+				action="Remove"
+				pending={remove.isPending}
+				onConfirm={() => {
+					if (removing) remove.mutate({ memberId: removing.id });
+				}}
+				onClose={() => setRemoving(null)}
+			/>
+		</>
 	);
 }

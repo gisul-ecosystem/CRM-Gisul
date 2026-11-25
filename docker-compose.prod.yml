@@ -1,0 +1,279 @@
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+x-crm-env: &crm-env
+  DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+  NODE_ENV: production
+  NODE_TLS_REJECT_UNAUTHORIZED: "1"
+  CRM_TELEMETRY_DISABLED: ${CRM_TELEMETRY_DISABLED:-1}
+
+x-crm: &crm
+  env_file: .env
+  restart: unless-stopped
+  logging: *logging
+
+x-outreach: &outreach
+  image: gisuldocker/outreach-engine:${OUTREACH_IMAGE_TAG:-latest}
+  profiles: [outreach]
+  env_file:
+    - path: ./outreach.env
+      required: false
+  environment:
+    MONGODB_URI: mongodb://outreach-mongo:27017/outreach
+  init: true
+  restart: unless-stopped
+  logging: *logging
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    logging: *logging
+    shm_size: 256mb
+    stop_grace_period: 30s
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-crm}
+    volumes:
+      - crm-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-crm}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  migrate:
+    <<: *crm
+    image: gisuldocker/crm-migrate:${CRM_IMAGE_TAG:?set CRM_IMAGE_TAG}
+    environment: *crm-env
+    restart: "no"
+    volumes:
+      - ./.env:/app/.env:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *crm
+    image: gisuldocker/crm-api:${CRM_IMAGE_TAG:?set CRM_IMAGE_TAG}
+    environment:
+      <<: *crm-env
+      PORT: 3001
+      AGENT_URL: http://agent:2000
+      MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-common}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-v1}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
+    ports:
+      - "127.0.0.1:3011:3001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://127.0.0.1:3001/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  app:
+    <<: *crm
+    image: gisuldocker/crm-app:${CRM_IMAGE_TAG:?set CRM_IMAGE_TAG}
+    environment:
+      <<: *crm-env
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      AGENT_URL: http://agent:2000
+      OUTREACH_URL: http://outreach-web:3000
+      LINKEDIN_SCRAPER_URL: http://linkedin-scraper:6363
+      LEADS_PIPELINE_URL: http://leads-pipeline:8501
+    ports:
+      - "127.0.0.1:3010:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/', { redirect: 'manual' }).then(r => process.exit(r.status < 500 ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      api:
+        condition: service_healthy
+
+  agent:
+    <<: *crm
+    image: gisuldocker/crm-agent:${CRM_IMAGE_TAG:?set CRM_IMAGE_TAG}
+    environment:
+      <<: *crm-env
+      AGENT_PORT: 2000
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-v1}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://127.0.0.1:2000/eve/v1/info').then(r => process.exit(r.status < 500 ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  outreach-mongo:
+    image: mongo:8.0
+    profiles: [outreach, linkedin]
+    restart: unless-stopped
+    logging: *logging
+    volumes:
+      - outreach-mongo:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  outreach-setup:
+    <<: *outreach
+    command: ["sh", "-c", "npm run db:indexes && npm run seed"]
+    restart: "no"
+    healthcheck:
+      disable: true
+    depends_on:
+      outreach-mongo:
+        condition: service_healthy
+
+  outreach-web:
+    <<: *outreach
+    ports:
+      - "127.0.0.1:3020:3000"
+    depends_on:
+      outreach-setup:
+        condition: service_completed_successfully
+
+  outreach-worker:
+    <<: *outreach
+    command: ["node_modules/.bin/tsx", "src/worker/index.ts"]
+    stop_grace_period: 40s
+    healthcheck:
+      disable: true
+    depends_on:
+      outreach-setup:
+        condition: service_completed_successfully
+
+  linkedin-scraper:
+    image: ${LINKEDIN_SCRAPER_IMAGE:-gisuldocker/linkedin-scrapper:latest}
+    profiles: [linkedin]
+    restart: unless-stopped
+    logging: *logging
+    shm_size: 2gb
+    env_file:
+      - path: ./linkedin-scraper.env
+        required: false
+    environment:
+      PORT: "6363"
+      MONGODB_URI: mongodb://outreach-mongo:27017
+      MONGODB_DB: linkedin_scrapper
+      HEADLESS: "false"
+      IN_DOCKER: "true"
+      DISPLAY: ":99"
+      SEND_MESSAGES: "false"
+    volumes:
+      - linkedin-auth:/app/.auth
+      - linkedin-output:/app/output
+      - linkedin-data:/app/data
+    ports:
+      - "127.0.0.1:6364:6363"
+      - "127.0.0.1:6081:6080"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:6363/api/connection-types').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      outreach-mongo:
+        condition: service_healthy
+
+  leads-reacher:
+    image: ${LEADS_REACHER_IMAGE:-reacherhq/backend:v0.11.8}
+    profiles: [leads]
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      RCH__HELLO_NAME: ${LEADS_REACHER_HELLO_NAME:-localhost}
+      RCH__FROM_EMAIL: ${LEADS_REACHER_FROM_EMAIL:-verify@localhost}
+
+  leads-pipeline:
+    image: ${LEADS_PIPELINE_IMAGE:-gisuldocker/leads-pipeline:${CRM_IMAGE_TAG:?set CRM_IMAGE_TAG}}
+    profiles: [leads]
+    restart: unless-stopped
+    logging: *logging
+    init: true
+    shm_size: 1gb
+    environment:
+      TZ: ${LEADS_PIPELINE_TZ:-Asia/Kolkata}
+      REACHER_URL: http://leads-reacher:8080/v0/check_email
+    volumes:
+      - leads-data:/app/data
+    ports:
+      - "127.0.0.1:8502:8501"
+      - "127.0.0.1:6082:6080"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8501/api/health', timeout=4).status == 200 else 1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      - leads-reacher
+
+volumes:
+  crm-postgres:
+  outreach-mongo:
+  linkedin-mongo:
+  linkedin-auth:
+  linkedin-output:
+  linkedin-data:
+  leads-data:

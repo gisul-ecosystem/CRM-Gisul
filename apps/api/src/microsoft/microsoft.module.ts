@@ -5,6 +5,7 @@ import { GraphClient } from "./graph.client";
 import { MicrosoftRouter } from "./microsoft.router";
 import { MicrosoftConnectionService } from "./microsoft-connection.service";
 import { MicrosoftSyncService } from "./microsoft-sync.service";
+import { OutlookCalendarSyncService } from "./outlook-calendar-sync.service";
 import { OutlookSyncService } from "./outlook-sync.service";
 
 @Module({
@@ -12,10 +13,15 @@ import { OutlookSyncService } from "./outlook-sync.service";
 	providers: [
 		GraphClient,
 		OutlookSyncService,
+		OutlookCalendarSyncService,
 		MicrosoftSyncService,
 		MicrosoftConnectionService,
 		MicrosoftRouter,
 	],
-	exports: [MicrosoftSyncService, MicrosoftConnectionService],
+	exports: [
+		MicrosoftSyncService,
+		MicrosoftConnectionService,
+		OutlookCalendarSyncService,
+	],
 })
 export class MicrosoftModule {}

@@ -26,13 +26,26 @@ import {
 	dealCreateOutput,
 	dealDetachContactInput,
 	dealDetailOutput,
+	dealExportInput,
+	dealExportOutput,
 	dealIdInput,
+	dealImportInput,
+	dealImportOutput,
+	dealImportTemplateOutput,
 	dealListInput,
 	dealListOutput,
 	dealMutateOutput,
+	dealPipelineByProductOutput,
 	dealSetStageOutput,
+	dealStageCatalogOutput,
+	dealTrendOutput,
 	dealUpdateArgs,
+	pipelineOverviewOutput,
+	pipelineSettingsOutput,
+	pipelineStageItemOutput,
 	setStageInput,
+	updatePipelineSettingsInput,
+	updatePipelineStageInput,
 } from "./deals.contracts";
 import { DealsService } from "./deals.service";
 
@@ -48,6 +61,91 @@ export class DealsRouter {
 	})
 	async list(@Input() input: z.infer<typeof dealListInput>) {
 		return this.deals.list(input);
+	}
+
+	@Query({
+		input: dealExportInput,
+		output: dealExportOutput,
+		meta: restMeta("POST", "/deals/export", ["Deals"]),
+	})
+	async exportCsv(@Input() input: z.infer<typeof dealExportInput>) {
+		return this.deals.exportCsv(input);
+	}
+
+	@Query({
+		output: dealImportTemplateOutput,
+		meta: restMeta("GET", "/deals/import-template", ["Deals"]),
+	})
+	importTemplate() {
+		return this.deals.importTemplate();
+	}
+
+	@Mutation({
+		input: dealImportInput,
+		output: dealImportOutput,
+		meta: restMeta("POST", "/deals/import", ["Deals"]),
+	})
+	async importCsv(
+		@Input() input: z.infer<typeof dealImportInput>,
+		@Ctx() ctx: AuthedTrpcContext,
+	) {
+		return this.deals.importCsv(input, ctx.user.id);
+	}
+
+	@Query({
+		output: dealStageCatalogOutput,
+		meta: restMeta("GET", "/deals/stages", ["Deals"]),
+	})
+	stages() {
+		return this.deals.stages();
+	}
+
+	@Query({
+		output: pipelineOverviewOutput,
+		meta: restMeta("GET", "/deals/pipeline-overview", ["Deals"]),
+	})
+	async pipelineOverview(@Ctx() ctx: AuthedTrpcContext) {
+		return this.deals.pipelineOverview(ctx.user.id);
+	}
+
+	@Mutation({
+		input: updatePipelineSettingsInput,
+		output: pipelineSettingsOutput,
+		meta: restMeta("PATCH", "/deals/pipeline-settings", ["Deals"]),
+	})
+	async updatePipelineSettings(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof updatePipelineSettingsInput>,
+	) {
+		return this.deals.updatePipelineSettings(ctx.user.id, input);
+	}
+
+	@Mutation({
+		input: updatePipelineStageInput,
+		output: pipelineStageItemOutput,
+		meta: restMeta("PATCH", "/deals/pipeline-stages/{id}", ["Deals"]),
+	})
+	async updatePipelineStage(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof updatePipelineStageInput>,
+	) {
+		return this.deals.updatePipelineStage(ctx.user.id, input);
+	}
+
+	@Query({
+		output: dealTrendOutput,
+		meta: restMeta("GET", "/deals/trend", ["Deals"]),
+	})
+	async trend() {
+		return this.deals.trend();
+	}
+
+	@Query({
+		output: dealPipelineByProductOutput,
+		meta: restMeta("GET", "/deals/pipeline-by-product", ["Deals"]),
+	})
+	async pipelineByProduct() {
+		return this.deals.pipelineByProduct();
 	}
 
 	@Query({

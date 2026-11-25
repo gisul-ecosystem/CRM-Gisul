@@ -7,6 +7,7 @@
 	"jsPlugins": ["./tools/oxlint/anti-slop/index.ts"],
 	"ignorePatterns": [
 		"**/node_modules/**",
+		"services/**",
 		"**/dist/**",
 		"**/.next/**",
 		"**/.eve/**",
