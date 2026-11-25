@@ -1,4 +1,5 @@
 import { unifersJson } from "./client";
+import { type TenantRepliesRequest, tenantRepliesResponse } from "./replies";
 import {
 	addLeadsResponse,
 	analyticsResponse,
@@ -63,5 +64,13 @@ export const campaignsApi = {
 		unifersJson(`/campaigns/${id}/status`, campaignResponse, {
 			method: "POST",
 			json: startAt ? { action, startAt } : { action },
+		}),
+};
+
+export const repliesApi = {
+	fromTenant: (input: TenantRepliesRequest) =>
+		unifersJson("/replies", tenantRepliesResponse, {
+			method: "POST",
+			json: input,
 		}),
 };

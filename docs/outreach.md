@@ -177,6 +177,19 @@ browser ──► CRM app /api/unifers/<path>      (apps/app/app/api/unifers/[..
     Owners and admins see every synced reply (`scope: "all"`). A member sees
     only replies whose `syncedByUserId` is their own, from the mailbox they
     connected (`scope: "own"`). The role check is `isWorkspaceAdmin`.
+  - **Tenant mail.** When every Unifers mailbox is in one Microsoft 365 tenant,
+    `UNIFERS_MAIL_TENANT_ID`, `UNIFERS_MAIL_CLIENT_ID` and
+    `UNIFERS_MAIL_CLIENT_SECRET` let the CRM read them directly, without anyone
+    connecting a mailbox. The app registration needs the Graph application
+    permission `Mail.Read` with admin consent. `POST /api/unifers/replies`
+    (`lib/unifers/tenant-mail.ts`, server only) lists the mailboxes from
+    Unifers `/email-accounts`, gets an app-only token, and reads each mailbox's
+    messages since the campaign was created (`UNIFERS.tenantMail`). It keeps the
+    newest message from each lead, using `uniqueBody` so quoted text is left out.
+    Owners and admins read every Unifers mailbox; a member reads only the
+    mailbox with their own login address. The page merges these with the synced
+    replies (`mergeReplies`) and shows the newest. A mailbox Microsoft refuses
+    is named on the page; the others still show.
   - Lead generation → Leads has "Send N with Unifers", which adds the selected
     rows with an email to an open campaign.
 - **Leads go in batches of 1,000** (`addLeadsInBatches`), the Unifers limit.

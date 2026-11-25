@@ -1,5 +1,6 @@
 const SECOND_MS = 1000;
 const MINUTE_MS = 60 * SECOND_MS;
+const DAY_MS = 24 * 60 * MINUTE_MS;
 
 export const UNIFERS = {
 	proxy: {
@@ -30,6 +31,24 @@ export const UNIFERS = {
 	},
 	signOff: "Regards,",
 	footer: { maxChars: 500, storageKey: "unifers.campaign.footer" },
+	tenantMail: {
+		env: {
+			tenantId: "UNIFERS_MAIL_TENANT_ID",
+			clientId: "UNIFERS_MAIL_CLIENT_ID",
+			clientSecret: "UNIFERS_MAIL_CLIENT_SECRET",
+		},
+		loginUrl: "https://login.microsoftonline.com",
+		graphUrl: "https://graph.microsoft.com/v1.0",
+		scope: "https://graph.microsoft.com/.default",
+		lookbackMs: 30 * DAY_MS,
+		pageSize: 50,
+		maxPages: 6,
+		maxMailboxes: 25,
+		maxLeads: 50,
+		maxText: 2000,
+		timeoutMs: 20 * SECOND_MS,
+		tokenEarlyMs: MINUTE_MS,
+	},
 	senderPlaceholder: "{{sender.",
 	draft: {
 		sampleSize: 100,

@@ -28,13 +28,17 @@ import { ConfirmDialog } from "@/components/outreach/confirm-dialog";
 import { UnifersPage } from "@/components/unifers/unifers-page";
 import { COUNT, DATE_TIME } from "@/lib/outreach/format";
 import { useTRPC } from "@/lib/trpc/client";
-import { campaignsApi } from "@/lib/unifers/api";
+import { campaignsApi, repliesApi } from "@/lib/unifers/api";
 import { unifersKeys, useUnifersCache } from "@/lib/unifers/cache";
 import {
 	LEAD_EVENT_LABEL,
 	UNIFERS_CAMPAIGN_STATUS,
 } from "@/lib/unifers/labels";
-import { campaignStart } from "@/lib/unifers/replies";
+import {
+	campaignStart,
+	mergeReplies,
+	type ShownReply,
+} from "@/lib/unifers/replies";
 import {
 	type CampaignAction,
 	type CampaignAnalytics,
@@ -321,9 +325,21 @@ function LeadsByEvent({ id, since }: { id: number; since: string | null }) {
 		enabled: emails.length > 0,
 		refetchInterval: UNIFERS.refresh.listMs,
 	});
-	const replyOf = new Map(
-		(replies.data?.replies ?? []).map((reply) => [reply.email, reply]),
+	const tenant = useQuery({
+		queryKey: [...unifersKeys.leads(id, "replied", offset), "tenant-mail"],
+		queryFn: () => repliesApi.fromTenant({ emails, since }),
+		enabled: emails.length > 0,
+		refetchInterval: UNIFERS.refresh.listMs,
+		retry: false,
+	});
+	const replyOf = mergeReplies(
+		tenant.data?.replies ?? [],
+		replies.data?.replies ?? [],
 	);
+	const tenantData = tenant.data?.configured ? tenant.data : null;
+	const tenantOn = tenantData !== null;
+	const loadingReplies =
+		replies.isPending || (tenant.isPending && emails.length > 0);
 	const missing = emails.filter((email) => !replyOf.has(email.toLowerCase()));
 
 	return (
@@ -332,7 +348,7 @@ function LeadsByEvent({ id, since }: { id: number; since: string | null }) {
 				<CardTitle>Leads by what they did</CardTitle>
 				<CardDescription>
 					Pick an event to see who it happened to, and at which email. Replied
-					shows what each person wrote, from the mail the CRM has synced.
+					shows what each person wrote, read from the sending mailboxes.
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="flex flex-col gap-4">
@@ -385,7 +401,7 @@ function LeadsByEvent({ id, since }: { id: number; since: string | null }) {
 									<TableCell className="min-w-72 px-3 align-top">
 										<ReplyCell
 											reply={replyOf.get(lead.email.toLowerCase()) ?? null}
-											loading={replies.isPending}
+											loading={loadingReplies}
 											contactHref={(contactId) =>
 												href(`/contacts/${contactId}`)
 											}
@@ -409,13 +425,34 @@ function LeadsByEvent({ id, since }: { id: number; since: string | null }) {
 				{event === "replied" && replies.isError ? (
 					<p className="text-destructive text-xs">{replies.error.message}</p>
 				) : null}
-				{event === "replied" && replies.data?.scope === "own" ? (
+				{event === "replied" && tenant.isError ? (
+					<p className="text-destructive text-xs">{tenant.error.message}</p>
+				) : null}
+				{event === "replied" && tenantData
+					? tenantData.failed.map((failure) => (
+							<p key={failure.mailbox} className="text-destructive text-xs">
+								Could not read {failure.mailbox}: {failure.reason}
+							</p>
+						))
+					: null}
+				{event === "replied" && tenantData ? (
 					<p className="text-muted-foreground text-xs">
-						You see replies that reached the mailbox you connected. Owners and
-						admins see replies from every connected mailbox.
+						Read live from {COUNT.format(tenantData.mailboxes.length)} Unifers
+						mailbox{tenantData.mailboxes.length === 1 ? "" : "es"} in your
+						Microsoft tenant.
 					</p>
 				) : null}
-				{event === "replied" && replies.isSuccess && missing.length > 0 ? (
+				{event === "replied" &&
+				(replies.data?.scope ?? tenant.data?.scope) === "own" ? (
+					<p className="text-muted-foreground text-xs">
+						You see replies that reached your own mailbox. Owners and admins see
+						replies from every sending mailbox.
+					</p>
+				) : null}
+				{event === "replied" &&
+				!tenantOn &&
+				replies.isSuccess &&
+				missing.length > 0 ? (
 					<p className="text-muted-foreground text-xs">
 						Unifers does not share reply text. The CRM shows it once the mailbox
 						that sent the campaign is connected in{" "}
@@ -437,25 +474,29 @@ function ReplyCell({
 	loading,
 	contactHref,
 }: {
-	reply: {
-		contactId: string | null;
-		subject: string | null;
-		text: string;
-		sentAt: string;
-	} | null;
+	reply: ShownReply | null;
 	loading: boolean;
 	contactHref: (contactId: string) => string;
 }) {
 	if (loading) return <Skeleton className="h-8 w-full" />;
 	if (!reply) {
 		return (
-			<p className="text-muted-foreground text-xs">Not synced to the CRM.</p>
+			<p className="text-muted-foreground text-xs">No reply text found.</p>
 		);
 	}
 	return (
 		<div className="flex flex-col gap-1">
 			<p className="text-muted-foreground text-xs">
 				<LocalDateTime date={reply.sentAt} options={DATE_TIME} />
+				{reply.mailbox ? ` · to ${reply.mailbox}` : null}
+				{reply.webLink ? (
+					<>
+						{" · "}
+						<TextLink href={reply.webLink} target="_blank" rel="noreferrer">
+							Open in Outlook
+						</TextLink>
+					</>
+				) : null}
 				{reply.contactId ? (
 					<>
 						{" · "}
