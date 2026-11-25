@@ -166,6 +166,17 @@ browser ──► CRM app /api/unifers/<path>      (apps/app/app/api/unifers/[..
   - A Unifers campaign opens at `/outreach/campaigns/u-<id>`
     (`parseUnifersRouteId`): status and controls, analytics, steps and leads by
     event.
+  - **Reply text.** The Unifers API returns who replied, never what they wrote:
+    a replied lead is only `email`, `name` and step names. The Replied tab reads
+    the text from mail the CRM already synced, through `contacts.unifersReplies`
+    (`ContactEmailService.replies`): the newest INBOUND `EmailMessage` from each
+    lead's address since the campaign was created. This works only after the
+    sending mailbox is connected in Settings → Connections. Linking a mailbox
+    with a different address is allowed (`accountLinking.allowDifferentEmails`).
+    Without it, the tab says the reply is not synced and links to Connections.
+    Owners and admins see every synced reply (`scope: "all"`). A member sees
+    only replies whose `syncedByUserId` is their own, from the mailbox they
+    connected (`scope: "own"`). The role check is `isWorkspaceAdmin`.
   - Lead generation → Leads has "Send N with Unifers", which adds the selected
     rows with an email to an open campaign.
 - **Leads go in batches of 1,000** (`addLeadsInBatches`), the Unifers limit.

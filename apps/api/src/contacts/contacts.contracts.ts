@@ -14,7 +14,12 @@ import {
 } from "@crm/validation/campaign-draft";
 import { EMAIL_DRAFT_LIMITS, emailDraft } from "@crm/validation/email-draft";
 import { leadCategory, leadOriginDetails } from "@crm/validation/lead-origin";
-import { unifersSend, unifersSendInput } from "@crm/validation/unifers-send";
+import {
+	unifersReplies,
+	unifersRepliesInput,
+	unifersSend,
+	unifersSendInput,
+} from "@crm/validation/unifers-send";
 import { z } from "zod";
 import { bulkIdsInput } from "../crm/bulk";
 import { recordFieldValues } from "../fields/fields.contracts";
@@ -427,7 +432,12 @@ export const contactDraftEmailInput = z.object({
 	id: z.string().trim().min(1),
 	productId: z.string().trim().min(1).nullable(),
 	category: leadCategory.nullable(),
-	senderName: z.string().trim().max(EMAIL_DRAFT_LIMITS.senderName).nullable().optional(),
+	senderName: z
+		.string()
+		.trim()
+		.max(EMAIL_DRAFT_LIMITS.senderName)
+		.nullable()
+		.optional(),
 	purpose: z.string().trim().max(EMAIL_DRAFT_LIMITS.purpose).nullable(),
 });
 
@@ -442,3 +452,7 @@ export const contactLogUnifersSendInput = unifersSendInput;
 export const contactLogUnifersSendOutput = z.object({ id: z.string() });
 
 export const contactUnifersSendsOutput = z.array(unifersSend);
+
+export const contactUnifersRepliesInput = unifersRepliesInput;
+
+export const contactUnifersRepliesOutput = unifersReplies;

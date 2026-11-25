@@ -34,3 +34,38 @@ export const unifersSend = z.object({
 });
 
 export type UnifersSend = z.infer<typeof unifersSend>;
+
+export const UNIFERS_REPLY_LIMITS = {
+	emails: 50,
+	perLead: 5,
+	text: 2000,
+} as const;
+
+export const unifersRepliesInput = z.object({
+	emails: z
+		.array(z.string().trim().toLowerCase().pipe(z.email()))
+		.min(1)
+		.max(UNIFERS_REPLY_LIMITS.emails),
+	since: z.iso.datetime({ offset: true }).nullable(),
+});
+
+export type UnifersRepliesInput = z.infer<typeof unifersRepliesInput>;
+
+export const unifersReply = z.object({
+	email: z.string(),
+	contactId: z.string().nullable(),
+	subject: z.string().nullable(),
+	text: z.string(),
+	sentAt: z.string(),
+});
+
+export type UnifersReply = z.infer<typeof unifersReply>;
+
+export const UNIFERS_REPLY_SCOPES = ["all", "own"] as const;
+
+export const unifersReplies = z.object({
+	scope: z.enum(UNIFERS_REPLY_SCOPES),
+	replies: z.array(unifersReply),
+});
+
+export type UnifersReplies = z.infer<typeof unifersReplies>;

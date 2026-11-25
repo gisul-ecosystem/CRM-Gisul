@@ -41,6 +41,8 @@ import {
 	contactMatchLeadsInput,
 	contactMatchLeadsOutput,
 	contactNameOutput,
+	contactUnifersRepliesInput,
+	contactUnifersRepliesOutput,
 	contactUnifersSendsOutput,
 	contactUpdateArgs,
 	decideFactOutput,
@@ -292,5 +294,17 @@ export class ContactsRouter {
 	})
 	async unifersSends(@Input("id") id: string) {
 		return this.emails.sends(id);
+	}
+
+	@Query({
+		input: contactUnifersRepliesInput,
+		output: contactUnifersRepliesOutput,
+		meta: restMeta("POST", "/contacts/unifers-replies", ["Contacts"]),
+	})
+	async unifersReplies(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof contactUnifersRepliesInput>,
+	) {
+		return this.emails.replies(input, ctx.user.id);
 	}
 }
