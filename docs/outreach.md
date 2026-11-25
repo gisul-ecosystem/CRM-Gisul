@@ -151,10 +151,18 @@ browser ──► CRM app /api/unifers/<path>      (apps/app/app/api/unifers/[..
     Placeholders the list cannot fill are removed from the answer.
     Links are off by default: "Add a website link to the first email" turns
     them on. When off, Claude is told to write none and any URL is removed.
-  - **Sign-off.** The model writes no signature. On create, every body that has
-    no `{{sender.…}}` placeholder gets `UNIFERS.signOff`
-    (`Regards,` + `{{sender.firstName}}`), so each email is signed by the
-    mailbox that sends it. The wizard checkbox turns this off.
+  - **Sign-off.** The model writes no signature. On create, every body gets
+    `UNIFERS.signOff` (`Regards,`) and the first name of the sending mailbox's
+    From name, written as text (`signOffName`). Unifers fills
+    `{{sender.firstName}}` from its account profile, not from the mailbox, so
+    the wizard does not use it. With no ticked mailbox, the default mailbox
+    signs. Ticked mailboxes with different first names get no sign-off and a
+    warning. A body that already has `{{sender.…}}` is left as it is. The
+    wizard checkbox turns the sign-off off.
+  - **Footer.** "Lines after the name (optional)" is free text: an address,
+    a phone, any line. `signEmail` adds it under the name in every email, or
+    after the body when there is no name. It is kept in this browser's
+    `localStorage` (`UNIFERS.footer.storageKey`) for the next campaign.
   - A Unifers campaign opens at `/outreach/campaigns/u-<id>`
     (`parseUnifersRouteId`): status and controls, analytics, steps and leads by
     event.

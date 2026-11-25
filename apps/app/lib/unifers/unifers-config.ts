@@ -28,7 +28,8 @@ export const UNIFERS = {
 		stopConditions: { onReply: true, onClick: false },
 		minFollowUpDays: 1,
 	},
-	signOff: "Regards,\n{{sender.firstName}}",
+	signOff: "Regards,",
+	footer: { maxChars: 500, storageKey: "unifers.campaign.footer" },
 	senderPlaceholder: "{{sender.",
 	draft: {
 		sampleSize: 100,
@@ -41,6 +42,5 @@ export const UNIFERS = {
 		"{{fullName}}",
 		"{{jobTitle}}",
 		"{{company.name}}",
-		"{{sender.firstName}}",
 	],
 } as const;
