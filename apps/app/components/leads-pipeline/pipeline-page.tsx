@@ -104,7 +104,7 @@ export function PipelineGate({
 					{profiles.map((entry) => (
 						<TabsTrigger key={entry.profile} value={entry.profile}>
 							{entry.label}
-							<TabCount value={entry.summary.rows ?? entry.summary.companies} />
+							<TabCount value={entry.summary.companies} />
 						</TabsTrigger>
 					))}
 				</TabsList>

@@ -320,7 +320,6 @@ def summary(df: pd.DataFrame) -> dict:
         return {}
     firms = df.drop_duplicates("domain")
     return {
-        "rows": len(df),
         "companies": len(firms),
         "people": int((df["full_name"] != "").sum()),
         "emails": int((df["email"] != "").sum()),
@@ -622,7 +621,7 @@ def search_sheet(df: pd.DataFrame, query: str) -> pd.DataFrame:
 
 
 def empty_summary() -> dict:
-    return {"rows": 0, "companies": 0, "people": 0, "emails": 0, "valid": 0, "ready": 0, "intent": {k: 0 for k in INTENTS}}
+    return {"companies": 0, "people": 0, "emails": 0, "valid": 0, "ready": 0, "intent": {k: 0 for k in INTENTS}}
 
 
 def run_info(runner: Runner, sheets: SheetCache) -> dict:

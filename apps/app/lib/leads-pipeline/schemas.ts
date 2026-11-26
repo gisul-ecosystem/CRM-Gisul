@@ -17,10 +17,6 @@ export type LeadProfile = z.infer<typeof leadProfile>;
 type LeadIntent = (typeof LEAD_INTENTS)[number];
 
 const leadSummary = z.object({
-	rows: z
-		.number()
-		.nullish()
-		.transform((value) => value ?? null),
 	companies: z.number(),
 	people: z.number(),
 	emails: z.number(),

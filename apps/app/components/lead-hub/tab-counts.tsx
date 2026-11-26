@@ -21,8 +21,7 @@ export function WebsiteLeadsCount() {
 	return (
 		<TabCount
 			value={profiles.reduce(
-				(total, entry) =>
-					total + (entry.summary.rows ?? entry.summary.companies),
+				(total, entry) => total + entry.summary.companies,
 				0,
 			)}
 		/>

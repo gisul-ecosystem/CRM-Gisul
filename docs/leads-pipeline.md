@@ -107,9 +107,10 @@ and `components/lead-hub/lead-hub-page.tsx` draws the page.
 
 **Tabs show counts.** Each Leads tab shows how many it holds
 (`components/lead-hub/tab-counts.tsx`): Website leads adds up every profile's
-`summary.rows` from `/status`, LinkedIn profiles is the scraper's `totalProfiles`,
+`summary.companies` from `/status`, LinkedIn profiles is the scraper's `totalProfiles`,
 Found posts counts profiles with a source post, and LinkedIn companies is the
-`total` of `/companies`. Each profile tab shows its own `summary.rows`. A source
+`total` of `/companies`. Each profile tab shows its own `summary.companies`, the same number as the
+Companies card. A source
 that does not answer shows no count.
 
 Each screen exports a panel (`LeadsPanel`, `ScrapePanel`, …) wrapped in a gate:
