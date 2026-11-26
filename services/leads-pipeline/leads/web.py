@@ -31,8 +31,8 @@ from .partners.spec import run_rows as partner_run_rows
 from .partners.spec import run_path as partner_run_path
 from .partners.spec import write_spec as write_partner_spec
 from .people_search import google_url
-from .profile import GPU, LABELS, OWN_KEYS, TRAINING, COMPETITORS, env_name
-from .segments import GPU_SEGMENTS, TRAINING_SEGMENTS, COMPETITOR_SEGMENTS
+from .profile import GPU, LABELS, OWN_KEYS, TRAINING, COMPETITORS, GAMING, env_name
+from .segments import GPU_SEGMENTS, TRAINING_SEGMENTS, COMPETITOR_SEGMENTS, GAMING_SEGMENTS
 from .store import (Store, fill_country, fix_place_names, name_competitor_clients, person_reject_key,
                     to_xlsx)
 
@@ -46,6 +46,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SOURCES = ["seeds", "incubators", "search", "maps", "funding", "github", "huggingface", "hn"]  # GPU; yc stays off
 TRAINING_SOURCES = ["seeds", "directories", "search", "maps", "funding", "github"]  # its own lists only
 COMPETITORS_SOURCES = ["competitors"]
+GAMING_SOURCES = ["seeds", "search", "maps", "funding", "github"]
 SEGMENTS = GPU_SEGMENTS
 INTENTS = ["high", "medium", "low"]
 SORTS = ["score", "company", "newest", "oldest"]
@@ -96,6 +97,12 @@ COMPETITORS_FLAGS = {
     "REQUIRE_SEGMENT": "Drop companies with no competitor/cloud segment",
     "RENDER_JS": "Open JavaScript-built pages in a headless browser",
 }
+GAMING_FLAGS = {
+    "INDIA_ONLY": "Only companies in the countries ticked below",
+    "EARLY_ONLY": "Only young companies (usually off: tournament organisers and cafés of any age need GPUs)",
+    "REQUIRE_SEGMENT": "Drop companies with no gaming segment (seed lists always kept)",
+    "RENDER_JS": "Open JavaScript-built pages in a headless browser",
+}
 PROFILES = {
     GPU: dict(label=LABELS[GPU], sources=SOURCES, segments=GPU_SEGMENTS, flags=FLAGS, exempt=True,
               intent="Renting intent", flag_defaults={}, noun="startups", startup_fields=True,
@@ -110,6 +117,10 @@ PROFILES = {
                       flag_defaults={"EARLY_ONLY": "0"}, noun="clients", startup_fields=True,
                       incubators="Competitor Cloud Providers, best first", list_file="leads/competitors.csv",
                       list_col="Provider"),
+    GAMING: dict(label=LABELS[GAMING], sources=GAMING_SOURCES, segments=GAMING_SEGMENTS,
+                 flags=GAMING_FLAGS, exempt=False, intent="Need for GPUs",
+                 flag_defaults={"EARLY_ONLY": "0"}, noun="companies", startup_fields=False,
+                 incubators="Seed lists", list_file="leads/seeds_gaming/manual.csv", list_col="Company"),
 }
 SECRETS = {"GITHUB_TOKEN": "GitHub token",
            "SERPER_API_KEY": "Serper API key (training search: 2,500 free searches, no card)",
@@ -122,7 +133,7 @@ DEFAULTS = {"MAX_AGE_YEARS": "5", "MAX_TEAM_SIZE": "50", "BATCH_SIZE": "200", "M
 LISTS = {"SEGMENTS": list(SEGMENTS), "SKIP_SOURCES": SOURCES, "EARLY_EXEMPT_SEGMENTS": list(SEGMENTS),
          "COUNTRIES": list(COUNTRIES)}
 OTHER_COUNTRY = "Other / unknown"  # filter choice: rows whose country is none of COUNTRIES
-SETTING_KEYS = set(FLAGS) | set(TRAINING_FLAGS) | set(COMPETITORS_FLAGS) | set(NUMBERS) | set(TEXTS) | set(SECRETS) | set(LISTS)
+SETTING_KEYS = set(FLAGS) | set(TRAINING_FLAGS) | set(COMPETITORS_FLAGS) | set(GAMING_FLAGS) | set(NUMBERS) | set(TEXTS) | set(SECRETS) | set(LISTS)
 SHARED_KEYS = {"USER_AGENT", "REACHER_URL"} | set(SECRETS)  # edited on the GPU tab, used by both tabs
 STARTUP_NUMBERS = {"MAX_AGE_YEARS", "MAX_TEAM_SIZE"}  # early-stage limits: GPU tab only
 TRAINING_NUMBERS = set()  # (search discovery is on both tabs now, each with its own value)
@@ -309,6 +320,7 @@ def summary(df: pd.DataFrame) -> dict:
         return {}
     firms = df.drop_duplicates("domain")
     return {
+        "rows": len(df),
         "companies": len(firms),
         "people": int((df["full_name"] != "").sum()),
         "emails": int((df["email"] != "").sum()),
@@ -610,7 +622,7 @@ def search_sheet(df: pd.DataFrame, query: str) -> pd.DataFrame:
 
 
 def empty_summary() -> dict:
-    return {"companies": 0, "people": 0, "emails": 0, "valid": 0, "ready": 0, "intent": {k: 0 for k in INTENTS}}
+    return {"rows": 0, "companies": 0, "people": 0, "emails": 0, "valid": 0, "ready": 0, "intent": {k: 0 for k in INTENTS}}
 
 
 def run_info(runner: Runner, sheets: SheetCache) -> dict:

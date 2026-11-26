@@ -8,6 +8,7 @@ export const unifersKeys = {
 	accounts: ["unifers", "accounts"] as const,
 	campaigns: (offset: number) => ["unifers", "campaigns", offset] as const,
 	openCampaigns: ["unifers", "campaigns", "open"] as const,
+	overviewCampaigns: ["unifers", "campaigns", "overview"] as const,
 	analytics: (id: number) => ["unifers", "analytics", id] as const,
 	leads: (id: number, event: LeadEvent, offset: number) =>
 		["unifers", "leads", id, event, offset] as const,

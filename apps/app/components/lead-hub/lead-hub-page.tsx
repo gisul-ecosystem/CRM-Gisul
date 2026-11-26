@@ -28,6 +28,7 @@ const SOURCE_ICON = { website: Earth, linkedin: LogoLinkedin } as const;
 export type LeadHubTab = {
 	value: string;
 	label: string;
+	count?: ReactNode;
 	source?: LeadHubSource;
 	description: string;
 	content: ReactNode;
@@ -73,6 +74,7 @@ export function LeadHubPage({
 										/>
 									) : null}
 									{tab.label}
+									{tab.count}
 								</TabsTrigger>
 							))}
 						</TabsList>

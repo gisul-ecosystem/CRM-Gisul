@@ -12,7 +12,8 @@ from .geo import country_names
 # Target countries when .env has no COUNTRIES line
 DEFAULT_COUNTRIES = {_profile.GPU: "India,Malaysia,Singapore,Thailand,Indonesia",
                      _profile.TRAINING: "India,Malaysia,Singapore,Thailand,Indonesia",
-                     _profile.COMPETITORS: "India"}
+                     _profile.COMPETITORS: "India",
+                     _profile.GAMING: "India,Malaysia,Singapore,Thailand,Indonesia"}
 
 
 def _load_dotenv(path: Path = Path(".env"), skip=frozenset()) -> None:

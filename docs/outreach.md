@@ -69,6 +69,8 @@ browser ──► CRM app /api/outreach/<path>          (apps/app/app/api/outrea
 | Replies | `/incoming-emails/*` |
 | Sending setup: inboxes, domains, providers | `/inboxes/*`, `/domains/*`, `/providers/*` |
 
+The Overview has the same **Sent with Outreach Engine / Sent with Unifers** tabs as Campaigns. Unifers has no dashboard endpoint. The Unifers tab lists the newest `UNIFERS.overview.maxCampaigns` campaigns, reads `/campaigns/{id}/analytics` for each started one and adds them up (`campaignTotals` in `lib/unifers/overview.ts`). It also lists the Unifers mailboxes.
+
 **Add contact** on Audiences → Contacts adds one person to a list. The engine has
 no single-contact create in the CRM's API map, so the dialog builds a one-row CSV
 (`lib/outreach/single-contact.ts`) and sends it through `/contacts/import/confirm`

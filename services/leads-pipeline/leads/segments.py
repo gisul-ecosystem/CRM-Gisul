@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from typing import Iterable, List
 
 from . import profile as _profile
+from . import gaming as _gaming
 from . import training as _training
 from .geo import AI_RE, STRONG_AI_RE
 
@@ -138,10 +139,32 @@ COMPETITOR_SEGMENTS = {
     "xr_3d": Segment("AR/VR, 3D & digital twins", 2, _XR, _XR, ["xr", "vr", "3d", "twin"], []),
 }
 
+GAMING_SEGMENTS = {
+    "esports": Segment("Esports / tournament organisers", 3, _gaming.ESPORTS, _gaming.ESPORTS,
+                       ["esports", "gaming", "tournament"], ["esports", "tournament", "discord-bot"]),
+    "gaming_community": Segment("Gaming communities / game jams", 2, _gaming.COMMUNITY, _gaming.COMMUNITY,
+                                ["gaming", "gamers", "community"], ["game-jam", "gamejam"]),
+    "gaming_cafe": Segment("Gaming cafés / LAN centres", 2, _gaming.CAFE, _gaming.CAFE,
+                           ["gaming", "lan"], []),
+    "game_studio": Segment("Game studios", 3, _gaming.STUDIO_SHORT, _gaming.STUDIO,
+                           ["games", "gaming", "game", "studios"],
+                           ["unreal-engine", "unity3d", "game-development", "godot", "gamedev"]),
+    "cloud_gaming": Segment("Cloud gaming / Pixel Streaming", 3, _gaming.CLOUD, _gaming.CLOUD,
+                            ["cloud", "streaming"], ["cloud-gaming", "pixel-streaming", "game-streaming"]),
+    "gaming_xr": Segment("Metaverse / VR / real-time 3D", 2, _gaming.XR, _gaming.XR,
+                         ["xr", "vr", "metaverse"], ["webxr", "virtual-reality", "metaverse"]),
+    "gaming_ai": Segment("AI in gaming", 3, _gaming.AI, _gaming.AI,
+                         ["ai"], ["procedural-generation", "game-ai"]),
+    "game_academy": Segment("Game dev colleges / academies", 2, _gaming.ACADEMY, _gaming.ACADEMY,
+                            ["academy", "institute"], []),
+}
+
 if _profile.current() == _profile.TRAINING:
     SEGMENTS = TRAINING_SEGMENTS
 elif _profile.current() == _profile.COMPETITORS:
     SEGMENTS = COMPETITOR_SEGMENTS
+elif _profile.current() == _profile.GAMING:
+    SEGMENTS = GAMING_SEGMENTS
 else:
     SEGMENTS = GPU_SEGMENTS
 

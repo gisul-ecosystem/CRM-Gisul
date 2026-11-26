@@ -11,8 +11,9 @@ engine and the connection settings (bot name, tokens, Reacher) are shared.
 import os
 import sys
 
-GPU, TRAINING, COMPETITORS = "gpu", "training", "competitors"
-LABELS = {GPU: "GPU leads", TRAINING: "Training-lab leads", COMPETITORS: "Competitor clients"}
+GPU, TRAINING, COMPETITORS, GAMING = "gpu", "training", "competitors", "gaming"
+LABELS = {GPU: "GPU leads", TRAINING: "Training-lab leads", COMPETITORS: "Competitor clients",
+          GAMING: "Gaming leads"}
 
 # Settings each profile keeps for itself. The training profile never takes these from .env
 # (the GPU profile's file); everything else there (bot name, tokens, Reacher...) is shared.

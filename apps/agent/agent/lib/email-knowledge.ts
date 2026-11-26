@@ -39,6 +39,12 @@ export const CATEGORY_BRIEF = {
 		"Pitch Racko as an alternative for the same workload: dedicated hardware Gisul owns, lower and predictable cost, direct engineering support. Never name or criticise their current provider; say 'your current setup'.",
 		"Ask whether a cost or performance comparison for one workload would be useful.",
 	].join("\n"),
+	gaming: [
+		"## Why we are writing (gaming lead)",
+		"A gaming company that needs GPUs: an esports or tournament organiser, a gaming community or game jam, a gaming café or LAN centre, a game studio, a cloud gaming or Pixel Streaming company, or a game dev academy.",
+		"Pitch Racko GPU cloud PCs and vGPU workstations on hardware Gisul owns: identical cloud PCs for online qualifiers and broadcast rigs, remote workstations for artists, build and shader farms, Pixel Streaming hosting, at a predictable monthly cost. Tie it to what the signal says they run.",
+		"Ask a small question about their next tournament, build or launch, or offer a short trial environment for it.",
+	].join("\n"),
 	partners: [
 		"## Why we are writing (partnership lead)",
 		"A small systems integrator or software firm that recently won a government contract in AI, cloud, data or application development; the signal names the agency and the award.",

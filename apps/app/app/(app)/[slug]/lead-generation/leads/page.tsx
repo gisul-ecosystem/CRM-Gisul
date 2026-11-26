@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { LeadHubPage } from "@/components/lead-hub/lead-hub-page";
+import {
+	FoundPostsCount,
+	LinkedInCompaniesCount,
+	LinkedInProfilesCount,
+	WebsiteLeadsCount,
+} from "@/components/lead-hub/tab-counts";
 import { PageShellFallback } from "@/components/page-shell";
 import { LEAD_HUB } from "@/lib/lead-hub/lead-hub-config";
 import { requireSession } from "@/lib/session";
@@ -31,6 +37,7 @@ async function Leads() {
 				{
 					value: views.leads.website,
 					label: "Website leads",
+					count: <WebsiteLeadsCount />,
 					source: "website",
 					description:
 						"Every company and decision maker the website pipeline found, best score first.",
@@ -39,6 +46,7 @@ async function Leads() {
 				{
 					value: views.leads.profiles,
 					label: "LinkedIn profiles",
+					count: <LinkedInProfilesCount />,
 					source: "linkedin",
 					description:
 						"Every person read on LinkedIn, with the product the AI matched.",
@@ -47,6 +55,7 @@ async function Leads() {
 				{
 					value: views.leads.posts,
 					label: "Found posts",
+					count: <FoundPostsCount />,
 					source: "linkedin",
 					description:
 						"LinkedIn posts where the AI found a need for our products, newest first.",
@@ -55,6 +64,7 @@ async function Leads() {
 				{
 					value: views.leads.companies,
 					label: "LinkedIn companies",
+					count: <LinkedInCompaniesCount />,
 					source: "linkedin",
 					description:
 						"Companies found with LinkedIn company search, newest first. Click a row for every detail.",

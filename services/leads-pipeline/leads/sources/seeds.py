@@ -21,8 +21,8 @@ from ..util import extract_domain
 
 log = logging.getLogger(__name__)
 
-SEED_DIR = Path(__file__).resolve().parent.parent / (
-    "seeds_training" if _profile.current() == _profile.TRAINING else "seeds")
+SEED_DIRS = {_profile.TRAINING: "seeds_training", _profile.GAMING: "seeds_gaming"}
+SEED_DIR = Path(__file__).resolve().parent.parent / SEED_DIRS.get(_profile.current(), "seeds")
 
 
 def read_seed_file(path: Path) -> List[Candidate]:

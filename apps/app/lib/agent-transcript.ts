@@ -66,6 +66,7 @@ const VERBS: ToolVerbs = {
 	get_contact_work_history: "Read their work history",
 	fetch_contact_photo: "Fetched their profile picture",
 	find_contact_socials: "Searched for their other profiles",
+	reveal_contact_details: "Looked up their work email and phone",
 	set_contact_socials: "Checked a profile against the account itself",
 	identify_contact: "Put a name to the address",
 	record_fact: "Recorded what it found",

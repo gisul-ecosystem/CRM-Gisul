@@ -12,6 +12,7 @@ import re
 from typing import Iterable, List, Tuple
 
 from . import profile as _profile
+from . import gaming as _gaming
 from . import training as _training
 
 HIGH, MEDIUM = 5, 2
@@ -70,6 +71,8 @@ JOBS_POINTS, JOBS_MAX_LISTED = 3, 3
 
 if _profile.current() == _profile.TRAINING:  # need for lab VMs instead of GPU renting
     TEXT_SIGNALS, ML_JOB = _training.SIGNALS, _training.JOB
+elif _profile.current() == _profile.GAMING:
+    TEXT_SIGNALS, ML_JOB = _gaming.SIGNALS, _gaming.JOB
 
 
 def evaluate(texts: Iterable[str], job_titles: Iterable[str] = ()) -> Tuple[int, str, List[str]]:

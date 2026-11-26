@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-export const LEAD_PROFILES = ["gpu", "training", "competitors"] as const;
+export const LEAD_PROFILES = [
+	"gpu",
+	"training",
+	"competitors",
+	"gaming",
+] as const;
 export const LEAD_INTENTS = ["high", "medium", "low"] as const;
 export const LEAD_SORTS = ["score", "company", "newest", "oldest"] as const;
 export const REJECT_SCOPES = ["person", "company"] as const;
@@ -12,6 +17,10 @@ export type LeadProfile = z.infer<typeof leadProfile>;
 type LeadIntent = (typeof LEAD_INTENTS)[number];
 
 const leadSummary = z.object({
+	rows: z
+		.number()
+		.nullish()
+		.transform((value) => value ?? null),
 	companies: z.number(),
 	people: z.number(),
 	emails: z.number(),

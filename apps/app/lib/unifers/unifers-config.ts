@@ -16,6 +16,7 @@ export const UNIFERS = {
 	},
 	pageSize: 25,
 	pickerSize: 100,
+	overview: { maxCampaigns: 50 },
 	leadsPageSize: 50,
 	maxLeadsPerCall: 1000,
 	audienceFetchLimit: 100,

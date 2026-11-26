@@ -17,7 +17,7 @@ import re
 import time
 from typing import List
 
-from .. import training
+from .. import gaming, training
 from ..geo import COUNTRIES, city_country, is_place_name
 from ..config import Settings
 from ..fetch import Fetcher
@@ -121,6 +121,8 @@ def _lists(profile: str):
     """(cities, topics, skip) for a profile."""
     if profile == "training":
         return training.CITIES, training.TOPICS, training.SEARCH_SKIP | SEA_SKIP | GULF_SKIP | AU_US_SKIP
+    if profile == "gaming":
+        return GPU_CITIES, gaming.TOPICS, gaming.SEARCH_SKIP | GPU_SKIP | SEA_SKIP | GULF_SKIP | AU_US_SKIP
     return GPU_CITIES, GPU_TOPICS, GPU_SKIP | SEA_SKIP | GULF_SKIP | AU_US_SKIP
 
 

@@ -46,11 +46,15 @@ TRAINING_SOURCES = {"seeds": seeds, "directories": directories, "search": search
                     "funding": funding, "github": github, "custom": custom}
 # Competitors profile: cloud & compute provider testimonials/case studies (leads/competitors.csv)
 COMPETITORS_SOURCES = {"competitors": competitors, "custom": custom}
+GAMING_SOURCES = {"seeds": seeds, "search": search, "maps": maps, "funding": funding, "github": github,
+                  "custom": custom}
 
 if _profile.current() == _profile.TRAINING:
     SOURCES = TRAINING_SOURCES
 elif _profile.current() == _profile.COMPETITORS:
     SOURCES = COMPETITORS_SOURCES
+elif _profile.current() == _profile.GAMING:
+    SOURCES = GAMING_SOURCES
 else:
     SOURCES = GPU_SOURCES
 MAX_PAGES_PER_SITE = 6

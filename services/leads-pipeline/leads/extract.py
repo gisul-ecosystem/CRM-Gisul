@@ -15,6 +15,7 @@ import phonenumbers
 from bs4 import BeautifulSoup
 
 from . import profile as _profile
+from . import gaming as _gaming
 from . import training as _training
 from .early import founded_year
 from .geo import page_signals
@@ -35,6 +36,8 @@ _ATOM = (
 )
 if _profile.current() == _profile.TRAINING:  # directors, heads of training, academic heads...
     _ATOM = _training.TITLE_ATOMS
+elif _profile.current() == _profile.GAMING:
+    _ATOM = _gaming.TITLE_ATOMS
 TITLE_RE = re.compile(
     rf"\b(?:{_ATOM})(?:\s*(?:&|and|/|,)\s*(?:{_ATOM}))*\b", re.I
 )
@@ -63,6 +66,8 @@ _PRIORITY = [
 ]
 if _profile.current() == _profile.TRAINING:
     _PRIORITY = _training.PRIORITY
+elif _profile.current() == _profile.GAMING:
+    _PRIORITY = _gaming.PRIORITY
 
 
 def find_title(text: str) -> str:
@@ -289,9 +294,10 @@ def find_people(soup: BeautifulSoup) -> List[dict]:
             if len(titles_here) > 1:
                 container = None  # we've climbed into a multi-person block
                 break
-            strings = [str(x).strip() for x in container.find_all(string=True)
-                       if x.parent.name not in ("script", "style", "noscript")]
-            idx = next((i for i, x in enumerate(container.find_all(string=True)) if x is s), None)
+            nodes = [x for x in container.find_all(string=True)
+                     if x.parent.name not in ("script", "style", "noscript")]
+            strings = [str(x).strip() for x in nodes]
+            idx = next((i for i, x in enumerate(nodes) if x is s), None)
             if idx is not None and len(strings) >= 2:
                 order = []
                 for off in range(1, len(strings)):

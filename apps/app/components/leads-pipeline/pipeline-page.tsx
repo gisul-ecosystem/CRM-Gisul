@@ -11,6 +11,7 @@ import {
 import { Icon } from "@crm/ui/components/icon";
 import { Tabs, TabsList, TabsTrigger } from "@crm/ui/components/tabs";
 import type { ReactNode } from "react";
+import { TabCount } from "@/components/lead-hub/tab-counts";
 import { PageShellLoading } from "@/components/page-shell";
 import { PipelineError } from "@/lib/leads-pipeline/client";
 import { leadProfile, type ProfileStatus } from "@/lib/leads-pipeline/schemas";
@@ -103,6 +104,7 @@ export function PipelineGate({
 					{profiles.map((entry) => (
 						<TabsTrigger key={entry.profile} value={entry.profile}>
 							{entry.label}
+							<TabCount value={entry.summary.rows ?? entry.summary.companies} />
 						</TabsTrigger>
 					))}
 				</TabsList>

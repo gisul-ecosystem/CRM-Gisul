@@ -13,7 +13,7 @@ import logging
 import time
 from typing import List
 
-from .. import training
+from .. import gaming, training
 from ..config import Settings
 from ..fetch import Fetcher
 from ..store import Candidate, Store
@@ -33,6 +33,8 @@ GPU_MAPS_TOPICS = ["AI company", "AI startup", "machine learning company", "comp
 def queries(profile: str, countries=("India",)) -> List[str]:
     if profile == "training":
         cities, topics = training.CITIES, training.TOPICS
+    elif profile == "gaming":
+        cities, topics = GPU_CITIES, gaming.MAPS_TOPICS
     else:
         cities, topics = GPU_CITIES, GPU_MAPS_TOPICS
     return [f"{t} in {c}" for c, t in itertools.product(target_cities(cities, countries), topics)]

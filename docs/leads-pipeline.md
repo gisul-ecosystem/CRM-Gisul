@@ -29,10 +29,29 @@ discover -> scrape -> people -> emails -> verify -> score -> leads.xlsx
 3. **Verify.** Checks each email with an MX lookup, and with Reacher when it runs.
 4. **Score.** A lead at or above `MIN_SCORE` is `ready=yes`.
 
-There are three **profiles**, each with its own data, settings and sources:
-`gpu` (GPU leads), `training` (training-lab leads) and `competitors` (competitor
-clients). Every screen has a tab per profile; `?profile=` keeps the choice in the
-URL.
+There are four **profiles**, each with its own data, settings and sources:
+`gpu` (GPU leads), `training` (training-lab leads), `competitors` (competitor
+clients) and `gaming` (gaming leads). Every screen has a tab per profile;
+`?profile=` keeps the choice in the URL.
+
+- **Gaming leads find gaming companies that need GPUs.** Segments: esports and
+  tournament organisers, gaming communities and game jams, gaming cafés and LAN
+  centres, game studios, cloud gaming and Pixel Streaming, metaverse and VR, AI in
+  gaming, game dev academies. The rules live in `leads/gaming.py`: segment words,
+  buying signals (Pixel Streaming, Parsec, build farms, online qualifiers, prize
+  pools, Steam launches, AWS GPU instances), decision-maker titles (head of
+  esports, tournament director) and the web and Google Maps searches.
+- **Its sources are seeds, search, maps, funding and GitHub.** Web search and Maps
+  need `SERPER_API_KEY` (or Tavily, or Brave for search) on the GPU tab. Add
+  companies you already know to `leads/seeds_gaming/manual.csv`.
+- **Its settings are `/app/data/.env.gaming`.** The container writes it from
+  `.env.gaming.example` on the first start. `EARLY_ONLY` is off: organisers and
+  cafés of any age need GPUs. Its data folder is `data/gaming/`.
+- **Add to CRM contacts tags them `Gaming lead`** (`@crm/validation/lead-origin`),
+  and the agent's email draft pitches cloud PCs and vGPU workstations for them.
+- **A wrong `GITHUB_TOKEN` stops GitHub discovery at once.** The first HTTP 401
+  logs one error and ends the GitHub source for that run. Set a new token or clear
+  it on the Settings page.
 
 ## How a request travels
 
@@ -85,6 +104,13 @@ and `components/lead-hub/lead-hub-page.tsx` draws the page.
 | Leads `/lead-generation/leads` | Website leads (`website`) · LinkedIn profiles (`profiles`) · Found posts (`posts`) · LinkedIn companies (`companies`) |
 | Messages `/lead-generation/messages` | LinkedIn queue (`queue`) · LinkedIn sent (`sent`) |
 | Settings `/lead-generation/settings` | Website pipeline settings |
+
+**Tabs show counts.** Each Leads tab shows how many it holds
+(`components/lead-hub/tab-counts.tsx`): Website leads adds up every profile's
+`summary.rows` from `/status`, LinkedIn profiles is the scraper's `totalProfiles`,
+Found posts counts profiles with a source post, and LinkedIn companies is the
+`total` of `/companies`. Each profile tab shows its own `summary.rows`. A source
+that does not answer shows no count.
 
 Each screen exports a panel (`LeadsPanel`, `ScrapePanel`, …) wrapped in a gate:
 `PipelineGate` (pipeline unreachable, profile tabs) or `ScraperGate` (scraper

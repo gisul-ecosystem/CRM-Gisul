@@ -28,6 +28,8 @@ import { LocalDateTime } from "@/components/local-date-time";
 import { Meter } from "@/components/outreach/meter";
 import { OutreachPage } from "@/components/outreach/outreach-page";
 import { OutreachStatus } from "@/components/outreach/status";
+import { SenderTabs } from "@/components/unifers/sender-tabs";
+import { UnifersPage } from "@/components/unifers/unifers-page";
 import { dashboardApi } from "@/lib/outreach/api";
 import { outreachKeys } from "@/lib/outreach/cache";
 import { COUNT, DATE_TIME } from "@/lib/outreach/format";
@@ -38,7 +40,9 @@ import {
 } from "@/lib/outreach/labels";
 import { OUTREACH } from "@/lib/outreach/outreach-config";
 import type { DashboardSummary } from "@/lib/outreach/schemas/dashboard";
+import { useCampaignSender } from "@/lib/unifers/sender";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
+import { UnifersOverview } from "./unifers-overview";
 
 const CHART: ChartConfig = {
 	sent: { label: "Sent", color: "var(--color-primary)" },
@@ -60,19 +64,43 @@ const KPIS: {
 
 export function OutreachOverview() {
 	const href = useWorkspaceUrl();
+	const [sender, setSender] = useCampaignSender();
+
+	const newCampaign = (
+		<Button asChild>
+			<NextLink
+				href={href(
+					sender === "unifers"
+						? "/outreach/campaigns/new?sender=unifers"
+						: "/outreach/campaigns/new",
+				)}
+			>
+				<Icon icon={Add} data-icon="inline-start" />
+				New campaign
+			</NextLink>
+		</Button>
+	);
+	const tabs = <SenderTabs value={sender} onChange={setSender} />;
+
+	if (sender === "unifers") {
+		return (
+			<UnifersPage
+				title="Outreach"
+				description="Campaigns sent by Unifers from your Unifers mailboxes."
+				actions={newCampaign}
+				lead={tabs}
+			>
+				<UnifersOverview />
+			</UnifersPage>
+		);
+	}
 
 	return (
 		<OutreachPage
 			title="Outreach"
 			description="Cold-email campaigns sent from your own inboxes, one email at a time."
-			actions={
-				<Button asChild>
-					<NextLink href={href("/outreach/campaigns/new")}>
-						<Icon icon={Add} data-icon="inline-start" />
-						New campaign
-					</NextLink>
-				</Button>
-			}
+			actions={newCampaign}
+			lead={tabs}
 		>
 			<OverviewBody />
 		</OutreachPage>

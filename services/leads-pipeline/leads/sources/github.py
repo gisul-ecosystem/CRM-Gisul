@@ -49,6 +49,18 @@ def _headers(s: Settings) -> dict:
     return h
 
 
+BAD_TOKEN = 401
+
+
+class BadToken(Exception):
+    pass
+
+
+def _check_token(code) -> None:
+    if code == BAD_TOKEN:
+        raise BadToken()
+
+
 def _out_of_quota(headers) -> bool:
     try:
         return int(headers.get("X-RateLimit-Remaining", "1")) <= 0
@@ -121,6 +133,7 @@ def located_org_to_candidate(org: dict):
 def _fetch_org(fetcher: Fetcher, hdrs: dict, login: str):
     """Returns (org_json_or_None, rate_limited)."""
     code, org, h = fetcher.get_json(f"{API}/orgs/{login}", headers=hdrs)
+    _check_token(code)
     if code == 200 and org:
         return org, False
     return None, code in (403, 429) or _out_of_quota(h)
@@ -148,6 +161,7 @@ def discover_by_location(s: Settings, fetcher: Fetcher, store: Store, seen: set,
             f"{API}/search/users", headers=hdrs, params={"q": q, "per_page": 50, "page": page}
         )
         cur["github_loc_idx"] = (qi + 1) % len(queries)
+        _check_token(code)
         if code != 200 or not data:
             log.warning("github org search %r -> HTTP %s", q, code)
             if code in (403, 429) or _out_of_quota(rh):
@@ -176,6 +190,16 @@ def discover_by_location(s: Settings, fetcher: Fetcher, store: Store, seen: set,
 
 def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int) -> List[Candidate]:
     seen = set(store.state["cursors"].get("github_orgs_seen", []))
+    try:
+        return _discover(s, fetcher, store, seen, limit)
+    except BadToken:
+        log.error("github refused GITHUB_TOKEN (HTTP 401): the token is wrong or expired. "
+                  "GitHub discovery stopped. Set a new token in Lead generation, Settings, or clear it.")
+        store.state["cursors"]["github_orgs_seen"] = sorted(seen)[-20000:]
+        return []
+
+
+def _discover(s: Settings, fetcher: Fetcher, store: Store, seen: set, limit: int) -> List[Candidate]:
     out: List[Candidate] = []
     if s.india_only:
         out = discover_by_location(s, fetcher, store, seen, limit)
@@ -192,6 +216,7 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int) -> List[Ca
             headers=hdrs,
             params={"q": q, "sort": "updated", "order": "desc", "per_page": 50},
         )
+        _check_token(code)
         if code != 200 or not data:
             log.warning("github search %s -> HTTP %s", topic, code)
             if code in (403, 429) or _out_of_quota(rh):
