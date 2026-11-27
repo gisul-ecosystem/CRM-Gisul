@@ -87,6 +87,30 @@ export class EnvironmentVariables {
 
 	@IsOptional()
 	@IsString()
+	UNIFERS_API_KEY?: string;
+
+	@IsOptional()
+	@IsString()
+	UNIFERS_API_URL?: string;
+
+	@IsOptional()
+	@IsString()
+	UNIFERS_WORKSPACE_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	UNIFERS_MAIL_TENANT_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	UNIFERS_MAIL_CLIENT_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	UNIFERS_MAIL_CLIENT_SECRET?: string;
+
+	@IsOptional()
+	@IsString()
 	AUTH_COOKIE_DOMAIN?: string;
 
 	@IsOptional()

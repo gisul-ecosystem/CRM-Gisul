@@ -23,7 +23,7 @@ from ..fetch import Fetcher
 from ..store import Candidate, Store
 from ..competitor_info import services_in
 from ..util import extract_domain, is_blocked, name_from_domain
-from . import competitor_search
+from . import competitor_search, search
 
 log = logging.getLogger(__name__)
 
@@ -37,8 +37,27 @@ SKIP_DOMAINS = frozenset({
     "webflow.io", "typeform.com", "mailchimp.com", "slack.com", "discord.gg", "discord.com",
     "zoom.us", "calendly.com", "linktr.ee", "notion.site", "substack.com", "google.com",
     "microsoft.com", "apple.com", "amazon.com", "aws.amazon.com", "cloudflare.com", "nvidia.com",
-    "vimeo.com", "docker.com", "kubernetes.io", "reddit.com", "tiktok.com", "schema.org"
+    "vimeo.com", "docker.com", "kubernetes.io", "reddit.com", "tiktok.com", "schema.org",
+    "hubspot.com", "hs-sites.com", "hs-sites-na2.com", "hs-sites-eu1.com", "hsforms.com", "hubspotusercontent.com",
+    "hubspotusercontent-na1.net", "hubspotusercontent-na2.net", "hs-analytics.net", "marketo.com", "pardot.com",
+    "g2.com", "capterra.com", "gartner.com", "trustpilot.com"
 })
+
+NOT_CLIENTS = frozenset({
+    "indianexpress.com", "fortuneindia.com", "deccanchronicle.com", "adgully.com", "economictimes.com",
+    "indiatimes.com", "timesofindia.com", "hindustantimes.com", "ndtv.com", "news18.com", "firstpost.com",
+    "forbesindia.com", "forbes.com", "financialexpress.com", "businesstoday.in", "outlookindia.com",
+    "outlookbusiness.com", "zeebiz.com", "cnbctv18.com", "indiatoday.in", "bwbusinessworld.com",
+    "bweducation.com", "entrepreneur.com", "thehindubusinessline.com", "exchange4media.com", "theprint.in",
+    "edexlive.com", "indiaeducationdiary.in", "medianama.com", "business-standard.com", "livemint.com",
+    "cloudfront.net", "amazonaws.com", "akamaized.net", "googleusercontent.com", "gstatic.com",
+    "googleapis.com", "chatgpt.com", "openai.com", "bit.ly", "lnkd.in", "youtu.be", "edtechreview.in",
+    "businessworld.in", "educationcongress.org", "elets.in", "indiatechnologynews.in", "hrkatha.com",
+    "peoplematters.in", "shrm.org", "hrtechnologyconference.com", "archive.org", "prnewswire.com",
+    "businesswire.com", "globenewswire.com", "ctfassets.net", "contentful.com", "imgix.net", "wistia.com",
+    "vimeocdn.com", "sanity.io", "storyblok.com", "prismic.io", "webflow.com",
+})
+MIN_BRAND_CHARS = 4
 
 MAX_FOLLOW_PER_PROVIDER = 25  # case study pages read per cloud provider per run
 SERVICE_BACKFILL_PAGES = 40
@@ -289,11 +308,18 @@ def backfill_services(fetcher: Fetcher, store: Store, pages: Optional[int] = SER
     return filled
 
 
+def not_a_client(domain: str, comp: dict) -> bool:
+    brands = {extract_domain(comp.get("url", "")).split(".")[0],
+              re.sub(r"[^a-z0-9]", "", (comp.get("provider") or "").lower().split(" for ")[0])}
+    own_family = any(len(b) >= MIN_BRAND_CHARS and b in domain.replace("-", "") for b in brands)
+    return domain in NOT_CLIENTS or domain in search.NEWS_AND_LISTINGS or own_family
+
+
 def _add(out: List[Candidate], seen: set, origin: dict, comp: dict, c: dict) -> None:
     dom = c["domain"]
-    origin.setdefault(dom, comp["provider"])
-    if dom in seen or is_blocked(dom):
+    if dom in seen or is_blocked(dom) or not_a_client(dom, comp):
         return
+    origin.setdefault(dom, comp["provider"])
     seen.add(dom)
     origin[dom] = comp["provider"]
     out.append(Candidate(
@@ -337,18 +363,21 @@ def all_providers(store: Store, list_file: Path = LIST_FILE) -> List[dict]:
 
 
 def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int,
-             list_file: Path = LIST_FILE) -> List[Candidate]:
-    backfill_services(fetcher, store)
+             list_file: Path = LIST_FILE, search: bool = True) -> List[Candidate]:
+    if search:
+        backfill_services(fetcher, store)
     cursor = "competitors_seen"
     seen = set(store.state["cursors"].get(cursor, []))
     origin = store.state.setdefault("competitor_of", {})
     followed_state = store.state["cursors"].setdefault("competitors_followed", {})
     budget = competitor_search.SearchBudget(s, store)
-    competitor_search.find_providers(s, fetcher, store, budget, read_list(list_file))
+    if search:
+        competitor_search.find_providers(s, fetcher, store, budget, read_list(list_file))
     measured = yields(store.df, store.state)
     out: List[Candidate] = []
 
-    for comp in ranked(all_providers(store, list_file), measured):
+    providers = all_providers(store, list_file) if search else read_list(list_file)
+    for comp in ranked(providers, measured):
         if len(out) >= limit:
             break
         y = measured.get(comp["provider"], {})
@@ -367,7 +396,8 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int,
         clients = _card_clients(html, url, comp) if html else []
         done_subpages = set(followed_state.setdefault(comp["provider"], []))
         subpages = find_case_study_subpages(html, url, comp) if html else []
-        subpages += competitor_search.case_study_urls(fetcher, budget, comp)
+        if search:
+            subpages += competitor_search.case_study_urls(fetcher, budget, comp)
         todo_subpages = list(dict.fromkeys(sp for sp in subpages if sp not in done_subpages and sp != url.rstrip("/")))
 
         for sp in todo_subpages[:MAX_FOLLOW_PER_PROVIDER]:
@@ -382,7 +412,7 @@ def discover(s: Settings, fetcher: Fetcher, store: Store, limit: int,
             if parsed:
                 clients.append(parsed)
 
-        for c in competitor_search.mentioned_clients(fetcher, budget, comp):
+        for c in competitor_search.mentioned_clients(fetcher, budget, comp) if search else []:
             text = c.pop("text", "")
             clients.append({**c, "service": services_in(text)})
 

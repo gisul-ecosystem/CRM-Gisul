@@ -17,6 +17,21 @@ export const tenantRepliesRequest = z.object({
 
 export type TenantRepliesRequest = z.infer<typeof tenantRepliesRequest>;
 
+export const WAITING_ON = ["us", "them"] as const;
+
+export const waitingOn = z.enum(WAITING_ON);
+
+export type WaitingOn = z.infer<typeof waitingOn>;
+
+export const WAITING_LABEL = {
+	us: "Waiting on us",
+	them: "Waiting on them",
+} as const satisfies Record<WaitingOn, string>;
+
+export const REPLY_FILTERS = ["all", "us"] as const;
+
+export type ReplyFilter = (typeof REPLY_FILTERS)[number];
+
 export const tenantReply = z.object({
 	email: z.string(),
 	mailbox: z.string(),
@@ -26,6 +41,7 @@ export const tenantReply = z.object({
 	text: z.string(),
 	sentAt: z.string(),
 	webLink: z.string().nullable(),
+	waitingOn,
 });
 
 export type TenantReply = z.infer<typeof tenantReply>;
@@ -50,6 +66,32 @@ export type TenantSendRequest = z.infer<typeof tenantSendRequest>;
 
 export const tenantSendResponse = z.object({ sent: z.literal(true) });
 
+export const tenantThreadRequest = tenantSendRequest.pick({
+	mailbox: true,
+	messageId: true,
+});
+
+export type TenantThreadRequest = z.infer<typeof tenantThreadRequest>;
+
+export const threadEntry = z.object({
+	id: z.string(),
+	direction: z.enum(["INBOUND", "OUTBOUND"]),
+	fromEmail: z.string(),
+	fromName: z.string().nullable(),
+	subject: z.string().nullable(),
+	text: z.string(),
+	sentAt: z.string(),
+	webLink: z.string().nullable(),
+});
+
+export type ThreadEntry = z.infer<typeof threadEntry>;
+
+export const tenantThreadResponse = z.object({
+	messages: z.array(threadEntry),
+});
+
+export type TenantThreadResponse = z.infer<typeof tenantThreadResponse>;
+
 export type ShownReply = {
 	email: string;
 	subject: string | null;
@@ -60,6 +102,7 @@ export type ShownReply = {
 	mailboxName: string | null;
 	messageId: string | null;
 	webLink: string | null;
+	waitingOn: WaitingOn | null;
 };
 
 type SyncedReply = {
@@ -86,6 +129,7 @@ export function mergeReplies(
 			mailboxName: null,
 			messageId: null,
 			webLink: null,
+			waitingOn: null,
 		});
 	}
 	for (const reply of tenant) {

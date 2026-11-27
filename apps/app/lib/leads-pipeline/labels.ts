@@ -1,4 +1,11 @@
 import type { StatusTone } from "@crm/ui/components/status-indicator";
+import type { LeadProduct } from "./schemas";
+
+export const PRODUCT_LABEL = {
+	racko: "Racko",
+	aaptor: "Aaptor",
+	kanonkode: "KanonKode",
+} as const satisfies Record<LeadProduct, string>;
 
 const SOURCE_LABEL = new Map<string, string>(
 	Object.entries({
@@ -10,8 +17,8 @@ const SOURCE_LABEL = new Map<string, string>(
 		github: "GitHub",
 		huggingface: "Hugging Face",
 		hn: "Hacker News hiring",
-		directories: "Training directories",
-		competitors: "Competitor clients",
+		directories: "Directory pages",
+		competitors: "Competitor customers",
 		yc: "Y Combinator",
 	}),
 );

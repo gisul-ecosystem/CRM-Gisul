@@ -14,6 +14,8 @@ export const unifersKeys = {
 		["unifers", "leads", id, event, offset] as const,
 	replies: ["unifers", "replies"] as const,
 	leadReply: (email: string) => ["unifers", "replies", "lead", email] as const,
+	thread: (mailbox: string, messageId: string) =>
+		["unifers", "replies", "thread", mailbox, messageId] as const,
 };
 
 export function useUnifersCache(): { everything(): Promise<void> } {

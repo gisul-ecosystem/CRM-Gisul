@@ -1,8 +1,18 @@
 import "server-only";
 import { z } from "zod";
 import { unifersKey, unifersUrl, unifersWorkspace } from "./bridge";
-import { replyHtml, type TenantReply } from "./replies";
+import { replyHtml, type TenantReply, type ThreadEntry } from "./replies";
 import { emailAccountsResponse } from "./schemas";
+import {
+	type GraphMessage,
+	graphMessage,
+	graphPage,
+	messageText,
+	odataQuoted,
+	senderOf,
+	threadEntries,
+	waitingOnAfter,
+} from "./thread";
 import { UNIFERS } from "./unifers-config";
 
 const CONFIG = UNIFERS.tenantMail;
@@ -22,28 +32,6 @@ const tokenClaims = z.object({
 
 const graphError = z.object({
 	error: z.object({ code: z.string(), message: z.string() }),
-});
-
-const graphMessage = z.object({
-	id: z.string(),
-	from: z
-		.object({
-			emailAddress: z.object({
-				address: z.string().nullish(),
-				name: z.string().nullish(),
-			}),
-		})
-		.nullish(),
-	subject: z.string().nullish(),
-	bodyPreview: z.string().nullish(),
-	uniqueBody: z.object({ content: z.string().nullish() }).nullish(),
-	receivedDateTime: z.string(),
-	webLink: z.string().nullish(),
-});
-
-const graphPage = z.object({
-	value: z.array(graphMessage),
-	"@odata.nextLink": z.string().nullish(),
 });
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
@@ -136,10 +124,28 @@ function firstPage(mailbox: string, since: string): string {
 	const params = new URLSearchParams({
 		$filter: `receivedDateTime ge ${since}`,
 		$orderby: "receivedDateTime desc",
-		$select: "id,from,subject,bodyPreview,uniqueBody,receivedDateTime,webLink",
+		$select: CONFIG.messageFields,
 		$top: String(CONFIG.pageSize),
 	});
 	return `${CONFIG.graphUrl}/users/${encodeURIComponent(mailbox)}/messages?${params.toString()}`;
+}
+
+async function graphGet(token: string, url: string): Promise<unknown> {
+	const response = await fetch(url, {
+		headers: {
+			authorization: `Bearer ${token}`,
+			prefer: 'outlook.body-content-type="text"',
+		},
+		signal: AbortSignal.timeout(CONFIG.timeoutMs),
+	});
+	const payload: unknown = await response.json().catch(() => null);
+	if (response.ok) return payload;
+	const error = graphError.safeParse(payload);
+	throw new Error(
+		error.success
+			? `${error.data.error.code}: ${error.data.error.message}`
+			: `Microsoft answered ${response.status}.`,
+	);
 }
 
 async function mailboxReplies(
@@ -149,48 +155,62 @@ async function mailboxReplies(
 	since: string,
 ): Promise<TenantReply[]> {
 	const found = new Map<string, TenantReply>();
+	const answered = new Set<string>();
 	let next: string | null = firstPage(mailbox.email, since);
 	for (let page = 0; next && page < CONFIG.maxPages; page += 1) {
-		const response = await fetch(next, {
-			headers: {
-				authorization: `Bearer ${token}`,
-				prefer: 'outlook.body-content-type="text"',
-			},
-			signal: AbortSignal.timeout(CONFIG.timeoutMs),
-		});
-		const payload: unknown = await response.json().catch(() => null);
-		if (!response.ok) {
-			const error = graphError.safeParse(payload);
-			throw new Error(
-				error.success
-					? `${error.data.error.code}: ${error.data.error.message}`
-					: `Microsoft answered ${response.status}.`,
-			);
-		}
-		const parsed = graphPage.parse(payload);
+		const parsed = graphPage.parse(await graphGet(token, next));
 		for (const message of parsed.value) {
-			const from = message.from?.emailAddress.address?.toLowerCase() ?? "";
+			if (message.isDraft) continue;
+			const from = senderOf(message);
+			if (from === mailbox.email) {
+				if (message.conversationId) answered.add(message.conversationId);
+				continue;
+			}
 			if (!leads.has(from) || found.has(from)) continue;
-			const text = (
-				message.uniqueBody?.content?.trim() ||
-				message.bodyPreview?.trim() ||
-				""
-			).slice(0, CONFIG.maxText);
 			found.set(from, {
 				email: from,
 				mailbox: mailbox.email,
 				mailboxName: mailbox.name,
 				messageId: message.id,
 				subject: message.subject ?? null,
-				text,
+				text: messageText(message),
 				sentAt: new Date(message.receivedDateTime).toISOString(),
 				webLink: message.webLink ?? null,
+				waitingOn: waitingOnAfter(answered, message),
 			});
 		}
 		if (found.size === leads.size) break;
 		next = parsed["@odata.nextLink"] ?? null;
 	}
 	return [...found.values()];
+}
+
+export async function tenantThread(
+	credentials: Credentials,
+	mailbox: string,
+	messageId: string,
+): Promise<ThreadEntry[]> {
+	const token = await tokenWith(credentials, CONFIG.readRoles, "Mail.Read");
+	const base = `${CONFIG.graphUrl}/users/${encodeURIComponent(mailbox)}/messages`;
+	const anchor: GraphMessage = graphMessage.parse(
+		await graphGet(
+			token,
+			`${base}/${encodeURIComponent(messageId)}?${new URLSearchParams({ $select: CONFIG.messageFields }).toString()}`,
+		),
+	);
+	if (!anchor.conversationId) return threadEntries([anchor], mailbox);
+	const params = new URLSearchParams({
+		$filter: `conversationId eq ${odataQuoted(anchor.conversationId)}`,
+		$select: CONFIG.messageFields,
+		$top: String(CONFIG.threadMax),
+	});
+	const page = graphPage.parse(
+		await graphGet(token, `${base}?${params.toString()}`),
+	);
+	const messages = page.value.some((message) => message.id === anchor.id)
+		? page.value
+		: [...page.value, anchor];
+	return threadEntries(messages, mailbox);
 }
 
 async function tokenWith(

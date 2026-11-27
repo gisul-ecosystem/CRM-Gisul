@@ -5,7 +5,10 @@ export const LEAD_PROFILES = [
 	"training",
 	"competitors",
 	"gaming",
+	"aaptor",
+	"kanonkode",
 ] as const;
+export const LEAD_PRODUCTS = ["racko", "aaptor", "kanonkode"] as const;
 export const LEAD_INTENTS = ["high", "medium", "low"] as const;
 export const LEAD_SORTS = ["score", "company", "newest", "oldest"] as const;
 export const REJECT_SCOPES = ["person", "company"] as const;
@@ -13,6 +16,8 @@ export type RejectScope = (typeof REJECT_SCOPES)[number];
 export type LeadSort = (typeof LEAD_SORTS)[number];
 
 export const leadProfile = z.enum(LEAD_PROFILES);
+export const leadProduct = z.enum(LEAD_PRODUCTS);
+export type LeadProduct = z.infer<typeof leadProduct>;
 export type LeadProfile = z.infer<typeof leadProfile>;
 type LeadIntent = (typeof LEAD_INTENTS)[number];
 
@@ -39,6 +44,9 @@ const lastRun = z.object({
 
 const profileStatus = z.object({
 	profile: leadProfile,
+	product: leadProduct
+		.nullish()
+		.transform((value) => value ?? LEAD_PRODUCTS[0]),
 	label: z.string(),
 	noun: z.string(),
 	running: z.boolean(),
@@ -117,6 +125,12 @@ export const lead = z.object({
 	last_updated: z.string(),
 	find_people: z.string(),
 });
+
+export const leadLookup = z.object({
+	matches: z.array(z.object({ profile: leadProfile, lead })),
+});
+
+export type LeadLookup = z.infer<typeof leadLookup>;
 
 export const leadsPage = z.object({
 	profile: leadProfile,

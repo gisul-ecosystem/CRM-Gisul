@@ -1,12 +1,10 @@
-import { isWorkspaceAdmin, workspaceRoleOf } from "@crm/auth";
-import { db } from "@crm/db";
 import { connection } from "next/server";
 import { getSession } from "@/lib/session";
 import { tenantSendRequest } from "@/lib/unifers/replies";
+import { mailboxRefusal } from "@/lib/unifers/tenant-access";
 import {
 	sendTenantReply,
 	tenantMailCredentials,
-	unifersMailboxes,
 } from "@/lib/unifers/tenant-mail";
 
 function failure(status: number, code: string, message: string): Response {
@@ -35,26 +33,11 @@ export async function POST(request: Request): Promise<Response> {
 		);
 	}
 
-	const role = await workspaceRoleOf(session.user.id, db);
-	const own = session.user.email.toLowerCase();
 	const { mailbox, messageId, text } = body.data;
 
 	try {
-		const sending = await unifersMailboxes();
-		if (!sending.some((item) => item.email === mailbox)) {
-			return failure(
-				403,
-				"FORBIDDEN",
-				`${mailbox} is not a verified Unifers sending mailbox.`,
-			);
-		}
-		if (!isWorkspaceAdmin(role) && mailbox !== own) {
-			return failure(
-				403,
-				"FORBIDDEN",
-				"Only an owner or an admin can reply from another person's mailbox.",
-			);
-		}
+		const refusal = await mailboxRefusal(session.user, mailbox);
+		if (refusal) return failure(403, "FORBIDDEN", refusal);
 		await sendTenantReply(credentials, mailbox, messageId, text);
 		return Response.json({ sent: true });
 	} catch (error) {

@@ -4,8 +4,8 @@ export const GISUL = [
 	"## Who is writing",
 	"Gisul Software Services, Bengaluru. 100+ active clients across India, USA, UAE, Malaysia, Singapore and South Africa.",
 	"- Racko (racko.ai): managed private cloud and IaaS. Bare metal, VM provisioning, dedicated CPU and GPU compute, remote infrastructure management. Gisul owns the hardware; it does not resell AWS or Azure. 30,000+ CPUs provisioned across EdTech and AI clients, 286 TB storage, 193 active services.",
-	"- KanonKode (kanonkode.com): enterprise tech upskilling. AI literacy, GCC leadership development, embedded systems, applied L&D, delivered virtually and in person.",
-	"- Aaptor (aaptor.com): AI candidate assessment and interview automation. Voice AI interviews, live proctoring, skill assessments.",
+	"- KanonKode (kanonkode.com): live, cohort-based tech training with 1:1 mentoring and real projects in AI and machine learning, data engineering, AI-powered full stack, cloud and DevOps, and cybersecurity. For companies: role-based upskilling paths, virtual instructor-led training, hands-on labs and readiness tracking across cohorts. For colleges: curriculum integration, campus workshops, faculty development and placement preparation.",
+	"- Aaptor (aaptor.com): AI skills-assessment platform for hiring and for measuring employees' skill gaps. Ready assessments in 8 areas (DSA, AI/ML, SQL, cloud, DevOps, data engineering, prompt engineering, UI/UX), AI-generated custom questions, real code execution, AI scoring, and proctoring with identity checks and anti-cheating. Campus hiring to enterprise hiring. A 30-minute demo comes with free credits to build and take assessments.",
 ].join("\n");
 
 export const PROOF_BY_REGION = [
@@ -44,6 +44,18 @@ export const CATEGORY_BRIEF = {
 		"A gaming company that needs GPUs: an esports or tournament organiser, a gaming community or game jam, a gaming café or LAN centre, a game studio, a cloud gaming or Pixel Streaming company, or a game dev academy.",
 		"Pitch Racko GPU cloud PCs and vGPU workstations on hardware Gisul owns: identical cloud PCs for online qualifiers and broadcast rigs, remote workstations for artists, build and shader farms, Pixel Streaming hosting, at a predictable monthly cost. Tie it to what the signal says they run.",
 		"Ask a small question about their next tournament, build or launch, or offer a short trial environment for it.",
+	].join("\n"),
+	aaptor: [
+		"## Why we are writing (Aaptor lead)",
+		"An organisation that hires tech people at volume or must measure its staff's skills: an IT services firm, a global capability centre, a staffing or RPO firm, a software company, a college placement cell or a bootcamp. The signal says what we saw: a hiring drive, open roles, a new centre, or an assessment tool they already use.",
+		"Pitch Aaptor: ready coding and technical assessments, AI scoring with a skill-gap report per candidate, and proctoring, so screening takes less time and fewer weak candidates reach interviews. Offer the 30-minute demo with free credits. Never name or criticise a tool they use now; say 'your current screening'.",
+		"Ask how they screen candidates for their next hiring drive, or whether a free trial assessment for one role would help.",
+	].join("\n"),
+	kanonkode: [
+		"## Why we are writing (KanonKode lead)",
+		"An organisation that must upskill tech teams, or a college that needs industry training: an IT services firm, a global capability centre, a tech company, an enterprise moving to AI or cloud, an L&D team, or an engineering college. The signal says what we saw: an upskilling plan, an AI or cloud programme, L&D hiring, or a training provider they already use.",
+		"Pitch KanonKode: live instructor-led cohorts with real projects and 1:1 mentoring in AI and machine learning, data, full stack, cloud and DevOps, and cybersecurity, with role-based paths, hands-on labs and readiness tracking. For a college, offer campus workshops, curriculum integration and placement preparation. Mention Aaptor only to measure skill gaps before or after training. Never name or criticise a provider they use now.",
+		"Ask which team or skill they need to build next, or offer a short skill-gap check for one team.",
 	].join("\n"),
 	partners: [
 		"## Why we are writing (partnership lead)",

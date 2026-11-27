@@ -8,6 +8,8 @@ from urllib.parse import urlparse
 
 import tldextract
 
+from . import rules as _rules
+
 _extract = tldextract.TLDExtract(suffix_list_urls=())  # use bundled list, no network
 
 _BLOCKLIST_FILE = Path(__file__).parent / "blocklist.txt"
@@ -55,15 +57,30 @@ def host_of(url: str) -> str:
     return (urlparse(url).hostname or "").lower()
 
 
+_RULES = _rules.current()
+_UNBLOCK = frozenset(getattr(_RULES, "UNBLOCK", ()))
+_EDU_TLDS, _EDU_PARTS = {"edu"}, ("ac.", "edu.", "sch.")
+_GOV_TLDS, _GOV_PARTS = {"gov"}, ("gov.",)
+
+
+def _allowed_kind(tld: str, suffix: str) -> bool:
+    edu = tld in _EDU_TLDS or any(suffix.startswith(p) for p in _EDU_PARTS)
+    gov = tld in _GOV_TLDS or any(suffix.startswith(p) for p in _GOV_PARTS)
+    return (edu and getattr(_RULES, "ALLOW_EDU", False)) or (gov and getattr(_RULES, "ALLOW_GOV", False))
+
+
 def is_blocked(domain: str, extra: set = frozenset()) -> bool:
     """True for big companies, platforms, job boards, free hosts, edu/gov."""
     if not domain:
         return True
     d = domain.lower()
-    if d in BLOCKLIST or d in extra:
+    if d in extra or (d in BLOCKLIST and d not in _UNBLOCK):
         return True
     suffix = _extract(d).suffix
-    if suffix.split(".")[-1] in _BAD_TLDS:
+    tld = suffix.split(".")[-1]
+    if _allowed_kind(tld, suffix):
+        return False
+    if tld in _BAD_TLDS:
         return True
     if any(suffix.startswith(p) for p in _BAD_SUFFIX_PARTS):
         return True

@@ -12,7 +12,7 @@ import re
 from typing import Iterable, List, Tuple
 
 from . import profile as _profile
-from . import gaming as _gaming
+from . import rules as _rules
 from . import training as _training
 
 HIGH, MEDIUM = 5, 2
@@ -68,11 +68,13 @@ ML_JOB = _rx(r"ml|machine learning|mlops|ai|deep learning|computer vision|cv|nlp
              r"applied scientist|data scientist|cuda|gpu|graphics|rendering|3d|unreal|unity|"
              r"simulation|robotics|perception|platform|infrastructure|devops|sre")
 JOBS_POINTS, JOBS_MAX_LISTED = 3, 3
+JOB_LABEL = "hiring ML/infra"
 
 if _profile.current() == _profile.TRAINING:  # need for lab VMs instead of GPU renting
     TEXT_SIGNALS, ML_JOB = _training.SIGNALS, _training.JOB
-elif _profile.current() == _profile.GAMING:
-    TEXT_SIGNALS, ML_JOB = _gaming.SIGNALS, _gaming.JOB
+elif _rules.current():
+    TEXT_SIGNALS, ML_JOB = _rules.current().SIGNALS, _rules.current().JOB
+    JOB_LABEL = _rules.current().JOB_LABEL
 
 
 def evaluate(texts: Iterable[str], job_titles: Iterable[str] = ()) -> Tuple[int, str, List[str]]:
@@ -88,6 +90,6 @@ def evaluate(texts: Iterable[str], job_titles: Iterable[str] = ()) -> Tuple[int,
     if ml_jobs:
         score += JOBS_POINTS
         more = f" (+{len(ml_jobs) - JOBS_MAX_LISTED} more)" if len(ml_jobs) > JOBS_MAX_LISTED else ""
-        why.append(f"hiring ML/infra: {'; '.join(ml_jobs[:JOBS_MAX_LISTED])}{more}")
+        why.append(f"{JOB_LABEL}: {'; '.join(ml_jobs[:JOBS_MAX_LISTED])}{more}")
     label = "high" if score >= HIGH else "medium" if score >= MEDIUM else "low"
     return score, label, why

@@ -29,10 +29,51 @@ discover -> scrape -> people -> emails -> verify -> score -> leads.xlsx
 3. **Verify.** Checks each email with an MX lookup, and with Reacher when it runs.
 4. **Score.** A lead at or above `MIN_SCORE` is `ready=yes`.
 
-There are four **profiles**, each with its own data, settings and sources:
-`gpu` (GPU leads), `training` (training-lab leads), `competitors` (competitor
-clients) and `gaming` (gaming leads). Every screen has a tab per profile;
-`?profile=` keeps the choice in the URL.
+There are six **profiles**, each with its own data, settings and sources, grouped
+by **product** (`PRODUCTS` in `leads/profile.py`):
+
+| Product | Profiles |
+| --- | --- |
+| Racko | `gpu` (GPU leads), `training` (training-lab leads), `competitors` (competitor clients), `gaming` (gaming leads) |
+| Aaptor | `aaptor` (Aaptor leads) |
+| KanonKode | `kanonkode` (KanonKode leads) |
+
+Every screen shows a product tab, then a tab per profile of that product;
+`?profile=` keeps the choice in the URL. `/status` sends `product` for each profile.
+
+- **A profile's own rules live in one module**, found through `leads/rules.py`:
+  `gaming.py`, `aaptor.py`, `kanonkode.py`. Each holds its segment words, buying
+  signals, job words, decision-maker titles, search and Maps topics, skip list,
+  source points, seed folder and list files. The GPU and training profiles keep
+  their older branches.
+- **Aaptor leads find organisations that hire tech people at volume or assess
+  staff:** IT services firms, global capability centres, staffing and RPO firms,
+  software companies, college placement cells, bootcamps. Signals: hiring and
+  walk-in drives, coding tests, a new centre, a large tech team, or an assessment
+  tool they use (HackerRank, HackerEarth, Mettl, iMocha…).
+- **KanonKode leads find organisations that must upskill tech teams, and
+  colleges:** IT services firms, GCCs, tech companies, enterprises going digital,
+  L&D teams, engineering colleges, skilling missions. Signals: upskilling or L&D
+  plans, AI or cloud programmes, trainer hiring, industry-academia ties, or a
+  training provider they use (Simplilearn, upGrad, Coursera…).
+- **Both use `competitors`, `directories`, `seeds`, `search`, `maps` and
+  `funding`.** `competitors` reads the customer pages in `leads/aaptor_competitors.csv`
+  and `leads/kanonkode_competitors.csv` with the competitor-client reader, without
+  its GPU provider search (`search=False`). `directories` reads
+  `leads/aaptor_directories.csv` and `leads/kanonkode_directories.csv`, which start
+  empty. Seeds live in `leads/seeds_aaptor/` and `leads/seeds_kanonkode/`.
+- **The competitor reader drops links that are not customers**: press and news
+  sites, content hosts and the vendor's own sites (`not_a_client` in
+  `sources/competitors.py`). This applies to Competitor clients too.
+- **Aaptor and KanonKode keep big IT employers and colleges.** `UNBLOCK` in their
+  module lets TCS, Infosys, Wipro, Accenture and similar through the blocklist;
+  `ALLOW_EDU` keeps `.ac.in` and `.edu` sites, and KanonKode's `ALLOW_GOV` keeps
+  `.gov.in` skilling bodies (`is_blocked` in `leads/util.py`). The other profiles
+  still drop them.
+- **Settings are `/app/data/.env.aaptor` and `/app/data/.env.kanonkode`**, written
+  from their `.example` files on the first start. Data folders are `data/aaptor/`
+  and `data/kanonkode/`. Add to CRM contacts tags them `Aaptor lead` or
+  `KanonKode lead`, and the agent's email draft uses each product's own pitch.
 
 - **Gaming leads find gaming companies that need GPUs.** Segments: esports and
   tournament organisers, gaming communities and game jams, gaming cafés and LAN
@@ -510,3 +551,13 @@ the opening line. The email drafter reads all of it (`contactContext` in
 by hand. And
 **Queue on LinkedIn** starts a one-profile scrape in the LinkedIn scraper with the opening line
 as the message template, so it waits in the LinkedIn queue for review.
+
+## Looking a lead up by email
+
+`POST /api/leads/lookup` with `{"emails": [...]}` (at most `MAX_LOOKUP`, 200)
+returns `{"matches": [{"profile", "lead"}]}`: one lead row for each email. When
+several profiles hold the same email, the row with the highest `score` wins,
+then the highest `intent_score` (`lead_strength`); a tie keeps the earlier
+profile in `PROFILES` order. The Unifers
+campaign page uses it to carry lead generation details into the CRM; see "Add to
+CRM" in `docs/outreach.md`.

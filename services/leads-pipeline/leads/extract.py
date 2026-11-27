@@ -15,7 +15,7 @@ import phonenumbers
 from bs4 import BeautifulSoup
 
 from . import profile as _profile
-from . import gaming as _gaming
+from . import rules as _rules
 from . import training as _training
 from .early import founded_year
 from .geo import page_signals
@@ -36,8 +36,8 @@ _ATOM = (
 )
 if _profile.current() == _profile.TRAINING:  # directors, heads of training, academic heads...
     _ATOM = _training.TITLE_ATOMS
-elif _profile.current() == _profile.GAMING:
-    _ATOM = _gaming.TITLE_ATOMS
+elif _rules.current():
+    _ATOM = _rules.current().TITLE_ATOMS
 TITLE_RE = re.compile(
     rf"\b(?:{_ATOM})(?:\s*(?:&|and|/|,)\s*(?:{_ATOM}))*\b", re.I
 )
@@ -66,8 +66,8 @@ _PRIORITY = [
 ]
 if _profile.current() == _profile.TRAINING:
     _PRIORITY = _training.PRIORITY
-elif _profile.current() == _profile.GAMING:
-    _PRIORITY = _gaming.PRIORITY
+elif _rules.current():
+    _PRIORITY = _rules.current().PRIORITY
 
 
 def find_title(text: str) -> str:

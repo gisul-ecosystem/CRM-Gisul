@@ -12,8 +12,11 @@ import os
 import sys
 
 GPU, TRAINING, COMPETITORS, GAMING = "gpu", "training", "competitors", "gaming"
+AAPTOR, KANONKODE = "aaptor", "kanonkode"
 LABELS = {GPU: "GPU leads", TRAINING: "Training-lab leads", COMPETITORS: "Competitor clients",
-          GAMING: "Gaming leads"}
+          GAMING: "Gaming leads", AAPTOR: "Aaptor leads", KANONKODE: "KanonKode leads"}
+PRODUCTS = {GPU: "racko", TRAINING: "racko", COMPETITORS: "racko", GAMING: "racko",
+            AAPTOR: "aaptor", KANONKODE: "kanonkode"}
 
 # Settings each profile keeps for itself. The training profile never takes these from .env
 # (the GPU profile's file); everything else there (bot name, tokens, Reacher...) is shared.

@@ -5,6 +5,8 @@ export const LEAD_CATEGORIES = [
 	"training",
 	"competitors",
 	"gaming",
+	"aaptor",
+	"kanonkode",
 	"partners",
 ] as const;
 
@@ -17,6 +19,8 @@ export const LEAD_CATEGORY_LABEL = {
 	training: "Training lab lead",
 	competitors: "Competitor client",
 	gaming: "Gaming lead",
+	aaptor: "Aaptor lead",
+	kanonkode: "KanonKode lead",
 	partners: "Partner research",
 } as const satisfies Record<LeadCategory, string>;
 

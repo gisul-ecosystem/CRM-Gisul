@@ -2,7 +2,7 @@
 import re
 
 from . import profile as _profile
-from . import gaming as _gaming
+from . import rules as _rules
 from . import training as _training
 from .extract import title_priority
 from .segments import fit as segment_fit
@@ -29,8 +29,9 @@ SEED_POINTS = 2
 
 if _profile.current() == _profile.TRAINING:  # its own sources and buying words
     SOURCE_POINTS, SEED_POINTS, GPU_WORDS = _training.SOURCE_POINTS, _training.SEED_POINTS, _training.SIGNAL_WORDS
-elif _profile.current() == _profile.GAMING:
-    SOURCE_POINTS, SEED_POINTS, GPU_WORDS = _gaming.SOURCE_POINTS, _gaming.SEED_POINTS, _gaming.SIGNAL_WORDS
+elif _rules.current():
+    SOURCE_POINTS, SEED_POINTS, GPU_WORDS = (_rules.current().SOURCE_POINTS, _rules.current().SEED_POINTS,
+                                             _rules.current().SIGNAL_WORDS)
 
 
 def score_row(row) -> int:

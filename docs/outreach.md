@@ -192,7 +192,7 @@ browser ──► CRM app /api/unifers/<path>      (apps/app/app/api/unifers/[..
     mailbox with their own login address. The page merges these with the synced
     replies (`mergeReplies`) and shows the newest. A mailbox Microsoft refuses
     is named on the page; the others still show.
-  - **Reply.** Each reply with a Graph message id has a Reply button, on the
+  - **Reply.** Each reply with a Graph message id has an "Open conversation" button, on the
     campaign's Replied tab and in the contact sheet's "Their latest reply"
     (`components/unifers/lead-reply.tsx`, last 30 days). `ReplyDialog` starts
     with the sending mailbox's sign-off and the saved footer, and "Draft with
@@ -204,6 +204,54 @@ browser ──► CRM app /api/unifers/<path>      (apps/app/app/api/unifers/[..
     as that mailbox, so the answer stays in the thread with theirs quoted. It
     needs the Graph application permission `Mail.Send`. The mailbox must be a
     verified Unifers mailbox; a member may reply only from their own.
+    The same check is `mailboxRefusal` in `lib/unifers/tenant-access.ts`.
+  - **Conversation.** The button is "Open conversation". `ReplyDialog` reads
+    `POST /api/unifers/replies/thread` (`tenantThread`): it gets the message's
+    `conversationId`, then every message with that id from all folders, inbox
+    and Sent Items, at most `UNIFERS.tenantMail.threadMax`. Drafts are dropped.
+    `threadEntries` (`lib/unifers/thread.ts`) orders them oldest first and marks
+    a message OUTBOUND when it is from the mailbox itself. Send answers the
+    lead's newest INBOUND message (`latestInbound`), not the one first shown.
+    The dialog stays open after Send, so the back-and-forth continues in place;
+    the sent reply shows when Graph has saved it, within a refresh.
+  - **Waiting on us / them.** The reply scan reads messages newest first from
+    all folders. A message from the mailbox marks its `conversationId` as
+    answered. A lead's newest message then gets `waitingOn: "them"` when its
+    conversation was answered after it, otherwise `"us"` (`waitingOnAfter`).
+    The Replied tab and the contact sheet show it as a badge; the Replied tab
+    has an "All replies / Waiting on us" filter over the current page of leads.
+    Replies from a connected mailbox sync have no status.
+  - **Reply alerts.** `apps/api/src/reply-alerts` emails people when a lead
+    replies, so nobody has to watch the Replied tab. `ReplyAlertsService` runs
+    every `REPLY_ALERTS.tick.intervalMs` (2 minutes) in the API process, and
+    only when `UNIFERS_API_KEY` and the three `UNIFERS_MAIL_*` variables are set.
+    Each tick it lists the verified Unifers mailboxes, reads each inbox for the
+    last `lookbackMs` (1 hour), and drops drafts, our own users and mailboxes,
+    machine addresses and bounce senders (`isIgnoredSender`). A message counts
+    as a reply only when its `conversationId` holds a message from that
+    mailbox (`weWroteIn`). The `ReplyAlert` row, unique on the Graph message
+    id, is written before the send, so a reply alerts once even across restarts
+    and two API replicas. The alert goes out through Graph `sendMail` from the
+    mailbox the lead wrote to, not saved to Sent Items, so it never joins the
+    lead's thread. It holds their text, a link to the CRM contact (or to the
+    Unifers campaigns when there is no contact) and the Outlook link.
+    Recipients are the workspace owners (when "Workspace owners" is on) plus
+    the addresses in Settings → General → Reply alerts
+    (`replyAlerts.settings` / `replyAlerts.update`, owners and admins edit;
+    stored on `AppSetting`). The card lists the latest alerts and why one
+    was not sent.
+  - **Add to CRM.** Every event tab on a Unifers campaign (sent, delivered,
+    opened, clicked, replied) has a CRM column and an "Add N on this page to
+    CRM" button (`components/unifers/add-to-crm.tsx`). `contacts.matchLeads`
+    marks who is already a contact ("In CRM" links to them). Adding asks the
+    pipeline `POST /api/leads/lookup` for each email across every profile, the
+    highest-scoring profile wins, and `crmImportsFor` (`lib/unifers/crm-leads.ts`) builds
+    `contacts.importLeads` rows: name, phone, title, company, domain, LinkedIn,
+    segment, country, source, team size, the signal with its URL as evidence,
+    and the lead category of that profile. The campaign activity ("Opened in
+    “<campaign>”") is added to the signal. Someone the pipeline never found is
+    added with the campaign as source and no category. A pipeline that does not
+    answer still adds them that way.
   - Lead generation → Leads has "Send N with Unifers", which adds the selected
     rows with an email to an open campaign.
 - **Leads go in batches of 1,000** (`addLeadsInBatches`), the Unifers limit.

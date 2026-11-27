@@ -1,0 +1,4 @@
+# Aaptor: public pages that list IT companies, GCCs, staffing firms or colleges with links to their websites.
+# One line per page: incubator (the page name), URL, and optionally india=yes when every organisation on it is Indian.
+# Every outbound link on the page is read as an organisation; its own website decides if it qualifies.
+incubator,url,india

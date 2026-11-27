@@ -14,7 +14,13 @@ import type { ReactNode } from "react";
 import { TabCount } from "@/components/lead-hub/tab-counts";
 import { PageShellLoading } from "@/components/page-shell";
 import { PipelineError } from "@/lib/leads-pipeline/client";
-import { leadProfile, type ProfileStatus } from "@/lib/leads-pipeline/schemas";
+import { PRODUCT_LABEL } from "@/lib/leads-pipeline/labels";
+import {
+	type LeadProduct,
+	leadProduct,
+	leadProfile,
+	type ProfileStatus,
+} from "@/lib/leads-pipeline/schemas";
 import {
 	useLeadProfile,
 	usePipelineStatus,
@@ -91,25 +97,57 @@ export function PipelineGate({
 		return <ProblemNotice problem={problem} />;
 	}
 
+	const products = [...new Set(profiles.map((entry) => entry.product))];
+	const inProduct = profiles.filter(
+		(entry) => entry.product === current.product,
+	);
+	const companiesIn = (product: LeadProduct) =>
+		profiles
+			.filter((entry) => entry.product === product)
+			.reduce((total, entry) => total + entry.summary.companies, 0);
+
 	return (
-		<div className="flex flex-col gap-6">
-			<Tabs
-				value={current.profile}
-				onValueChange={(next) => {
-					const parsed = leadProfile.safeParse(next);
-					if (parsed.success) void setProfile(parsed.data);
-				}}
-			>
-				<TabsList>
-					{profiles.map((entry) => (
-						<TabsTrigger key={entry.profile} value={entry.profile}>
-							{entry.label}
-							<TabCount value={entry.summary.companies} />
-						</TabsTrigger>
-					))}
-				</TabsList>
-			</Tabs>
-			{children(current)}
+		<div className="flex flex-col gap-4">
+			{products.length > 1 ? (
+				<Tabs
+					value={current.product}
+					onValueChange={(next) => {
+						const parsed = leadProduct.safeParse(next);
+						const first = profiles.find(
+							(entry) => parsed.success && entry.product === parsed.data,
+						);
+						if (first) void setProfile(first.profile);
+					}}
+				>
+					<TabsList variant="line">
+						{products.map((product) => (
+							<TabsTrigger key={product} value={product}>
+								{PRODUCT_LABEL[product]}
+								<TabCount value={companiesIn(product)} />
+							</TabsTrigger>
+						))}
+					</TabsList>
+				</Tabs>
+			) : null}
+			{inProduct.length > 1 ? (
+				<Tabs
+					value={current.profile}
+					onValueChange={(next) => {
+						const parsed = leadProfile.safeParse(next);
+						if (parsed.success) void setProfile(parsed.data);
+					}}
+				>
+					<TabsList>
+						{inProduct.map((entry) => (
+							<TabsTrigger key={entry.profile} value={entry.profile}>
+								{entry.label}
+								<TabCount value={entry.summary.companies} />
+							</TabsTrigger>
+						))}
+					</TabsList>
+				</Tabs>
+			) : null}
+			<div className="pt-2">{children(current)}</div>
 		</div>
 	);
 }

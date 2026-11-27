@@ -31,8 +31,9 @@ from .partners.spec import run_rows as partner_run_rows
 from .partners.spec import run_path as partner_run_path
 from .partners.spec import write_spec as write_partner_spec
 from .people_search import google_url
-from .profile import GPU, LABELS, OWN_KEYS, TRAINING, COMPETITORS, GAMING, env_name
-from .segments import GPU_SEGMENTS, TRAINING_SEGMENTS, COMPETITOR_SEGMENTS, GAMING_SEGMENTS
+from .profile import AAPTOR, GPU, KANONKODE, LABELS, OWN_KEYS, PRODUCTS, TRAINING, COMPETITORS, GAMING, env_name
+from .segments import (AAPTOR_SEGMENTS, COMPETITOR_SEGMENTS, GAMING_SEGMENTS, GPU_SEGMENTS, KANONKODE_SEGMENTS,
+                       TRAINING_SEGMENTS)
 from .store import (Store, fill_country, fix_place_names, name_competitor_clients, person_reject_key,
                     to_xlsx)
 
@@ -47,11 +48,13 @@ SOURCES = ["seeds", "incubators", "search", "maps", "funding", "github", "huggin
 TRAINING_SOURCES = ["seeds", "directories", "search", "maps", "funding", "github"]  # its own lists only
 COMPETITORS_SOURCES = ["competitors"]
 GAMING_SOURCES = ["seeds", "search", "maps", "funding", "github"]
+TALENT_SOURCES = ["seeds", "competitors", "directories", "search", "maps", "funding"]
 SEGMENTS = GPU_SEGMENTS
 INTENTS = ["high", "medium", "low"]
 SORTS = ["score", "company", "newest", "oldest"]
 REJECT_SCOPES = ("person", "company")
 MAX_REJECT = 500
+MAX_LOOKUP = 200
 PREVIEW_COLUMNS = ["company", "country", "full_name", "title", "email", "verified_status", "intent", "segment",
                    "score", "ready"]
 LOG_LINES = 80
@@ -103,6 +106,12 @@ GAMING_FLAGS = {
     "REQUIRE_SEGMENT": "Drop companies with no gaming segment (seed lists always kept)",
     "RENDER_JS": "Open JavaScript-built pages in a headless browser",
 }
+TALENT_FLAGS = {
+    "INDIA_ONLY": "Only organisations in the countries ticked below",
+    "EARLY_ONLY": "Only young companies (usually off: companies of any age hire and train)",
+    "REQUIRE_SEGMENT": "Drop organisations with no matching segment (seed lists always kept)",
+    "RENDER_JS": "Open JavaScript-built pages in a headless browser",
+}
 PROFILES = {
     GPU: dict(label=LABELS[GPU], sources=SOURCES, segments=GPU_SEGMENTS, flags=FLAGS, exempt=True,
               intent="Renting intent", flag_defaults={}, noun="startups", startup_fields=True,
@@ -121,6 +130,16 @@ PROFILES = {
                  flags=GAMING_FLAGS, exempt=False, intent="Need for GPUs",
                  flag_defaults={"EARLY_ONLY": "0"}, noun="companies", startup_fields=False,
                  incubators="Seed lists", list_file="leads/seeds_gaming/manual.csv", list_col="Company"),
+    AAPTOR: dict(label=LABELS[AAPTOR], sources=TALENT_SOURCES, segments=AAPTOR_SEGMENTS,
+                 flags=TALENT_FLAGS, exempt=False, intent="Need for hiring assessments",
+                 flag_defaults={"EARLY_ONLY": "0"}, noun="organisations", startup_fields=False,
+                 incubators="Competitor customer pages", list_file="leads/aaptor_competitors.csv",
+                 list_col="Provider"),
+    KANONKODE: dict(label=LABELS[KANONKODE], sources=TALENT_SOURCES, segments=KANONKODE_SEGMENTS,
+                    flags=TALENT_FLAGS, exempt=False, intent="Need for upskilling",
+                    flag_defaults={"EARLY_ONLY": "0"}, noun="organisations", startup_fields=False,
+                    incubators="Competitor customer pages", list_file="leads/kanonkode_competitors.csv",
+                    list_col="Provider"),
 }
 SECRETS = {"GITHUB_TOKEN": "GitHub token",
            "SERPER_API_KEY": "Serper API key (training search: 2,500 free searches, no card)",
@@ -133,7 +152,7 @@ DEFAULTS = {"MAX_AGE_YEARS": "5", "MAX_TEAM_SIZE": "50", "BATCH_SIZE": "200", "M
 LISTS = {"SEGMENTS": list(SEGMENTS), "SKIP_SOURCES": SOURCES, "EARLY_EXEMPT_SEGMENTS": list(SEGMENTS),
          "COUNTRIES": list(COUNTRIES)}
 OTHER_COUNTRY = "Other / unknown"  # filter choice: rows whose country is none of COUNTRIES
-SETTING_KEYS = set(FLAGS) | set(TRAINING_FLAGS) | set(COMPETITORS_FLAGS) | set(GAMING_FLAGS) | set(NUMBERS) | set(TEXTS) | set(SECRETS) | set(LISTS)
+SETTING_KEYS = set(FLAGS) | set(TRAINING_FLAGS) | set(COMPETITORS_FLAGS) | set(GAMING_FLAGS) | set(TALENT_FLAGS) | set(NUMBERS) | set(TEXTS) | set(SECRETS) | set(LISTS)
 SHARED_KEYS = {"USER_AGENT", "REACHER_URL"} | set(SECRETS)  # edited on the GPU tab, used by both tabs
 STARTUP_NUMBERS = {"MAX_AGE_YEARS", "MAX_TEAM_SIZE"}  # early-stage limits: GPU tab only
 TRAINING_NUMBERS = set()  # (search discovery is on both tabs now, each with its own value)
@@ -609,6 +628,30 @@ def lead_rows(df: pd.DataFrame) -> List[Dict[str, str]]:
     return rows
 
 
+def lead_strength(row: Dict[str, str]) -> tuple:
+    def number(value: str) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float("-inf")
+    return (number(row.get("score", "")), number(row.get("intent_score", "")))
+
+
+def lookup_emails(sheets_by_profile, emails) -> List[Dict[str, object]]:
+    wanted = {str(e).strip().lower() for e in emails if str(e).strip()}
+    best: Dict[str, Dict[str, object]] = {}
+    for profile, df in sheets_by_profile:
+        if df.empty or "email" not in df.columns:
+            continue
+        hits = df[df["email"].astype(str).str.strip().str.lower().isin(wanted)]
+        for row in lead_rows(hits) if len(hits) else []:
+            key = row["email"].strip().lower()
+            current = best.get(key)
+            if current is None or lead_strength(row) > lead_strength(current["lead"]):
+                best[key] = {"profile": profile, "lead": row}
+    return list(best.values())
+
+
 def search_sheet(df: pd.DataFrame, query: str) -> pd.DataFrame:
     query = (query or "").strip().lower()
     if not query or df.empty:
@@ -632,6 +675,7 @@ def run_info(runner: Runner, sheets: SheetCache) -> dict:
     last = load_last_run(runner.data_dir())
     return {
         "profile": runner.profile,
+        "product": PRODUCTS[runner.profile],
         "label": cfg["label"],
         "noun": cfg["noun"],
         "running": runner.any_running(),
@@ -877,6 +921,14 @@ def create_app(root: Path = ROOT) -> Flask:
         rows = df.iloc[(page - 1) * size: page * size] if len(df) else df
         return jsonify(profile=runner.profile, total=int(len(df)), page=page, pageSize=size,
                        rows=lead_rows(rows) if len(rows) else [])
+
+    @app.post("/api/leads/lookup")
+    def lookup_leads():
+        emails = body().get("emails")
+        if not isinstance(emails, list) or len(emails) > MAX_LOOKUP:
+            raise ApiError(400, "INVALID_EMAILS", f"Send a list of at most {MAX_LOOKUP} emails.")
+        sheets_by_profile = ((p, sheets.load(r.data_dir() / "leads.xlsx")) for p, r in runners.items())
+        return jsonify(matches=lookup_emails(sheets_by_profile, emails))
 
     def picked_leads(data):
         rows = data.get("leads")

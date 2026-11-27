@@ -13,6 +13,8 @@ node_modules
 !services/leads-pipeline/.env.training.example
 !services/leads-pipeline/.env.competitors.example
 !services/leads-pipeline/.env.gaming.example
+!services/leads-pipeline/.env.aaptor.example
+!services/leads-pipeline/.env.kanonkode.example
 
 # Testing
 coverage

@@ -1,0 +1,3 @@
+# Companies or colleges you already know (one per line). Only company and domain are needed;
+# segment is optional: it_services, gcc, tech_company, enterprise, college, learning_team, skilling, competitor_clients.
+company,domain,segment,signal,signal_url

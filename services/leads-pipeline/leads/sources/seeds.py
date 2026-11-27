@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import List
 
 from .. import profile as _profile
+from .. import rules as _rules
 from ..config import Settings
 from ..fetch import Fetcher
 from ..segments import SEGMENTS
@@ -21,8 +22,9 @@ from ..util import extract_domain
 
 log = logging.getLogger(__name__)
 
-SEED_DIRS = {_profile.TRAINING: "seeds_training", _profile.GAMING: "seeds_gaming"}
-SEED_DIR = Path(__file__).resolve().parent.parent / SEED_DIRS.get(_profile.current(), "seeds")
+_RULES = _rules.current()
+SEED_DIR = Path(__file__).resolve().parent.parent / (
+    "seeds_training" if _profile.current() == _profile.TRAINING else _RULES.SEED_DIR if _RULES else "seeds")
 
 
 def read_seed_file(path: Path) -> List[Candidate]:

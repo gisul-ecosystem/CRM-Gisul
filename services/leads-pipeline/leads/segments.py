@@ -19,7 +19,9 @@ from dataclasses import dataclass, field
 from typing import Iterable, List
 
 from . import profile as _profile
+from . import aaptor as _aaptor
 from . import gaming as _gaming
+from . import kanonkode as _kanonkode
 from . import training as _training
 from .geo import AI_RE, STRONG_AI_RE
 
@@ -159,12 +161,45 @@ GAMING_SEGMENTS = {
                             ["academy", "institute"], []),
 }
 
+AAPTOR_SEGMENTS = {
+    "it_services": Segment("IT services / consulting", 3, _aaptor.IT_SERVICES, _aaptor.IT_SERVICES,
+                           ["technologies", "infotech", "solutions", "consulting"], []),
+    "gcc": Segment("Global capability centres", 3, _aaptor.GCC, _aaptor.GCC, [], []),
+    "staffing": Segment("Staffing / recruitment / RPO", 3, _aaptor.STAFFING, _aaptor.STAFFING,
+                        ["staffing", "recruitment", "talent"], []),
+    "product_company": Segment("Software product / SaaS", 2, _aaptor.PRODUCT, _aaptor.PRODUCT, [], []),
+    "campus": Segment("Colleges (placement cells)", 2, _aaptor.CAMPUS, _aaptor.CAMPUS, [], []),
+    "edtech": Segment("EdTech / bootcamps", 2, _aaptor.EDTECH, _aaptor.EDTECH, [], []),
+    "workforce": Segment("Employee skill assessment", 2, _aaptor.WORKFORCE, _aaptor.WORKFORCE, [], []),
+    "competitor_clients": Segment("Uses an assessment competitor", 3, _aaptor.SIGNALS[0][1],
+                                  _aaptor.SIGNALS[0][1], [], []),
+}
+
+KANONKODE_SEGMENTS = {
+    "it_services": Segment("IT services / consulting", 3, _aaptor.IT_SERVICES, _aaptor.IT_SERVICES,
+                           ["technologies", "infotech", "solutions", "consulting"], []),
+    "gcc": Segment("Global capability centres", 3, _aaptor.GCC, _aaptor.GCC, [], []),
+    "tech_company": Segment("Software product / tech companies", 2, _aaptor.PRODUCT, _aaptor.PRODUCT, [], []),
+    "enterprise": Segment("Enterprises going digital (BFSI, manufacturing...)", 1, _kanonkode.ENTERPRISE,
+                          _kanonkode.ENTERPRISE, [], []),
+    "college": Segment("Engineering colleges / universities", 2, _kanonkode.COLLEGE, _kanonkode.COLLEGE, [], []),
+    "learning_team": Segment("Companies with L&D teams", 2, _kanonkode.LEARNING_TEAM, _kanonkode.LEARNING_TEAM,
+                             [], []),
+    "skilling": Segment("Skilling missions / CSR programmes", 2, _kanonkode.SKILLING, _kanonkode.SKILLING, [], []),
+    "competitor_clients": Segment("Uses a training competitor", 3, _kanonkode.SIGNALS[1][1],
+                                  _kanonkode.SIGNALS[1][1], [], []),
+}
+
+PROFILE_SEGMENTS = {_profile.AAPTOR: AAPTOR_SEGMENTS, _profile.KANONKODE: KANONKODE_SEGMENTS}
+
 if _profile.current() == _profile.TRAINING:
     SEGMENTS = TRAINING_SEGMENTS
 elif _profile.current() == _profile.COMPETITORS:
     SEGMENTS = COMPETITOR_SEGMENTS
 elif _profile.current() == _profile.GAMING:
     SEGMENTS = GAMING_SEGMENTS
+elif _profile.current() in PROFILE_SEGMENTS:
+    SEGMENTS = PROFILE_SEGMENTS[_profile.current()]
 else:
     SEGMENTS = GPU_SEGMENTS
 

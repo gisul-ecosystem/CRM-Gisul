@@ -8,7 +8,7 @@ if [ ! -f "$ENV_FILE" ]; then
         -e 's|^RUN_AT=.*|RUN_AT=02:00|' /app/.env.example > "$ENV_FILE"
     echo "created $ENV_FILE: set USER_AGENT and the API keys in the CRM: Lead generation, Settings"
 fi
-for profile in training competitors gaming; do
+for profile in training competitors gaming aaptor kanonkode; do
     target="$(dirname "$ENV_FILE")/.env.$profile"
     if [ ! -f "$target" ]; then
         cp "/app/.env.$profile.example" "$target"

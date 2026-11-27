@@ -17,7 +17,7 @@ import re
 import time
 from typing import List
 
-from .. import gaming, training
+from .. import rules, training
 from ..geo import COUNTRIES, city_country, is_place_name
 from ..config import Settings
 from ..fetch import Fetcher
@@ -82,6 +82,11 @@ GPU_SKIP = {
 }
 
 
+BIG_TECH = {"google.com", "microsoft.com", "amazon.com", "amazon.in", "nvidia.com", "ibm.com", "accenture.com",
+            "tcs.com", "infosys.com", "wipro.com"}
+NEWS_AND_LISTINGS = GPU_SKIP - BIG_TECH
+
+
 # Southeast Asian startup databases, news, job boards, listings and marketplaces (both profiles)
 SEA_SKIP = {
     "e27.co", "techinasia.com", "vulcanpost.com", "dailysocial.id", "techsauce.co", "thestar.com.my",
@@ -121,8 +126,10 @@ def _lists(profile: str):
     """(cities, topics, skip) for a profile."""
     if profile == "training":
         return training.CITIES, training.TOPICS, training.SEARCH_SKIP | SEA_SKIP | GULF_SKIP | AU_US_SKIP
-    if profile == "gaming":
-        return GPU_CITIES, gaming.TOPICS, gaming.SEARCH_SKIP | GPU_SKIP | SEA_SKIP | GULF_SKIP | AU_US_SKIP
+    own = rules.for_profile(profile)
+    if own:
+        keep = set(getattr(own, "UNBLOCK", ()))
+        return GPU_CITIES, own.TOPICS, own.SEARCH_SKIP | (GPU_SKIP - keep) | SEA_SKIP | GULF_SKIP | AU_US_SKIP
     return GPU_CITIES, GPU_TOPICS, GPU_SKIP | SEA_SKIP | GULF_SKIP | AU_US_SKIP
 
 

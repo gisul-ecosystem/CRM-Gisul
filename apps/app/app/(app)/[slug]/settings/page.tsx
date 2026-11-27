@@ -10,6 +10,7 @@ import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { AgentModel } from "./agent-model";
 import { ArchiveRetention } from "./archive-retention";
+import { ReplyAlerts } from "./reply-alerts";
 import { ResearchKey } from "./research-key";
 import styles from "./settings-design.module.css";
 import { WorkspaceForm } from "./workspace-form";
@@ -51,6 +52,7 @@ async function Settings() {
 		queryClient.prefetchQuery(trpc.settings.modelCatalog.queryOptions()),
 		queryClient.prefetchQuery(trpc.settings.researchKey.queryOptions()),
 		queryClient.prefetchQuery(trpc.settings.archiveRetention.queryOptions()),
+		queryClient.prefetchQuery(trpc.replyAlerts.settings.queryOptions()),
 	]);
 
 	return (
@@ -58,6 +60,7 @@ async function Settings() {
 			<div className={styles.stack}>
 				<WorkspaceForm />
 				<ResearchKey />
+				<ReplyAlerts />
 				<ArchiveRetention />
 				<AgentModel />
 			</div>

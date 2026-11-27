@@ -27,6 +27,7 @@ import { logAuthRoute } from "./logging/request-logger.middleware";
 import { MailboxModule } from "./mailbox/mailbox.module";
 import { MicrosoftModule } from "./microsoft/microsoft.module";
 import { ProductsModule } from "./products/products.module";
+import { ReplyAlertsModule } from "./reply-alerts/reply-alerts.module";
 import { SavedViewsModule } from "./saved-views/saved-views.module";
 import { SearchModule } from "./search/search.module";
 import { SettingsModule } from "./settings/settings.module";
@@ -73,6 +74,7 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		MicrosoftModule,
 		SyncModule,
 		SettingsModule,
+		ReplyAlertsModule,
 		WorkspaceModule,
 		SsoModule,
 		SlackModule,

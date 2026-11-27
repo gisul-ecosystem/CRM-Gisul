@@ -50,6 +50,9 @@ export const UNIFERS = {
 		maxMailboxes: 25,
 		maxLeads: 50,
 		maxText: 2000,
+		threadMax: 50,
+		messageFields:
+			"id,conversationId,isDraft,from,subject,bodyPreview,uniqueBody,receivedDateTime,sentDateTime,webLink",
 		timeoutMs: 20 * SECOND_MS,
 		tokenEarlyMs: MINUTE_MS,
 	},

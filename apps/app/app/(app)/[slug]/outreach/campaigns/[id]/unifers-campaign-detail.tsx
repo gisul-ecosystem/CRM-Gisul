@@ -15,10 +15,12 @@ import { Input } from "@crm/ui/components/input";
 import { Link as TextLink } from "@crm/ui/components/link";
 import { SimpleTable, SimpleTableRow } from "@crm/ui/components/simple-table";
 import { Skeleton } from "@crm/ui/components/skeleton";
+import { Spinner } from "@crm/ui/components/spinner";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { TableCell } from "@crm/ui/components/table";
 import { TablePagination } from "@crm/ui/components/table-pagination";
 import { Tabs, TabsList, TabsTrigger } from "@crm/ui/components/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@crm/ui/components/toggle-group";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import NextLink from "next/link";
 import { useId, useState } from "react";
@@ -26,10 +28,16 @@ import { toast } from "sonner";
 import { LocalDateTime } from "@/components/local-date-time";
 import { ConfirmDialog } from "@/components/outreach/confirm-dialog";
 import {
+	CrmCell,
+	useAddToCrm,
+	useCrmMatches,
+} from "@/components/unifers/add-to-crm";
+import {
 	ReplyDialog,
 	type ReplyTarget,
 } from "@/components/unifers/reply-dialog";
 import { UnifersPage } from "@/components/unifers/unifers-page";
+import { WaitingBadge } from "@/components/unifers/waiting-badge";
 import { COUNT, DATE_TIME } from "@/lib/outreach/format";
 import { useTRPC } from "@/lib/trpc/client";
 import { campaignsApi, repliesApi } from "@/lib/unifers/api";
@@ -41,7 +49,10 @@ import {
 import {
 	campaignStart,
 	mergeReplies,
+	REPLY_FILTERS,
+	type ReplyFilter,
 	type ShownReply,
+	WAITING_LABEL,
 } from "@/lib/unifers/replies";
 import {
 	type CampaignAction,
@@ -290,7 +301,11 @@ function Detail({ id, data }: { id: number; data: CampaignAnalytics }) {
 				</CardContent>
 			</Card>
 
-			<LeadsByEvent id={id} since={campaignStart(campaign.createdAt)} />
+			<LeadsByEvent
+				id={id}
+				name={campaign.name}
+				since={campaignStart(campaign.createdAt)}
+			/>
 
 			<ConfirmDialog
 				open={cancelling}
@@ -305,12 +320,21 @@ function Detail({ id, data }: { id: number; data: CampaignAnalytics }) {
 	);
 }
 
-function LeadsByEvent({ id, since }: { id: number; since: string | null }) {
+function LeadsByEvent({
+	id,
+	name,
+	since,
+}: {
+	id: number;
+	name: string;
+	since: string | null;
+}) {
 	const trpc = useTRPC();
 	const href = useWorkspaceUrl();
 	const [event, setEvent] = useState<LeadEvent>("replied");
 	const [page, setPage] = useState(1);
 	const [replying, setReplying] = useState<ReplyTarget | null>(null);
+	const [filter, setFilter] = useState<ReplyFilter>("all");
 	const { leadsPageSize } = UNIFERS;
 	const offset = (page - 1) * leadsPageSize;
 
@@ -346,6 +370,21 @@ function LeadsByEvent({ id, since }: { id: number; since: string | null }) {
 	const loadingReplies =
 		replies.isPending || (tenant.isPending && emails.length > 0);
 	const missing = emails.filter((email) => !replyOf.has(email.toLowerCase()));
+	const waitingOnUs = emails.filter(
+		(email) => replyOf.get(email.toLowerCase())?.waitingOn === "us",
+	).length;
+	const filtering = event === "replied" && tenantOn && filter === "us";
+	const people = (leads.data?.leads ?? []).map((lead) => ({
+		email: lead.email,
+		name: lead.name,
+	}));
+	const crm = useCrmMatches(people);
+	const addToCrm = useAddToCrm(`${LEAD_EVENT_LABEL[event]} in “${name}”`);
+	const notInCrm = people.filter((person) => !crm.contactOf(person.email));
+	const shownLeads = (leads.data?.leads ?? []).filter(
+		(lead) =>
+			!filtering || replyOf.get(lead.email.toLowerCase())?.waitingOn === "us",
+	);
 
 	return (
 		<Card>
@@ -375,12 +414,49 @@ function LeadsByEvent({ id, since }: { id: number; since: string | null }) {
 						))}
 					</TabsList>
 				</Tabs>
+				<div className="flex flex-wrap items-center justify-between gap-2">
+					{event === "replied" && tenantOn ? (
+						<ToggleGroup
+							type="single"
+							variant="outline"
+							size="sm"
+							spacing={1}
+							value={filter}
+							onValueChange={(next) => {
+								const match = REPLY_FILTERS.find((item) => item === next);
+								if (match) setFilter(match);
+							}}
+						>
+							<ToggleGroupItem value="all">All replies</ToggleGroupItem>
+							<ToggleGroupItem value="us">
+								{WAITING_LABEL.us} ({COUNT.format(waitingOnUs)})
+							</ToggleGroupItem>
+						</ToggleGroup>
+					) : (
+						<span />
+					)}
+					{notInCrm.length > 0 && !crm.loading ? (
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={addToCrm.isPending}
+							onClick={() => addToCrm.mutate(notInCrm)}
+						>
+							{addToCrm.isPending ? <Spinner data-icon="inline-start" /> : null}
+							Add {COUNT.format(notInCrm.length)} on this page to CRM
+						</Button>
+					) : null}
+				</div>
 				{leads.isPending ? (
 					<Skeleton className="h-32 w-full rounded-lg" />
 				) : leads.isError ? (
 					<p className="text-destructive text-xs">{leads.error.message}</p>
 				) : leads.data.leads.length === 0 ? (
 					<p className="text-muted-foreground text-sm">Nobody yet.</p>
+				) : shownLeads.length === 0 ? (
+					<p className="text-muted-foreground text-sm">
+						Nobody on this page is waiting on us.
+					</p>
 				) : (
 					<SimpleTable
 						columns={[
@@ -389,9 +465,10 @@ function LeadsByEvent({ id, since }: { id: number; since: string | null }) {
 							...(event === "replied"
 								? [{ id: "reply", header: "Their reply" }]
 								: []),
+							{ id: "crm", header: "CRM" },
 						]}
 					>
-						{leads.data.leads.map((lead) => (
+						{shownLeads.map((lead) => (
 							<SimpleTableRow key={lead.email}>
 								<TableCell className="max-w-72 px-3">
 									<p className="truncate">{lead.name || lead.email}</p>
@@ -416,6 +493,15 @@ function LeadsByEvent({ id, since }: { id: number; since: string | null }) {
 										/>
 									</TableCell>
 								) : null}
+								<TableCell className="px-3 align-top">
+									<CrmCell
+										person={{ email: lead.email, name: lead.name }}
+										contactId={crm.contactOf(lead.email)}
+										loading={crm.loading}
+										adding={addToCrm.isPending}
+										onAdd={(person) => addToCrm.mutate([person])}
+									/>
+								</TableCell>
 							</SimpleTableRow>
 						))}
 					</SimpleTable>
@@ -497,6 +583,7 @@ function ReplyCell({
 	}
 	return (
 		<div className="flex flex-col gap-1">
+			<WaitingBadge on={reply.waitingOn} />
 			<p className="text-muted-foreground text-xs">
 				<LocalDateTime date={reply.sentAt} options={DATE_TIME} />
 				{reply.mailbox ? ` · to ${reply.mailbox}` : null}
@@ -536,7 +623,7 @@ function ReplyCell({
 							})
 						}
 					>
-						Reply
+						Open conversation
 					</Button>
 				</div>
 			) : null}

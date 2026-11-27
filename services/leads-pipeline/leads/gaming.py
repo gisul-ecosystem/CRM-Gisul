@@ -50,6 +50,7 @@ SIGNALS = [
     ("uses cloud", _rx(r"aws|amazon web services|google cloud|gcp|microsoft azure|azure"), 1),
 ]
 
+JOB_LABEL = "hiring infra or esports roles"
 JOB = _rx(r"devops|build engineer|build and release|technical artist|rendering|graphics|unreal|unity|"
           r"pixel streaming|it|infrastructure|platform|network|systems? admin|esports|tournament|"
           r"broadcast|production|game server|backend|3d artist|animator")
@@ -99,3 +100,5 @@ SEARCH_SKIP = {
     "fandom.com", "play.google.com", "apps.apple.com", "krafton.com", "riotgames.com",
     "playvalorant.com", "battlegroundsmobileindia.com", "ff.garena.com", "garena.com",
 }
+
+SEED_DIR = "seeds_gaming"

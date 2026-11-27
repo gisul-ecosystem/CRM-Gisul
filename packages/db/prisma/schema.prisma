@@ -1398,9 +1398,29 @@ model AppSetting {
   pipelineApplyToAllProducts  Boolean   @default(true)
   pipelineAllowSkippingStages Boolean   @default(false)
 
+  replyAlertsEnabled Boolean  @default(true)
+  replyAlertOwners   Boolean  @default(true)
+  replyAlertEmails   String[] @default([])
+
   updatedAt DateTime @updatedAt
 
   @@map("appSetting")
+}
+
+model ReplyAlert {
+  id         String    @id @default(cuid())
+  messageId  String    @unique
+  mailbox    String
+  fromEmail  String
+  subject    String?
+  receivedAt DateTime
+  recipients String[]
+  sentAt     DateTime?
+  error      String?
+  createdAt  DateTime  @default(now())
+
+  @@index([receivedAt])
+  @@map("replyAlert")
 }
 
 model PipelineStage {

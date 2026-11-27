@@ -29,6 +29,7 @@ from . import profile as _profile
 from .segments import qualifies
 from . import training as _training
 from .sources import competitors, custom, directories, funding, github, hackernews, huggingface, incubators, maps, search, seeds, yc
+from .sources import rival_directories, rivals
 from .store import (DISCOVERED, EMAIL_FOUND, NO_CONTACT, PEOPLE_FOUND, SCRAPED, VERIFIED,
                     Store)
 from .util import ESTABLISHED, TimeLimit, extract_domain, is_blocked, person_key, time_limit
@@ -48,6 +49,8 @@ TRAINING_SOURCES = {"seeds": seeds, "directories": directories, "search": search
 COMPETITORS_SOURCES = {"competitors": competitors, "custom": custom}
 GAMING_SOURCES = {"seeds": seeds, "search": search, "maps": maps, "funding": funding, "github": github,
                   "custom": custom}
+TALENT_SOURCES = {"seeds": seeds, "competitors": rivals, "directories": rival_directories, "search": search,
+                  "maps": maps, "funding": funding, "custom": custom}
 
 if _profile.current() == _profile.TRAINING:
     SOURCES = TRAINING_SOURCES
@@ -55,6 +58,8 @@ elif _profile.current() == _profile.COMPETITORS:
     SOURCES = COMPETITORS_SOURCES
 elif _profile.current() == _profile.GAMING:
     SOURCES = GAMING_SOURCES
+elif _profile.current() in (_profile.AAPTOR, _profile.KANONKODE):
+    SOURCES = TALENT_SOURCES
 else:
     SOURCES = GPU_SOURCES
 MAX_PAGES_PER_SITE = 6

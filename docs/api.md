@@ -28,8 +28,11 @@ Nest's half is to report *that something happened*: `AgentTriggerService` writes
 `AgentTask` row. A row, not an HTTP call — the agent already leases from that table,
 so the row survives the agent being down.
 
-About to add a vendor client to `apps/api`? You want `apps/agent/agent/lib`. One
-documented exception, for timing: the exchange-rate fetcher, below.
+About to add a vendor client to `apps/api`? You want `apps/agent/agent/lib`. Two
+documented exceptions, for timing: the exchange-rate fetcher, below, and the reply
+alerts in `src/reply-alerts`, which read the Unifers mailboxes through Graph and
+email a person when a lead replies. They decide nothing about the lead; see
+"Reply alerts" in `docs/outreach.md`.
 
 ## One organization, and it is not a tenancy boundary
 

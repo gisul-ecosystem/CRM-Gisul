@@ -1,0 +1,10 @@
+# KanonKode: corporate training providers whose enterprise pages list companies that already buy tech upskilling.
+# Checked: each page answered HTTP 200. Pages that build their lists with JavaScript are read with the
+# headless browser (RENDER_JS=1). Columns: provider, url, testimonials_url, india (yes or check), follow.
+provider,url,testimonials_url,india,follow
+Simplilearn,https://www.simplilearn.com,https://www.simplilearn.com/corporate-training,check,
+upGrad Enterprise,https://www.upgrad.com,https://www.upgrad.com/enterprise/,check,
+Great Learning,https://www.mygreatlearning.com,https://www.mygreatlearning.com/enterprise,check,
+Coursera for Business,https://www.coursera.org,https://www.coursera.org/business/customer-stories,check,
+Pluralsight,https://www.pluralsight.com,https://www.pluralsight.com/customer-stories,check,
+Edureka,https://www.edureka.co,https://www.edureka.co/corporate-training,check,

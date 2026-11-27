@@ -1,0 +1,10 @@
+# Aaptor: assessment and hiring platforms whose customer pages list companies that already buy tech assessments.
+# Checked: each page answered HTTP 200. Pages that build their lists with JavaScript are read with the
+# headless browser (RENDER_JS=1). Columns: provider, url, testimonials_url, india (yes or check), follow.
+provider,url,testimonials_url,india,follow
+HackerRank,https://www.hackerrank.com,https://www.hackerrank.com/customers,check,
+HackerEarth,https://www.hackerearth.com,https://www.hackerearth.com/recruit/customers/,check,
+iMocha,https://www.imocha.io,https://www.imocha.io/customers,check,/customer-stories/
+Talview,https://www.talview.com,https://www.talview.com/en/customers,check,
+CodeSignal,https://codesignal.com,https://www.codesignal.com/customers/,check,
+TestGorilla,https://www.testgorilla.com,https://www.testgorilla.com/case-studies/,check,/case-studies/

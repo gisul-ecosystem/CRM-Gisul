@@ -19,6 +19,7 @@ import {
 	type Lead,
 	type LeadFilters,
 	type LeadProfile,
+	leadLookup,
 	leadsPage,
 	okMessage,
 	pipelineSettings,
@@ -69,6 +70,11 @@ export const pipelineApi = {
 };
 
 export const leadsApi = {
+	lookup: (emails: readonly string[]) =>
+		pipelineJson("/leads/lookup", leadLookup, {
+			method: "POST",
+			json: { emails },
+		}),
 	list: (
 		profile: LeadProfile,
 		filters: LeadFilters,

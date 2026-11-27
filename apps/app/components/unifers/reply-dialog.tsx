@@ -13,14 +13,20 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@crm/ui/components/field";
 import { FormattedText } from "@crm/ui/components/formatted-text";
 import { Input } from "@crm/ui/components/input";
+import { Skeleton } from "@crm/ui/components/skeleton";
 import { Textarea } from "@crm/ui/components/textarea";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ThreadMessage } from "@crm/ui/components/thread-message";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { toast } from "sonner";
+import { LocalDateTime } from "@/components/local-date-time";
+import { DATE_TIME } from "@/lib/outreach/format";
 import { useTRPC } from "@/lib/trpc/client";
 import { repliesApi } from "@/lib/unifers/api";
 import { unifersKeys } from "@/lib/unifers/cache";
 import { mailboxFirstName, signEmail } from "@/lib/unifers/campaign-draft";
+import type { ThreadEntry } from "@/lib/unifers/replies";
+import { latestInbound } from "@/lib/unifers/thread";
 import { UNIFERS } from "@/lib/unifers/unifers-config";
 
 export type ReplyTarget = {
@@ -55,20 +61,14 @@ export function ReplyDialog({
 				if (!next) onClose();
 			}}
 		>
-			<DialogContent>
-				{target ? <ReplyForm target={target} onClose={onClose} /> : null}
+			<DialogContent className="sm:max-w-lg">
+				{target ? <ReplyForm target={target} /> : null}
 			</DialogContent>
 		</Dialog>
 	);
 }
 
-function ReplyForm({
-	target,
-	onClose,
-}: {
-	target: ReplyTarget;
-	onClose: () => void;
-}) {
+function ReplyForm({ target }: { target: ReplyTarget }) {
 	const ids = { body: useId(), purpose: useId() };
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
@@ -76,6 +76,23 @@ function ReplyForm({
 	const ending = { name: sender || null, footer: savedFooter() };
 	const [body, setBody] = useState(() => signEmail("", ending));
 	const [purpose, setPurpose] = useState("");
+
+	const thread = useQuery({
+		queryKey: unifersKeys.thread(target.mailbox, target.messageId),
+		queryFn: () =>
+			repliesApi.thread({
+				mailbox: target.mailbox,
+				messageId: target.messageId,
+			}),
+		refetchInterval: UNIFERS.refresh.listMs,
+		retry: false,
+	});
+	const newest = latestInbound(thread.data?.messages ?? []);
+	const answering = {
+		messageId: newest?.id ?? target.messageId,
+		subject: newest?.subject ?? target.subject,
+		text: newest?.text ?? target.text,
+	};
 
 	const draft = useMutation(
 		trpc.contacts.draftReply.mutationOptions({
@@ -88,13 +105,16 @@ function ReplyForm({
 		mutationFn: () =>
 			repliesApi.send({
 				mailbox: target.mailbox,
-				messageId: target.messageId,
+				messageId: answering.messageId,
 				text: body,
 			}),
 		onSuccess: async () => {
-			toast.success(`Reply sent to ${target.email} from ${target.mailbox}.`);
+			toast.success(
+				`Reply sent to ${target.email} from ${target.mailbox}. It shows in the thread within a minute.`,
+			);
+			setBody(signEmail("", ending));
+			setPurpose("");
 			await queryClient.invalidateQueries({ queryKey: unifersKeys.replies });
-			onClose();
 		},
 		onError: (error) => toast.error(error.message),
 	});
@@ -104,19 +124,21 @@ function ReplyForm({
 	return (
 		<>
 			<DialogHeader>
-				<DialogTitle>Reply to {target.leadName || target.email}</DialogTitle>
+				<DialogTitle>
+					Conversation with {target.leadName || target.email}
+				</DialogTitle>
 				<DialogDescription>
-					Sent from {target.mailbox} in the same thread, with their email quoted
-					below yours.
+					Every email in this thread, oldest first. Your reply goes from{" "}
+					{target.mailbox} to their newest email, in the same thread.
 				</DialogDescription>
 			</DialogHeader>
 			<FieldGroup>
-				<div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
-					<p className="text-muted-foreground text-xs">
-						{target.subject || "Their reply"}
-					</p>
-					<FormattedText text={target.text || "(empty)"} />
-				</div>
+				<Conversation
+					target={target}
+					messages={thread.data?.messages ?? null}
+					loading={thread.isPending}
+					error={thread.isError ? thread.error.message : null}
+				/>
 				<Field>
 					<FieldLabel htmlFor={ids.purpose}>
 						What should the reply do? (optional)
@@ -130,13 +152,13 @@ function ReplyForm({
 						/>
 						<Button
 							variant="outline"
-							disabled={busy || !target.text.trim()}
+							disabled={busy || !answering.text.trim()}
 							onClick={() =>
 								draft.mutate({
 									leadName: target.leadName,
 									senderName: sender || null,
-									subject: target.subject,
-									leadText: target.text,
+									subject: answering.subject,
+									leadText: answering.text,
 									purpose: purpose.trim() || null,
 								})
 							}
@@ -158,7 +180,7 @@ function ReplyForm({
 			</FieldGroup>
 			<DialogFooter>
 				<DialogClose asChild>
-					<Button variant="outline">Cancel</Button>
+					<Button variant="outline">Close</Button>
 				</DialogClose>
 				<Button
 					disabled={busy || body.trim() === ""}
@@ -168,5 +190,52 @@ function ReplyForm({
 				</Button>
 			</DialogFooter>
 		</>
+	);
+}
+
+function Conversation({
+	target,
+	messages,
+	loading,
+	error,
+}: {
+	target: ReplyTarget;
+	messages: ThreadEntry[] | null;
+	loading: boolean;
+	error: string | null;
+}) {
+	if (loading) return <Skeleton className="h-32 w-full" />;
+	if (!messages || messages.length === 0) {
+		return (
+			<div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+				{error ? (
+					<p className="text-destructive text-xs">
+						Could not read the whole thread: {error}
+					</p>
+				) : null}
+				<p className="text-muted-foreground text-xs">
+					{target.subject || "Their reply"}
+				</p>
+				<FormattedText text={target.text || "(empty)"} />
+			</div>
+		);
+	}
+	return (
+		<div className="flex max-h-80 flex-col overflow-y-auto">
+			{messages.map((message) => (
+				<ThreadMessage
+					key={message.id}
+					from={
+						message.direction === "OUTBOUND"
+							? (target.mailboxName ?? message.fromName ?? message.fromEmail)
+							: (message.fromName ?? target.leadName ?? message.fromEmail)
+					}
+					fromEmail={message.fromEmail}
+					direction={message.direction}
+					sentAt={<LocalDateTime date={message.sentAt} options={DATE_TIME} />}
+					body={message.text}
+				/>
+			))}
+		</div>
 	);
 }

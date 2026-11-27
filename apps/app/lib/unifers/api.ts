@@ -2,8 +2,10 @@ import { unifersJson } from "./client";
 import {
 	type TenantRepliesRequest,
 	type TenantSendRequest,
+	type TenantThreadRequest,
 	tenantRepliesResponse,
 	tenantSendResponse,
+	tenantThreadResponse,
 } from "./replies";
 import {
 	addLeadsResponse,
@@ -80,6 +82,11 @@ export const repliesApi = {
 		}),
 	send: (input: TenantSendRequest) =>
 		unifersJson("/replies/send", tenantSendResponse, {
+			method: "POST",
+			json: input,
+		}),
+	thread: (input: TenantThreadRequest) =>
+		unifersJson("/replies/thread", tenantThreadResponse, {
 			method: "POST",
 			json: input,
 		}),

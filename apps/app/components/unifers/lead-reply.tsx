@@ -11,6 +11,7 @@ import { repliesApi } from "@/lib/unifers/api";
 import { unifersKeys } from "@/lib/unifers/cache";
 import { UNIFERS } from "@/lib/unifers/unifers-config";
 import { ReplyDialog, type ReplyTarget } from "./reply-dialog";
+import { WaitingBadge } from "./waiting-badge";
 
 const TITLE = "Their latest reply";
 
@@ -53,6 +54,7 @@ export function LeadReply({
 	return (
 		<DetailSheetSection title={TITLE}>
 			<div className="flex flex-col gap-2">
+				<WaitingBadge on={reply.waitingOn} />
 				<p className="text-muted-foreground text-xs">
 					<LocalRelativeDate date={reply.sentAt} /> · to {reply.mailbox}
 					{reply.webLink ? (
@@ -81,7 +83,7 @@ export function LeadReply({
 							})
 						}
 					>
-						Reply
+						Open conversation
 					</Button>
 				</div>
 			</div>

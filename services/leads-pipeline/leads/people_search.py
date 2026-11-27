@@ -16,7 +16,7 @@ from urllib.parse import quote_plus
 import tldextract
 
 from . import profile as _profile
-from . import gaming as _gaming
+from . import rules as _rules
 from . import training as _training
 from .extract import find_title, title_priority
 from .util import clean_name, looks_like_name
@@ -28,8 +28,8 @@ PAUSE = 1.1  # one search a second: polite, and well under the plan's rate limit
 TITLES = '(founder OR co-founder OR CEO OR CTO OR "chief technology officer" OR "head of AI")'
 if _profile.current() == _profile.TRAINING:
     TITLES = _training.SEARCH_TITLES
-elif _profile.current() == _profile.GAMING:
-    TITLES = _gaming.SEARCH_TITLES
+elif _rules.current():
+    TITLES = _rules.current().SEARCH_TITLES
 
 _PROFILE = re.compile(r"^https?://(?:[a-z]{2,3}\.)?linkedin\.com/in/([^/?#]+)", re.I)
 _TAGS = re.compile(r"<[^>]+>")
